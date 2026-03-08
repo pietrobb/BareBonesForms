@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — Dansk (Danish) language pack
+ */
+BBF.registerLang('da', {
+    loading:           'Indlæser…',
+    submitDefault:     'Send',
+    submittingDefault: 'Sender…',
+    successDefault:    'Tak! Din indsendelse er modtaget.',
+    errorDefault:      'Noget gik galt.',
+    networkError:      'Netværksfejl. Prøv igen.',
+    serverError:       'Serverfejl ({status})',
+    formNotFound:      'Formularen "{id}" blev ikke fundet ({status})',
+    loadError:         'Kunne ikke indlæse formularen: {message}',
+    required:          '{label} er påkrævet.',
+    invalidEmail:      '{label} skal være en gyldig e-mailadresse.',
+    invalidUrl:        '{label} skal være en gyldig URL.',
+    invalidTel:        '{label} skal være et gyldigt telefonnummer.',
+    invalidNumber:     '{label} skal være et tal.',
+    numberMin:         '{label} skal være mindst {min}.',
+    numberMax:         '{label} må højst være {max}.',
+    invalidOption:     '{label} indeholder et ugyldigt valg.',
+    tooShort:          '{label} skal være mindst {min} tegn.',
+    tooLong:           '{label} må højst være {max} tegn.',
+    invalidFormat:     '{label} har ugyldigt format.',
+    emailMismatch:    '{label}-adresserne stemmer ikke overens.',
+    dateMin:          '{label} skal være {min} eller senere.',
+    dateMax:          '{label} skal være {max} eller tidligere.',
+    nextPage:         'Næste',
+    prevPage:         'Forrige',
+});

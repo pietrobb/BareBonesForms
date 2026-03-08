@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — Bahasa Indonesia (Indonesian) language pack
+ */
+BBF.registerLang('id', {
+    loading:           'Memuat…',
+    submitDefault:     'Kirim',
+    submittingDefault: 'Mengirim…',
+    successDefault:    'Terima kasih! Kiriman Anda telah diterima.',
+    errorDefault:      'Terjadi kesalahan.',
+    networkError:      'Kesalahan jaringan. Silakan coba lagi.',
+    serverError:       'Kesalahan server ({status})',
+    formNotFound:      'Formulir "{id}" tidak ditemukan ({status})',
+    loadError:         'Gagal memuat formulir: {message}',
+    required:          '{label} wajib diisi.',
+    invalidEmail:      '{label} harus berupa alamat email yang valid.',
+    invalidUrl:        '{label} harus berupa URL yang valid.',
+    invalidTel:        '{label} harus berupa nomor telepon yang valid.',
+    invalidNumber:     '{label} harus berupa angka.',
+    numberMin:         '{label} harus minimal {min}.',
+    numberMax:         '{label} harus maksimal {max}.',
+    invalidOption:     '{label} berisi pilihan yang tidak valid.',
+    tooShort:          '{label} harus minimal {min} karakter.',
+    tooLong:           '{label} harus maksimal {max} karakter.',
+    invalidFormat:     '{label} memiliki format yang tidak valid.',
+    emailMismatch:    'Alamat {label} tidak cocok.',
+    dateMin:          '{label} harus pada atau setelah {min}.',
+    dateMax:          '{label} harus pada atau sebelum {max}.',
+    nextPage:         'Berikutnya',
+    prevPage:         'Sebelumnya',
+});

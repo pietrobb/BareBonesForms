@@ -1,0 +1,298 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-order",
+    "name": "Print Shop Order",
+    "description": "Configure your print order below. Prices update live in the sidebar as you make selections.",
+    "submit_label": "Place Order",
+    "success_message": "Order received! We'll send a confirmation to your email.",
+    "label_position": "top",
+
+    "fields": [
+        {
+            "name": "section_product",
+            "type": "section",
+            "title": "Product & Specifications"
+        },
+        {
+            "name": "product",
+            "type": "select",
+            "label": "What do you need?",
+            "required": true,
+            "options": [
+                { "value": "business_cards", "label": "Business Cards" },
+                { "value": "flyers", "label": "Flyers" },
+                { "value": "posters", "label": "Posters" },
+                { "value": "stickers", "label": "Stickers" }
+            ]
+        },
+
+        {
+            "name": "cards_group",
+            "type": "group",
+            "title": "Business Card Options",
+            "show_if": { "field": "product", "value": "business_cards" },
+            "fields": [
+                {
+                    "name": "cards_qty",
+                    "type": "number",
+                    "label": "Quantity",
+                    "required": true,
+                    "min": 100,
+                    "max": 10000,
+                    "value": "250",
+                    "size": "small",
+                    "description": "Minimum order: 100 pieces"
+                },
+                {
+                    "name": "cards_paper",
+                    "type": "radio",
+                    "label": "Paper",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "standard", "label": "Standard 300g" },
+                        { "value": "premium", "label": "Premium 400g (+50%)" },
+                        { "value": "luxury", "label": "Luxury Cotton (+150%)" }
+                    ]
+                },
+                {
+                    "name": "cards_finish",
+                    "type": "radio",
+                    "label": "Finish",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "matte", "label": "Matte" },
+                        { "value": "glossy", "label": "Glossy (+20%)" },
+                        { "value": "soft_touch", "label": "Soft Touch (+80%)" }
+                    ]
+                },
+                {
+                    "name": "cards_sides",
+                    "type": "radio",
+                    "label": "Print Sides",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "single", "label": "Front only" },
+                        { "value": "double", "label": "Front + Back (+40%)" }
+                    ]
+                }
+            ]
+        },
+
+        {
+            "name": "flyers_group",
+            "type": "group",
+            "title": "Flyer Options",
+            "show_if": { "field": "product", "value": "flyers" },
+            "fields": [
+                {
+                    "name": "flyers_qty",
+                    "type": "number",
+                    "label": "Quantity",
+                    "required": true,
+                    "min": 50,
+                    "max": 5000,
+                    "value": "100",
+                    "size": "small",
+                    "description": "Minimum order: 50 pieces"
+                },
+                {
+                    "name": "flyers_size",
+                    "type": "radio",
+                    "label": "Size",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "a5", "label": "A5" },
+                        { "value": "a4", "label": "A4 (+50%)" },
+                        { "value": "a3", "label": "A3 (+150%)" }
+                    ]
+                },
+                {
+                    "name": "flyers_paper",
+                    "type": "radio",
+                    "label": "Paper Weight",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "90g", "label": "90g Standard" },
+                        { "value": "130g", "label": "130g Semi-gloss (+30%)" },
+                        { "value": "170g", "label": "170g Premium (+60%)" }
+                    ]
+                },
+                {
+                    "name": "flyers_sides",
+                    "type": "radio",
+                    "label": "Print Sides",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "single", "label": "Single side" },
+                        { "value": "double", "label": "Double side (+50%)" }
+                    ]
+                }
+            ]
+        },
+
+        {
+            "name": "posters_group",
+            "type": "group",
+            "title": "Poster Options",
+            "show_if": { "field": "product", "value": "posters" },
+            "fields": [
+                {
+                    "name": "posters_qty",
+                    "type": "number",
+                    "label": "Quantity",
+                    "required": true,
+                    "min": 1,
+                    "max": 500,
+                    "value": "5",
+                    "size": "small"
+                },
+                {
+                    "name": "posters_size",
+                    "type": "radio",
+                    "label": "Size",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "a3", "label": "A3" },
+                        { "value": "a2", "label": "A2 (+80%)" },
+                        { "value": "a1", "label": "A1 (+200%)" },
+                        { "value": "a0", "label": "A0 (+400%)" }
+                    ]
+                },
+                {
+                    "name": "posters_paper",
+                    "type": "radio",
+                    "label": "Material",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "standard", "label": "Standard Paper" },
+                        { "value": "photo", "label": "Photo Paper (+50%)" },
+                        { "value": "canvas", "label": "Canvas (+150%)" }
+                    ]
+                }
+            ]
+        },
+
+        {
+            "name": "stickers_group",
+            "type": "group",
+            "title": "Sticker Options",
+            "show_if": { "field": "product", "value": "stickers" },
+            "fields": [
+                {
+                    "name": "stickers_qty",
+                    "type": "number",
+                    "label": "Quantity",
+                    "required": true,
+                    "min": 50,
+                    "max": 10000,
+                    "value": "100",
+                    "size": "small",
+                    "description": "Minimum order: 50 pieces"
+                },
+                {
+                    "name": "stickers_shape",
+                    "type": "radio",
+                    "label": "Shape",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "round", "label": "Round" },
+                        { "value": "square", "label": "Square" },
+                        { "value": "die_cut", "label": "Die-cut (+50%)" }
+                    ]
+                },
+                {
+                    "name": "stickers_size",
+                    "type": "radio",
+                    "label": "Size",
+                    "required": true,
+                    "columns": "inline",
+                    "options": [
+                        { "value": "5cm", "label": "5 cm" },
+                        { "value": "8cm", "label": "8 cm (+50%)" },
+                        { "value": "10cm", "label": "10 cm (+100%)" }
+                    ]
+                }
+            ]
+        },
+
+        { "name": "page2", "type": "page_break" },
+
+        {
+            "name": "section_delivery",
+            "type": "section",
+            "title": "Delivery"
+        },
+        {
+            "name": "delivery_country",
+            "type": "select",
+            "label": "Delivery to",
+            "required": true,
+            "options": [
+                { "value": "pickup", "label": "Pickup (in store) \u2014 Free" },
+                { "value": "domestic", "label": "Domestic" },
+                { "value": "eu", "label": "EU Country" },
+                { "value": "international", "label": "International" }
+            ]
+        },
+        {
+            "name": "delivery_speed",
+            "type": "radio",
+            "label": "Delivery Speed",
+            "required": true,
+            "columns": "inline",
+            "show_if": { "field": "delivery_country", "value": "pickup", "op": "not" },
+            "options": [
+                { "value": "standard", "label": "Standard (5\u20137 business days)" },
+                { "value": "express", "label": "Express (2\u20133 business days)" }
+            ]
+        },
+
+        {
+            "name": "section_contact",
+            "type": "section",
+            "title": "Contact Information"
+        },
+        {
+            "name": "customer_name",
+            "type": "text",
+            "label": "Full Name",
+            "required": true,
+            "maxlength": 100
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "required": true,
+            "description": "Order confirmation will be sent here."
+        },
+        {
+            "name": "phone",
+            "type": "tel",
+            "label": "Phone",
+            "size": "medium"
+        },
+        {
+            "name": "notes",
+            "type": "textarea",
+            "label": "Order Notes",
+            "placeholder": "Any special instructions, file delivery details, etc.",
+            "rows": 3,
+            "maxlength": 1000
+        }
+    ],
+
+    "on_submit": {
+        "store": true
+    }
+}

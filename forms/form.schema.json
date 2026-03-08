@@ -1,0 +1,354 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "form.schema.json",
+    "title": "BareBonesForms Form Definition",
+    "description": "Schema for BareBonesForms form definition files (schema_version: 1)",
+    "type": "object",
+    "required": ["schema_version", "id", "fields"],
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "Path to this schema file for IDE autocomplete."
+        },
+        "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "description": "Schema version. Must be 1."
+        },
+        "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "description": "Form identifier. Used in URLs, file names, and API calls."
+        },
+        "name": {
+            "type": "string",
+            "description": "Display name shown as the form title."
+        },
+        "description": {
+            "type": "string",
+            "description": "Optional text shown below the title."
+        },
+        "submit_label": {
+            "type": "string",
+            "default": "Submit",
+            "description": "Text on the submit button."
+        },
+        "submitting_label": {
+            "type": "string",
+            "default": "Sending\u2026",
+            "description": "Text shown on the submit button while submitting."
+        },
+        "success_message": {
+            "type": "string",
+            "description": "Message shown after successful submission."
+        },
+        "label_position": {
+            "type": "string",
+            "enum": ["top", "left", "right"],
+            "default": "top",
+            "description": "Label placement relative to fields: top, left, or right."
+        },
+        "storage": {
+            "type": "string",
+            "enum": ["file", "csv", "sqlite", "mysql"],
+            "description": "Per-form storage backend. Overrides the global setting in config.php."
+        },
+        "templates": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/field" }
+            },
+            "description": "Reusable field templates. Reference via \"use\" on group fields."
+        },
+        "fields": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/field" },
+            "description": "Form fields."
+        },
+        "on_submit": {
+            "$ref": "#/$defs/on_submit",
+            "description": "Post-submit actions: store, email, webhooks, redirect, custom actions."
+        }
+    },
+    "additionalProperties": false,
+    "$defs": {
+        "condition": {
+            "type": "object",
+            "description": "A condition or logical group of conditions.",
+            "oneOf": [
+                {
+                    "properties": {
+                        "field": { "type": "string", "description": "Name of the field to watch." },
+                        "value": {
+                            "oneOf": [
+                                { "type": "string" },
+                                { "type": "array", "items": { "type": "string" } }
+                            ],
+                            "description": "Value(s) that trigger visibility."
+                        },
+                        "op": {
+                            "type": "string",
+                            "enum": ["not", "gt", "gte", "lt", "lte", "contains", "empty", "not_empty"],
+                            "description": "Comparison operator. Default: equals."
+                        }
+                    },
+                    "required": ["field"]
+                },
+                {
+                    "properties": {
+                        "all": {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/condition" },
+                            "description": "All conditions must be true (AND)."
+                        }
+                    },
+                    "required": ["all"]
+                },
+                {
+                    "properties": {
+                        "any": {
+                            "type": "array",
+                            "items": { "$ref": "#/$defs/condition" },
+                            "description": "At least one condition must be true (OR)."
+                        }
+                    },
+                    "required": ["any"]
+                }
+            ]
+        },
+        "field": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "description": "Field identifier. Used as the HTML name attribute."
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "hidden", "password", "section", "page_break", "rating", "group"],
+                    "default": "text",
+                    "description": "Field input type."
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Display label for the field."
+                },
+                "placeholder": {
+                    "type": "string",
+                    "description": "Placeholder text."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Help text shown below the label."
+                },
+                "required": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Whether the field is required."
+                },
+                "minlength": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Minimum character length (text types)."
+                },
+                "maxlength": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Maximum character length (text types)."
+                },
+                "min": {
+                    "type": "number",
+                    "description": "Minimum value (number type)."
+                },
+                "max": {
+                    "type": "number",
+                    "description": "Maximum value (number type)."
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex validation pattern."
+                },
+                "pattern_message": {
+                    "type": "string",
+                    "description": "Custom error message when pattern validation fails."
+                },
+                "value": {
+                    "type": "string",
+                    "description": "Default/preset value."
+                },
+                "rows": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Number of rows for textarea."
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["value", "label"],
+                        "properties": {
+                            "value": { "type": "string" },
+                            "label": { "type": "string" }
+                        },
+                        "additionalProperties": false
+                    },
+                    "description": "Options for select, radio, or checkbox fields."
+                },
+                "size": {
+                    "type": "string",
+                    "enum": ["small", "medium", "large"],
+                    "description": "Field width: small (25%), medium (50%), large (full)."
+                },
+                "css_class": {
+                    "type": "string",
+                    "description": "Custom CSS class(es) added to the field wrapper."
+                },
+                "columns": {
+                    "type": ["integer", "string"],
+                    "enum": [2, 3, "inline"],
+                    "description": "Layout for radio/checkbox options: 2, 3, or \"inline\"."
+                },
+                "readonly": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Makes the field read-only."
+                },
+                "other": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Adds an 'Other' option with text input (radio/checkbox/select)."
+                },
+                "other_label": {
+                    "type": "string",
+                    "default": "Other",
+                    "description": "Label for the 'Other' option."
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Adds a confirmation field (email type only)."
+                },
+                "shuffle": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Randomize order of options (radio/checkbox/select) or child fields (group) on each page load."
+                },
+                "show_if": {
+                    "$ref": "#/$defs/condition",
+                    "description": "Conditional visibility. Simple: {field, value, op}. Complex: {all: [...]} or {any: [...]}."
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Title for section/group type fields."
+                },
+                "fields": {
+                    "type": "array",
+                    "items": { "$ref": "#/$defs/field" },
+                    "description": "Child fields for group type."
+                },
+                "use": {
+                    "type": "string",
+                    "description": "Name of a template to use as this group's children (group type only)."
+                },
+                "prefix": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_]+$",
+                    "description": "Prefix applied to all template field names (used with \"use\")."
+                }
+            },
+            "additionalProperties": false,
+            "allOf": [
+                {
+                    "if": {
+                        "properties": { "type": { "enum": ["select", "radio", "checkbox"] } },
+                        "required": ["type"]
+                    },
+                    "then": {
+                        "required": ["name", "options"]
+                    }
+                }
+            ]
+        },
+        "on_submit": {
+            "type": "object",
+            "properties": {
+                "store": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether to store the submission."
+                },
+                "confirm_email": {
+                    "type": "object",
+                    "required": ["to"],
+                    "properties": {
+                        "to": {
+                            "type": "string",
+                            "description": "Recipient email. Supports {{field_name}} interpolation."
+                        },
+                        "subject": {
+                            "type": "string",
+                            "description": "Email subject. Supports {{field_name}} interpolation."
+                        },
+                        "template": {
+                            "type": "string",
+                            "description": "Template file name in templates/ directory."
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "notify": {
+                    "type": "object",
+                    "required": ["to"],
+                    "properties": {
+                        "to": {
+                            "type": "string",
+                            "description": "Admin email address."
+                        },
+                        "subject": {
+                            "type": "string",
+                            "description": "Email subject. Supports {{field_name}} interpolation."
+                        },
+                        "template": {
+                            "type": "string",
+                            "description": "Template file name in templates/ directory."
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "webhooks": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    "description": "URLs to POST submission data to."
+                },
+                "redirect": {
+                    "type": ["string", "null"],
+                    "description": "URL to redirect to after submission. Supports {{field_name}}."
+                },
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["type"],
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "pattern": "^[a-zA-Z0-9_-]+$",
+                                "description": "Action type. Maps to actions/{type}.php file."
+                            }
+                        },
+                        "additionalProperties": true
+                    },
+                    "description": "Custom server-side actions. Each runs actions/{type}.php."
+                }
+            },
+            "additionalProperties": false
+        }
+    }
+}

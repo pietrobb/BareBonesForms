@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo 6: Print Shop Order &mdash; BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* Price summary card */
+.price-card { background: var(--bg, #f9fafb); border: 2px solid #10b981; border-radius: 10px; padding: 20px; position: sticky; top: 80px; }
+.price-card h4 { color: #10b981; margin-bottom: 12px; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.price-empty { color: #6b7280; font-size: 0.88rem; font-style: italic; }
+.price-line { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.88rem; }
+.price-line.sub { color: #6b7280; font-size: 0.82rem; padding-left: 8px; }
+.price-sep { border-top: 1px solid #e5e7eb; margin: 8px 0; }
+.price-sep.thick { border-top: 2px solid #10b981; }
+.price-total { display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 700; color: #10b981; padding: 4px 0; }
+.price-discount { color: #059669; font-weight: 600; }
+.price-note { font-size: 0.78rem; color: #6b7280; margin-top: 10px; line-height: 1.4; }
+@media (prefers-color-scheme: dark) {
+    .price-card { background: #1e1e2e; border-color: #10b981; }
+    .price-sep { border-color: #334155; }
+    .price-line.sub { color: #94a3b8; }
+    .price-note { color: #94a3b8; }
+    .price-empty { color: #94a3b8; }
+}
+</style>
+</head>
+<body>
+
+<nav class="demo-nav">
+    <a href="demo1.html" class="demo-nav-brand">Bare<span>Bones</span>Forms</a>
+    <div class="demo-nav-links">
+        <a href="demo1.html">Demo 1</a>
+        <a href="demo2.html">Demo 2</a>
+        <a href="demo3.html">Demo 3</a>
+        <a href="demo4.html">Demo 4</a>
+        <a href="demo5.html">Demo 5</a>
+        <a href="demo6.html" class="active">Demo 6</a>
+        <a href="demo7.html">Demo 7</a>
+        <a href="demo8.html">Demo 8</a>
+        <span class="nav-sep">|</span>
+        <a href="docs.html">Docs</a>
+    </div>
+</nav>
+
+<div class="hero">
+    <div class="hero-number" style="background: rgba(245,158,11,0.15); color: #f59e0b;">6</div>
+    <h1>Print Shop Order</h1>
+    <p>An order form with live pricing. Select a product, configure variants, choose delivery &mdash; the sidebar price summary updates in real time. Demonstrates conditional product groups, variant-based pricing, volume discounts, and conditional delivery options.</p>
+</div>
+
+<div class="server-notice">
+    This form demands a PHP server to function. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo6.html</code>.
+</div>
+
+<div class="setup-notice">
+    <h4>What works &amp; what needs setup</h4>
+    <div class="setup-item"><span class="ok">&#10003;</span> Fully functional out of the box. No configuration needed.</div>
+    <div class="setup-item"><span class="ok">&#128193;</span> Submissions are saved as JSON files in <code>submissions/demo-order/</code>.</div>
+</div>
+
+<div class="page-grid">
+    <div class="form-column">
+        <div id="order-form" data-form="demo-order" data-show-title="true"></div>
+    </div>
+
+    <div class="sidebar-column">
+
+        <!-- Live price summary -->
+        <div class="price-card" id="price-summary">
+            <h4>Order Summary</h4>
+            <div id="price-content">
+                <p class="price-empty">Select a product to see pricing.</p>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h4>How pricing works</h4>
+            <ul class="pipeline">
+                <li><span class="pip">1&#xFE0F;&#x20E3;</span> <span>Base price per piece depends on the product.</span></li>
+                <li><span class="pip">2&#xFE0F;&#x20E3;</span> <span>Each variant option applies a multiplier (e.g. Premium paper = +50%).</span></li>
+                <li><span class="pip">3&#xFE0F;&#x20E3;</span> <span>Quantity discount kicks in at 100+ pieces (up to 20% off at 1000+).</span></li>
+                <li><span class="pip">&#10003;</span> <span>Delivery cost depends on destination and speed.</span></li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>Features demonstrated</h4>
+            <ul class="tech-list">
+                <li>conditional product groups</li>
+                <li>per-product quantity min/max</li>
+                <li>variant-based price multipliers</li>
+                <li>volume discounts (5%&ndash;20%)</li>
+                <li>conditional delivery speed</li>
+                <li>live sidebar price engine</li>
+                <li>multi-page (2 pages)</li>
+                <li>server stores the order</li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>Volume discounts</h4>
+            <div class="json-snippet">100+  pieces &rarr;  5% off
+250+  pieces &rarr; 10% off
+500+  pieces &rarr; 15% off
+1000+ pieces &rarr; 20% off</div>
+        </div>
+
+        <a href="https://roguebard.net/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Music</span>
+            <h3>Rogue Bard</h3>
+            <p>Soulful jazz, emotional blues, raw rock &mdash; wrapped in philosophical lyrics.</p>
+            <span class="card-link">Listen now</span>
+        </a>
+
+        <a href="https://lasttrial.art/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Dark Fantasy</span>
+            <h3>The Last Trial</h3>
+            <p>A dark fantasy graphic novel. 200+ illustrated panels, an original soundtrack.</p>
+            <span class="card-link">Explore the story</span>
+        </a>
+    </div>
+</div>
+
+<div class="footer">
+    <p>BareBonesForms &mdash; forms for developers, not for clicking around.</p>
+    <div class="footer-links">
+        <a href="docs.html">Documentation</a>
+        <a href="sandbox.php">Sandbox</a>
+        <a href="check.php">Check Installation</a>
+    </div>
+</div>
+
+<script src="bbf.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    // ─── Pricing data ───────────────────────────────────────────
+    var PRODUCTS = {
+        business_cards: { name: 'Business Cards', base: 0.05, unit: 'pc' },
+        flyers:         { name: 'Flyers',         base: 0.15, unit: 'pc' },
+        posters:        { name: 'Posters',        base: 2.00, unit: 'pc' },
+        stickers:       { name: 'Stickers',       base: 0.08, unit: 'pc' }
+    };
+
+    var MULTIPLIERS = {
+        cards_paper:    { standard: 1, premium: 1.5, luxury: 2.5 },
+        cards_finish:   { matte: 1, glossy: 1.2, soft_touch: 1.8 },
+        cards_sides:    { single: 1, double: 1.4 },
+        flyers_size:    { a5: 1, a4: 1.5, a3: 2.5 },
+        flyers_paper:   { '90g': 1, '130g': 1.3, '170g': 1.6 },
+        flyers_sides:   { single: 1, double: 1.5 },
+        posters_size:   { a3: 1, a2: 1.8, a1: 3, a0: 5 },
+        posters_paper:  { standard: 1, photo: 1.5, canvas: 2.5 },
+        stickers_shape: { round: 1, square: 1, die_cut: 1.5 },
+        stickers_size:  { '5cm': 1, '8cm': 1.5, '10cm': 2 }
+    };
+
+    var PRODUCT_FIELDS = {
+        business_cards: { qty: 'cards_qty', specs: ['cards_paper', 'cards_finish', 'cards_sides'] },
+        flyers:         { qty: 'flyers_qty', specs: ['flyers_size', 'flyers_paper', 'flyers_sides'] },
+        posters:        { qty: 'posters_qty', specs: ['posters_size', 'posters_paper'] },
+        stickers:       { qty: 'stickers_qty', specs: ['stickers_shape', 'stickers_size'] }
+    };
+
+    var SPEC_LABELS = {
+        cards_paper: { standard: 'Standard 300g', premium: 'Premium 400g', luxury: 'Luxury Cotton' },
+        cards_finish: { matte: 'Matte', glossy: 'Glossy', soft_touch: 'Soft Touch' },
+        cards_sides: { single: 'Front only', double: 'Front + Back' },
+        flyers_size: { a5: 'A5', a4: 'A4', a3: 'A3' },
+        flyers_paper: { '90g': '90g', '130g': '130g', '170g': '170g' },
+        flyers_sides: { single: 'Single side', double: 'Double side' },
+        posters_size: { a3: 'A3', a2: 'A2', a1: 'A1', a0: 'A0' },
+        posters_paper: { standard: 'Standard', photo: 'Photo Paper', canvas: 'Canvas' },
+        stickers_shape: { round: 'Round', square: 'Square', die_cut: 'Die-cut' },
+        stickers_size: { '5cm': '5 cm', '8cm': '8 cm', '10cm': '10 cm' }
+    };
+
+    var VOLUME_DISCOUNTS = [
+        { min: 1000, pct: 20 },
+        { min: 500,  pct: 15 },
+        { min: 250,  pct: 10 },
+        { min: 100,  pct: 5 }
+    ];
+
+    var DELIVERY = {
+        pickup: 0,
+        domestic: { standard: 5, express: 12 },
+        eu: { standard: 15, express: 25 },
+        international: { standard: 25, express: 45 }
+    };
+
+    // ─── Price calculation ──────────────────────────────────────
+    function getFormValue(form, name) {
+        var el = form.querySelector('select[name="' + name + '"]');
+        if (el) return el.value;
+        var radios = form.querySelectorAll('input[type="radio"][name="' + name + '"]');
+        if (radios.length > 0) {
+            var checked = form.querySelector('input[name="' + name + '"]:checked');
+            return checked ? checked.value : '';
+        }
+        var input = form.querySelector('input[name="' + name + '"]');
+        if (input) return input.value;
+        return '';
+    }
+
+    function calculatePrice(form) {
+        var product = getFormValue(form, 'product');
+        if (!product || !PRODUCTS[product]) return null;
+
+        var pf = PRODUCT_FIELDS[product];
+        var qty = parseInt(getFormValue(form, pf.qty), 10) || 0;
+        if (qty < 1) return { product: product, incomplete: true, reason: 'quantity' };
+
+        var unitPrice = PRODUCTS[product].base;
+        var specDetails = [];
+        var allSpecsSelected = true;
+
+        for (var i = 0; i < pf.specs.length; i++) {
+            var field = pf.specs[i];
+            var val = getFormValue(form, field);
+            if (!val) { allSpecsSelected = false; continue; }
+            var mult = MULTIPLIERS[field] && MULTIPLIERS[field][val];
+            if (mult) {
+                unitPrice *= mult;
+                specDetails.push((SPEC_LABELS[field] && SPEC_LABELS[field][val]) || val);
+            }
+        }
+
+        var subtotal = unitPrice * qty;
+        var discountPct = 0;
+        for (var d = 0; d < VOLUME_DISCOUNTS.length; d++) {
+            if (qty >= VOLUME_DISCOUNTS[d].min) { discountPct = VOLUME_DISCOUNTS[d].pct; break; }
+        }
+        var discountAmount = subtotal * (discountPct / 100);
+        var afterDiscount = subtotal - discountAmount;
+
+        var deliveryCountry = getFormValue(form, 'delivery_country');
+        var deliverySpeed = getFormValue(form, 'delivery_speed');
+        var deliveryCost = 0;
+        var deliveryLabel = '';
+        if (deliveryCountry === 'pickup') {
+            deliveryCost = 0; deliveryLabel = 'Pickup (free)';
+        } else if (deliveryCountry && DELIVERY[deliveryCountry]) {
+            if (deliverySpeed && DELIVERY[deliveryCountry][deliverySpeed] !== undefined) {
+                deliveryCost = DELIVERY[deliveryCountry][deliverySpeed];
+                deliveryLabel = (deliveryCountry === 'domestic' ? 'Domestic' : deliveryCountry === 'eu' ? 'EU' : 'International')
+                    + ' ' + (deliverySpeed === 'express' ? 'Express' : 'Standard');
+            }
+        }
+
+        return {
+            product: product,
+            productName: PRODUCTS[product].name,
+            specs: specDetails,
+            allSpecsSelected: allSpecsSelected,
+            qty: qty,
+            unitPrice: unitPrice,
+            subtotal: subtotal,
+            discountPct: discountPct,
+            discountAmount: discountAmount,
+            afterDiscount: afterDiscount,
+            deliveryLabel: deliveryLabel,
+            deliveryCost: deliveryCost,
+            total: afterDiscount + deliveryCost
+        };
+    }
+
+    function fmt(n) { return n.toFixed(2); }
+
+    function updatePriceSummary(form) {
+        var el = document.getElementById('price-content');
+        if (!el) return;
+
+        var p = calculatePrice(form);
+        if (!p) { el.innerHTML = '<p class="price-empty">Select a product to see pricing.</p>'; return; }
+        if (p.incomplete) { el.innerHTML = '<p class="price-empty">Enter quantity to see pricing.</p>'; return; }
+
+        var h = '';
+        h += '<div class="price-line"><strong>' + p.productName + '</strong></div>';
+        if (p.specs.length > 0) {
+            h += '<div class="price-line sub">' + p.specs.join(' &middot; ') + '</div>';
+        }
+        if (!p.allSpecsSelected) {
+            h += '<div class="price-line sub" style="color:#f59e0b">Select all options for final price</div>';
+        }
+        h += '<div class="price-sep"></div>';
+        h += '<div class="price-line"><span>Unit price</span><span>&euro;' + fmt(p.unitPrice) + '</span></div>';
+        h += '<div class="price-line"><span>&times; ' + p.qty + ' pieces</span><span>&euro;' + fmt(p.subtotal) + '</span></div>';
+
+        if (p.discountPct > 0) {
+            h += '<div class="price-line price-discount"><span>Volume discount (' + p.discountPct + '%)</span><span>&minus;&euro;' + fmt(p.discountAmount) + '</span></div>';
+        }
+
+        if (p.deliveryLabel) {
+            h += '<div class="price-line"><span>' + p.deliveryLabel + '</span><span>' + (p.deliveryCost > 0 ? '&euro;' + fmt(p.deliveryCost) : 'Free') + '</span></div>';
+        }
+
+        h += '<div class="price-sep thick"></div>';
+        h += '<div class="price-total"><span>Total</span><span>&euro;' + fmt(p.total) + '</span></div>';
+
+        if (p.discountPct > 0) {
+            h += '<div class="price-note">You save &euro;' + fmt(p.discountAmount) + ' with the volume discount.</div>';
+        }
+
+        el.innerHTML = h;
+    }
+
+    // ─── Hook into form ─────────────────────────────────────────
+    var container = document.getElementById('order-form');
+    if (!container) return;
+
+    var formObserver = new MutationObserver(function() {
+        var form = container.querySelector('form.bbf-form');
+        if (!form) return;
+        formObserver.disconnect();
+
+        // Update on any change
+        form.addEventListener('change', function() { updatePriceSummary(form); });
+        form.addEventListener('input', function() { updatePriceSummary(form); });
+
+        // Initial calculation
+        updatePriceSummary(form);
+    });
+    formObserver.observe(container, { childList: true, subtree: true });
+})();
+</script>
+</body>
+</html>

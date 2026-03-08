@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo 2: Event Registration — BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+
+<!-- ─── Navigation ────────────────────────────────────────── -->
+
+<nav class="demo-nav">
+    <a href="demo1.html" class="demo-nav-brand">Bare<span>Bones</span>Forms</a>
+    <div class="demo-nav-links">
+        <a href="demo1.html">Demo 1</a>
+        <a href="demo2.html" class="active">Demo 2</a>
+        <a href="demo3.html">Demo 3</a>
+        <a href="demo4.html">Demo 4</a>
+        <a href="demo5.html">Demo 5</a>
+        <a href="demo6.html">Demo 6</a>
+        <a href="demo7.html">Demo 7</a>
+        <a href="demo8.html">Demo 8</a>
+        <span class="nav-sep">|</span>
+        <a href="docs.html">Docs</a>
+    </div>
+</nav>
+
+<!-- ─── Hero ──────────────────────────────────────────────── -->
+
+<div class="hero">
+    <div class="hero-number" style="background: rgba(96,165,250,0.15); color: #60a5fa;">2</div>
+    <h1>Event Registration</h1>
+    <p>Store submissions and notify the administrator by email. A step beyond mere storage — now someone is informed that a newcomer has arrived at the camp.</p>
+</div>
+
+<!-- ─── PHP server notice ─────────────────────────────────── -->
+
+<div class="server-notice">
+    This form demands a PHP server. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo2.html</code>
+</div>
+
+<div class="setup-notice">
+    <h4>What works &amp; what needs setup</h4>
+    <div class="setup-item"><span class="ok">&#10003;</span> Form submission and storage work out of the box.</div>
+    <div class="setup-item"><span class="ok">&#128193;</span> Submissions are appended to <code>submissions/demo-csv/demo-csv.csv</code> (CSV format).</div>
+    <div class="setup-item"><span class="needs">&#9881;</span> <strong>Admin email notification</strong> &mdash; open <code>config.php</code> and set:
+        <code>method</code> &rarr; <code>"smtp"</code>,
+        <code>smtp_host</code>, <code>smtp_port</code>, <code>smtp_user</code>, <code>smtp_pass</code> (your mail server credentials),
+        <code>from_email</code> (sender address).
+        The recipient is in <code>forms/demo-csv.json</code> &rarr; <code>on_submit.notify.to</code>.</div>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════
+     MAIN CONTENT
+     ═════════════════════════════════════════════════════════════ -->
+
+<div class="page-grid">
+
+    <!-- ─── LEFT: Live Form ───────────────────────────────── -->
+
+    <div class="form-column">
+
+        <!-- ════════════════════════════════════════════════════
+             EMBED THIS FORM IN YOUR OWN PAGE
+
+             What you need:
+             1. <link rel="stylesheet" href="bbf.css">   — optional, default styling
+             2. <script src="bbf.js"></script>             — required, renders the form
+             3. forms/demo-csv.json                        — the form definition
+             4. templates/notify.html                      — admin email template
+
+             Replace "admin@example.com" in the form JSON
+             with your own address. Unless you enjoy sending
+             letters to the void.
+             ════════════════════════════════════════════════════ -->
+
+        <div data-form="demo-csv" data-show-title="true"></div>
+
+        <!-- ════════════════════════════════════════════════════ -->
+
+    </div>
+
+    <!-- ─── RIGHT: Sidebar ────────────────────────────────── -->
+
+    <div class="sidebar-column">
+
+        <!-- What happens on submit -->
+        <div class="info-card">
+            <h4>What happens when you submit</h4>
+            <ul class="pipeline">
+                <li><span class="pip">&#10003;</span> <span>Server <strong>validates</strong> all fields — including multi-checkbox groups, which are submitted as arrays and verified against allowed options.</span></li>
+                <li><span class="pip">&#128190;</span> <span>Submission <strong>stored</strong> (file, SQLite, MySQL, or CSV — whichever you've set in config.php).</span></li>
+                <li><span class="pip">&#9993;</span> <span><strong>Admin notification</strong> dispatched to the address specified in the form definition.</span></li>
+            </ul>
+
+            <h4 style="margin-top: 14px;">Email details</h4>
+            <p>
+                <strong>To:</strong> admin@example.com<br>
+                <strong>Subject:</strong> New registration: {{name}} ({{ticket}})<br>
+                <strong>Template:</strong> templates/notify.html
+            </p>
+            <p>The subject line uses <code>{{placeholders}}</code> — filled with actual field values at the moment of sending. So you know exactly who walked through the door and what ticket they hold.</p>
+
+            <h4 style="margin-top: 14px;">The on_submit configuration</h4>
+            <div class="json-snippet"><span class="jk">"on_submit"</span>: {
+  <span class="jk">"store"</span>: <span class="jb">true</span>,
+  <span class="jk">"notify"</span>: {
+    <span class="jk">"to"</span>: <span class="js">"admin@example.com"</span>,
+    <span class="jk">"subject"</span>: <span class="js">"New registration: {{name}}"</span>,
+    <span class="jk">"template"</span>: <span class="js">"notify.html"</span>
+  }
+}</div>
+
+            <div class="safe-note">
+                &#9432; <strong>admin@example.com</strong> is an IANA-reserved domain — mail sent there is silently dropped by design. On localhost, PHP <code>mail()</code> typically has no mail transfer agent configured, so nothing leaves the machine. To test with real emails, set up SMTP in config.php and replace the address with your own.
+            </div>
+        </div>
+
+        <!-- Tech info -->
+        <div class="info-card">
+            <h4>What this demo demonstrates</h4>
+            <ul class="tech-list">
+                <li>select dropdown</li>
+                <li>multi-checkbox</li>
+                <li>admin notification</li>
+                <li>email templates</li>
+                <li>{{placeholder}} subjects</li>
+                <li>CSRF + honeypot</li>
+            </ul>
+        </div>
+
+        <!-- ─── Rogue Bard ────────────────────────────────── -->
+
+        <a href="https://roguebard.net/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Music</span>
+            <h3>Rogue Bard</h3>
+            <p>Soulful jazz, emotional blues, raw rock — wrapped in philosophical lyrics. Independent artist, uncompromising sound.</p>
+            <span class="card-link">Listen now</span>
+        </a>
+
+        <!-- ─── The Last Trial ────────────────────────────── -->
+
+        <a href="https://lasttrial.art/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Dark Fantasy</span>
+            <h3>The Last Trial</h3>
+            <p>A dark fantasy graphic novel. 200+ illustrated panels, an original soundtrack, and a story where the noblest deed comes at a price.</p>
+            <span class="card-link">Explore the story</span>
+        </a>
+
+    </div>
+</div>
+
+<!-- ─── Footer ────────────────────────────────────────────── -->
+
+<div class="footer">
+    <p>BareBonesForms — forms for developers, not for clicking around.</p>
+    <div class="footer-links">
+        <a href="docs.html">Documentation</a>
+        <a href="sandbox.php">Sandbox</a>
+        <a href="check.php">Check Installation</a>
+    </div>
+</div>
+
+<script src="bbf.js"></script>
+</body>
+</html>

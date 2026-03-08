@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — Ελληνικά (Greek) language pack
+ */
+BBF.registerLang('el', {
+    loading:           'Φόρτωση…',
+    submitDefault:     'Υποβολή',
+    submittingDefault: 'Αποστολή…',
+    successDefault:    'Ευχαριστούμε! Η υποβολή σας ελήφθη.',
+    errorDefault:      'Κάτι πήγε στραβά.',
+    networkError:      'Σφάλμα δικτύου. Παρακαλώ δοκιμάστε ξανά.',
+    serverError:       'Σφάλμα διακομιστή ({status})',
+    formNotFound:      'Η φόρμα «{id}» δεν βρέθηκε ({status})',
+    loadError:         'Αποτυχία φόρτωσης φόρμας: {message}',
+    required:          'Το πεδίο {label} είναι υποχρεωτικό.',
+    invalidEmail:      'Το {label} πρέπει να είναι έγκυρη διεύθυνση email.',
+    invalidUrl:        'Το {label} πρέπει να είναι έγκυρο URL.',
+    invalidTel:        'Το {label} πρέπει να είναι έγκυρος αριθμός τηλεφώνου.',
+    invalidNumber:     'Το {label} πρέπει να είναι αριθμός.',
+    numberMin:         'Το {label} πρέπει να είναι τουλάχιστον {min}.',
+    numberMax:         'Το {label} πρέπει να είναι το πολύ {max}.',
+    invalidOption:     'Το {label} περιέχει μη έγκυρη επιλογή.',
+    tooShort:          'Το {label} πρέπει να έχει τουλάχιστον {min} χαρακτήρες.',
+    tooLong:           'Το {label} πρέπει να έχει το πολύ {max} χαρακτήρες.',
+    invalidFormat:     'Το {label} έχει μη έγκυρη μορφή.',
+    emailMismatch:    'Οι διευθύνσεις {label} δεν ταιριάζουν.',
+    dateMin:          '{label} πρέπει να είναι στις {min} ή μετά.',
+    dateMax:          '{label} πρέπει να είναι στις {max} ή πριν.',
+    nextPage:         'Επόμενο',
+    prevPage:         'Προηγούμενο',
+});

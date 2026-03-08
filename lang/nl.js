@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — Nederlands (Dutch) language pack
+ */
+BBF.registerLang('nl', {
+    loading:           'Laden…',
+    submitDefault:     'Verzenden',
+    submittingDefault: 'Bezig met verzenden…',
+    successDefault:    'Bedankt! Uw inzending is ontvangen.',
+    errorDefault:      'Er is iets misgegaan.',
+    networkError:      'Netwerkfout. Probeer het opnieuw.',
+    serverError:       'Serverfout ({status})',
+    formNotFound:      'Formulier "{id}" niet gevonden ({status})',
+    loadError:         'Kan formulier niet laden: {message}',
+    required:          '{label} is verplicht.',
+    invalidEmail:      '{label} moet een geldig e-mailadres zijn.',
+    invalidUrl:        '{label} moet een geldige URL zijn.',
+    invalidTel:        '{label} moet een geldig telefoonnummer zijn.',
+    invalidNumber:     '{label} moet een getal zijn.',
+    numberMin:         '{label} moet minimaal {min} zijn.',
+    numberMax:         '{label} mag maximaal {max} zijn.',
+    invalidOption:     '{label} bevat een ongeldige selectie.',
+    tooShort:          '{label} moet minimaal {min} tekens bevatten.',
+    tooLong:           '{label} mag maximaal {max} tekens bevatten.',
+    invalidFormat:     '{label} heeft een ongeldig formaat.',
+    emailMismatch:    'De {label}-adressen komen niet overeen.',
+    dateMin:          '{label} moet op of na {min} zijn.',
+    dateMax:          '{label} moet op of voor {max} zijn.',
+    nextPage:         'Volgende',
+    prevPage:         'Vorige',
+});

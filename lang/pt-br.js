@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — Português Brasileiro (Brazilian Portuguese) language pack
+ */
+BBF.registerLang('pt-br', {
+    loading:           'Carregando…',
+    submitDefault:     'Enviar',
+    submittingDefault: 'Enviando…',
+    successDefault:    'Obrigado! Seu envio foi recebido.',
+    errorDefault:      'Algo deu errado.',
+    networkError:      'Erro de rede. Tente novamente.',
+    serverError:       'Erro no servidor ({status})',
+    formNotFound:      'Formulário "{id}" não encontrado ({status})',
+    loadError:         'Não foi possível carregar o formulário: {message}',
+    required:          '{label} é obrigatório.',
+    invalidEmail:      '{label} precisa ser um endereço de e-mail válido.',
+    invalidUrl:        '{label} precisa ser uma URL válida.',
+    invalidTel:        '{label} precisa ser um número de telefone válido.',
+    invalidNumber:     '{label} precisa ser um número.',
+    numberMin:         '{label} precisa ser no mínimo {min}.',
+    numberMax:         '{label} precisa ser no máximo {max}.',
+    invalidOption:     '{label} contém uma seleção inválida.',
+    tooShort:          '{label} precisa ter no mínimo {min} caracteres.',
+    tooLong:           '{label} precisa ter no máximo {max} caracteres.',
+    invalidFormat:     '{label} tem um formato inválido.',
+    emailMismatch:    'Os endereços de {label} não coincidem.',
+    dateMin:          '{label} deve ser em {min} ou posterior.',
+    dateMax:          '{label} deve ser em {max} ou anterior.',
+    nextPage:         'Próximo',
+    prevPage:         'Anterior',
+});

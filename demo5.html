@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo 5: Allergy Remedy Finder &mdash; BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* Warning group styling */
+.bbf-warning { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px 20px; margin-top: 16px; }
+.bbf-warning .bbf-group-title { color: #92400e; font-size: 1rem; margin-bottom: 4px; }
+.bbf-warning .bbf-group-desc { color: #92400e; font-size: 0.88rem; }
+@media (prefers-color-scheme: dark) {
+    .bbf-warning { background: #451a03; border-color: #b45309; }
+    .bbf-warning .bbf-group-title, .bbf-warning .bbf-group-desc { color: #fcd34d; }
+}
+
+/* Results panel */
+.remedy-results { margin-top: 20px; }
+.remedy-results h2 { font-size: 1.3rem; margin-bottom: 16px; }
+.remedy-card { background: var(--bg, #fff); border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; position: relative; overflow: hidden; }
+.remedy-card .rank { position: absolute; top: 12px; right: 16px; font-size: 1.8rem; font-weight: 800; color: #e5e7eb; }
+.remedy-card h3 { font-size: 1.05rem; margin-bottom: 2px; }
+.remedy-card .score-bar { height: 6px; border-radius: 3px; margin: 8px 0; transition: width 0.6s ease; }
+.remedy-card .score-label { font-size: 0.78rem; color: #6b7280; margin-bottom: 6px; }
+.remedy-card .desc { font-size: 0.88rem; color: #4b5563; line-height: 1.5; }
+.remedy-card:nth-child(1) .score-bar { background: #10b981; }
+.remedy-card:nth-child(2) .score-bar { background: #3b82f6; }
+.remedy-card:nth-child(3) .score-bar { background: #8b5cf6; }
+.remedy-card:nth-child(n+4) .score-bar { background: #9ca3af; }
+.remedy-card:nth-child(1) h3 { color: #059669; }
+.remedy-card:nth-child(2) h3 { color: #2563eb; }
+.remedy-card:nth-child(3) h3 { color: #7c3aed; }
+.remedy-disclaimer { font-size: 0.82rem; color: #6b7280; margin-top: 16px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; line-height: 1.5; }
+.remedy-retry { display: inline-block; margin-top: 12px; padding: 8px 20px; background: #10b981; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+.remedy-retry:hover { background: #059669; }
+@media (prefers-color-scheme: dark) {
+    .remedy-card { background: #1e1e2e; border-color: #334155; }
+    .remedy-card .rank { color: #334155; }
+    .remedy-card .desc { color: #94a3b8; }
+    .remedy-card .score-label { color: #94a3b8; }
+    .remedy-disclaimer { background: #16162a; color: #94a3b8; }
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+
+<nav class="demo-nav">
+    <a href="demo1.html" class="demo-nav-brand">Bare<span>Bones</span>Forms</a>
+    <div class="demo-nav-links">
+        <a href="demo1.html">Demo 1</a>
+        <a href="demo2.html">Demo 2</a>
+        <a href="demo3.html">Demo 3</a>
+        <a href="demo4.html">Demo 4</a>
+        <a href="demo5.html" class="active">Demo 5</a>
+        <a href="demo6.html">Demo 6</a>
+        <a href="demo7.html">Demo 7</a>
+        <a href="demo8.html">Demo 8</a>
+        <span class="nav-sep">|</span>
+        <a href="docs.html">Docs</a>
+    </div>
+</nav>
+
+<!-- Hero -->
+
+<div class="hero">
+    <div class="hero-number" style="background: rgba(16,185,129,0.15); color: #10b981;">5</div>
+    <h1>Allergy Remedy Finder</h1>
+    <p>A complex multi-page form with conditional logic, field groups, nested conditions, and client-side scoring. Select your symptoms &mdash; only relevant follow-up questions appear. At the end, a ranked remedy profile is calculated from your answers.</p>
+</div>
+
+<!-- PHP server notice -->
+
+<div class="server-notice">
+    This form demands a PHP server to function. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo5.html</code> &mdash; lest you stare at an empty page and blame the wrong party.
+</div>
+
+<div class="setup-notice">
+    <h4>What works &amp; what needs setup</h4>
+    <div class="setup-item"><span class="ok">&#10003;</span> Fully functional out of the box. No configuration needed.</div>
+    <div class="setup-item"><span class="ok">&#128193;</span> Submissions are saved as JSON files in <code>submissions/demo-allergy/</code>.</div>
+</div>
+
+<!-- Main content -->
+
+<div class="page-grid">
+
+    <!-- LEFT: Live Form -->
+
+    <div class="form-column">
+        <div id="allergy-form" data-form="demo-allergy" data-show-title="true" data-hide-on-success="true"></div>
+    </div>
+
+    <!-- RIGHT: Sidebar -->
+
+    <div class="sidebar-column">
+
+        <!-- How it works -->
+        <div class="info-card">
+            <h4>How it works</h4>
+            <ul class="pipeline">
+                <li><span class="pip">1&#xFE0F;&#x20E3;</span> <span><strong>Page 1:</strong> Select your main allergy symptoms.</span></li>
+                <li><span class="pip">2&#xFE0F;&#x20E3;</span> <span><strong>Page 2:</strong> Detail each symptom &mdash; only selected symptoms get follow-up questions (conditional groups).</span></li>
+                <li><span class="pip">3&#xFE0F;&#x20E3;</span> <span><strong>Page 3:</strong> General modalities &mdash; what makes things better or worse, mood, thirst.</span></li>
+                <li><span class="pip">&#10003;</span> <span>Each answer adds weighted points to matching remedies. Top matches are ranked and displayed.</span></li>
+            </ul>
+        </div>
+
+        <!-- Features demonstrated -->
+        <div class="info-card">
+            <h4>Features demonstrated</h4>
+            <ul class="tech-list">
+                <li>multi-page (3 pages)</li>
+                <li>field groups with show_if</li>
+                <li>nested conditions (all/any)</li>
+                <li>checkbox-driven visibility</li>
+                <li>conditional symptom tunnels</li>
+                <li>inline &amp; column layouts</li>
+                <li>cross-page condition evaluation</li>
+                <li>client-side scoring engine</li>
+                <li>warning group (css_class)</li>
+                <li>20 conditional fields, 8 remedies</li>
+            </ul>
+        </div>
+
+        <!-- Conditional logic explained -->
+        <div class="info-card">
+            <h4>Conditional logic in action</h4>
+            <p>Page 2 uses <strong>field groups</strong> &mdash; each group appears only when its symptom is selected on page 1:</p>
+            <div class="json-snippet"><span class="jk">"type"</span>: <span class="js">"group"</span>,
+<span class="jk">"show_if"</span>: {
+  <span class="jk">"field"</span>: <span class="js">"symptoms"</span>,
+  <span class="jk">"value"</span>: <span class="js">"sneezing"</span>
+}</div>
+            <p>Select only "runny nose" and "itchy eyes" on page 1, and page 2 shows only those two groups. The form leads you down relevant paths only.</p>
+        </div>
+
+        <!-- Nested conditions -->
+        <div class="info-card">
+            <h4>Nested conditions</h4>
+            <p>The warning on page 3 uses <code>any</code> + <code>all</code> nesting:</p>
+            <div class="json-snippet"><span class="jk">"show_if"</span>: {
+  <span class="jk">"any"</span>: [
+    { <span class="jk">"field"</span>: <span class="js">"symptoms"</span>,
+      <span class="jk">"value"</span>: <span class="js">"skin_rash"</span> },
+    { <span class="jk">"all"</span>: [
+        { <span class="jk">"field"</span>: <span class="js">"symptoms"</span>,
+          <span class="jk">"value"</span>: <span class="js">"sneezing"</span> },
+        { <span class="jk">"field"</span>: <span class="js">"sneeze_intensity"</span>,
+          <span class="jk">"value"</span>: <span class="js">"frequent_violent"</span> }
+    ]}
+  ]
+}</div>
+            <p>Translation: show warning if skin rash is selected, <strong>or</strong> if sneezing is selected <strong>and</strong> intensity is violent.</p>
+        </div>
+
+        <!-- The 8 remedies -->
+        <div class="info-card">
+            <h4>The 8 remedies scored</h4>
+            <ul class="tech-list">
+                <li><strong>Allium cepa</strong> &mdash; burning watery nose</li>
+                <li><strong>Euphrasia</strong> &mdash; burning acrid tears</li>
+                <li><strong>Sabadilla</strong> &mdash; violent sneezing bouts</li>
+                <li><strong>Nux vomica</strong> &mdash; morning stuffiness</li>
+                <li><strong>Arsenicum alb.</strong> &mdash; restless, burning, small sips</li>
+                <li><strong>Natrum mur.</strong> &mdash; egg-white discharge</li>
+                <li><strong>Pulsatilla</strong> &mdash; thick bland yellow discharge</li>
+                <li><strong>Apis mellifica</strong> &mdash; puffy swelling, stinging</li>
+            </ul>
+        </div>
+
+        <!-- Rogue Bard -->
+        <a href="https://roguebard.net/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Music</span>
+            <h3>Rogue Bard</h3>
+            <p>Soulful jazz, emotional blues, raw rock &mdash; wrapped in philosophical lyrics. Independent artist, uncompromising sound.</p>
+            <span class="card-link">Listen now</span>
+        </a>
+
+        <!-- The Last Trial -->
+        <a href="https://lasttrial.art/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Dark Fantasy</span>
+            <h3>The Last Trial</h3>
+            <p>A dark fantasy graphic novel. 200+ illustrated panels, an original soundtrack, and a story where the noblest deed comes at a price.</p>
+            <span class="card-link">Explore the story</span>
+        </a>
+
+    </div>
+</div>
+
+<!-- Footer -->
+
+<div class="footer">
+    <p>BareBonesForms &mdash; forms for developers, not for clicking around.</p>
+    <div class="footer-links">
+        <a href="docs.html">Documentation</a>
+        <a href="sandbox.php">Sandbox</a>
+        <a href="check.php">Check Installation</a>
+    </div>
+</div>
+
+<script src="bbf.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    // ─── Remedy database ────────────────────────────────────────
+    var REMEDIES = {
+        allium_cepa:  { name: 'Allium cepa',       latin: 'Allium cepa',       desc: 'Red onion. Copious watery, burning nasal discharge. Bland eye tears. Violent sneezing. Worse in warm rooms and evening. Better in open air.' },
+        euphrasia:    { name: 'Euphrasia',          latin: 'Euphrasia off.',    desc: 'Eyebright. Acrid, burning tears with bland nasal discharge. Photophobia. Worse in wind, light, and warmth. Better in the dark.' },
+        sabadilla:    { name: 'Sabadilla',          latin: 'Sabadilla',         desc: 'Cevadilla seed. Violent, spasmodic sneezing in long bouts. Itching, tickling in the nose. Worse from cold air, pollen, and strong odors.' },
+        nux_vomica:   { name: 'Nux vomica',         latin: 'Nux vomica',        desc: 'Poison nut. Stuffy nose especially mornings. Alternating nostrils. Sneezing on waking. Irritable, oversensitive. Worse cold and dry. Better warmth.' },
+        arsenicum:    { name: 'Arsenicum album',    latin: 'Arsenicum album',   desc: 'Arsenic trioxide. Thin, excoriating nasal discharge. Burning relieved by warmth. Restless, anxious. Thirst for small sips. Worse after midnight and cold.' },
+        nat_mur:      { name: 'Natrum muriaticum',  latin: 'Natrum muriaticum', desc: 'Sodium chloride. Egg-white nasal discharge. Sneezing in morning or from sun exposure. Loss of taste and smell. Worse heat, morning, and consolation.' },
+        pulsatilla:   { name: 'Pulsatilla',         latin: 'Pulsatilla nig.',   desc: 'Wind flower. Thick, bland, yellowish-green discharge. Changeable symptoms. Weepy, wants company and comfort. Thirstless. Worse warm rooms. Better open air.' },
+        apis:         { name: 'Apis mellifica',     latin: 'Apis mellifica',    desc: 'Honeybee. Puffy, edematous swelling. Stinging, burning pains. Worse from heat and touch. Better from cold applications. Thirstless.' }
+    };
+
+    // ─── Scoring matrix ─────────────────────────────────────────
+    // field -> value -> { remedy: points }
+    var SCORING = {
+        sneeze_intensity: {
+            occasional:        { nat_mur: 1 },
+            frequent_violent:  { sabadilla: 3, allium_cepa: 2 }
+        },
+        sneeze_timing: {
+            morning:  { nux_vomica: 3, nat_mur: 2 },
+            evening:  { allium_cepa: 2, pulsatilla: 1 },
+            constant: { sabadilla: 2, allium_cepa: 1 }
+        },
+        sneeze_trigger: {
+            cold_air: { sabadilla: 2, nux_vomica: 2 },
+            dust:     { sabadilla: 1, nux_vomica: 1 },
+            pollen:   { sabadilla: 3, allium_cepa: 1 },
+            light:    { nat_mur: 2 }
+        },
+        discharge_type: {
+            watery_clear:  { allium_cepa: 3, nat_mur: 2 },
+            thick_yellow:  { pulsatilla: 3, nat_mur: 1 },
+            thin_burning:  { allium_cepa: 3, arsenicum: 3 },
+            egg_white:     { nat_mur: 3 }
+        },
+        discharge_side: {
+            left:        { nux_vomica: 1 },
+            right:       { nux_vomica: 1 },
+            alternating: { nux_vomica: 3 }
+        },
+        eye_sensation: {
+            burning_tears: { euphrasia: 3, arsenicum: 2 },
+            gritty_dry:    { nat_mur: 1 },
+            watery_bland:  { allium_cepa: 2 }
+        },
+        eye_worse: {
+            light:   { euphrasia: 3, nat_mur: 1 },
+            wind:    { euphrasia: 2, allium_cepa: 1 },
+            rubbing: { apis: 1 },
+            warmth:  { apis: 2, pulsatilla: 1 }
+        },
+        congestion_side: {
+            left:        { nux_vomica: 1 },
+            right:       { nux_vomica: 1 },
+            alternating: { nux_vomica: 3 }
+        },
+        congestion_timing: {
+            morning:  { nux_vomica: 3, nat_mur: 2 },
+            night:    { arsenicum: 2, nux_vomica: 1 },
+            constant: { pulsatilla: 1 }
+        },
+        throat_sensation: {
+            scratchy: { nux_vomica: 1, sabadilla: 1 },
+            burning:  { arsenicum: 2, allium_cepa: 1 },
+            dry:      { nat_mur: 1, nux_vomica: 1 },
+            mucus:    { pulsatilla: 2 }
+        },
+        skin_type: {
+            hives:         { apis: 3, arsenicum: 1 },
+            itchy_patches: { nat_mur: 2, arsenicum: 1 },
+            swelling:      { apis: 3 },
+            dry_flaky:     { arsenicum: 1, nat_mur: 1 }
+        },
+        worse_from: {
+            heat:        { apis: 3, pulsatilla: 2, nat_mur: 2 },
+            cold:        { arsenicum: 3, nux_vomica: 2, sabadilla: 2 },
+            dry_weather: { nux_vomica: 1, nat_mur: 1 },
+            damp:        { nat_mur: 1 },
+            morning:     { nux_vomica: 3, nat_mur: 2 },
+            evening:     { allium_cepa: 2, pulsatilla: 2 },
+            night:       { arsenicum: 3 },
+            outdoors:    { sabadilla: 1 },
+            warm_room:   { allium_cepa: 2, pulsatilla: 3, apis: 2 }
+        },
+        better_from: {
+            fresh_air:         { allium_cepa: 3, pulsatilla: 3 },
+            warm_room:         { nux_vomica: 3, arsenicum: 2 },
+            rest:              { nux_vomica: 1 },
+            cold_applications: { apis: 3 },
+            movement:          { pulsatilla: 1 },
+            eating:            { nux_vomica: 1 }
+        },
+        thirst: {
+            very_thirsty: { nat_mur: 2, nux_vomica: 1 },
+            thirstless:   { pulsatilla: 3, apis: 2 },
+            small_sips:   { arsenicum: 3 }
+        },
+        mood: {
+            irritable:       { nux_vomica: 3, nat_mur: 1 },
+            weepy_clingy:    { pulsatilla: 3 },
+            restless_anxious:{ arsenicum: 3 },
+            lethargic:       { nat_mur: 1 }
+        }
+    };
+
+    // ─── Capture form data on submit ────────────────────────────
+    var capturedData = null;
+    var container = document.getElementById('allergy-form');
+    if (!container) return;
+
+    var formObserver = new MutationObserver(function() {
+        var form = container.querySelector('form.bbf-form');
+        if (!form) return;
+        formObserver.disconnect();
+
+        // Capture data just before BBF processes the submission
+        form.addEventListener('submit', function() {
+            capturedData = captureFormData(form);
+        }, true);
+
+        // Watch for success message to appear
+        var successObserver = new MutationObserver(function() {
+            var msg = container.querySelector('.bbf-message');
+            if (msg && capturedData) {
+                successObserver.disconnect();
+                // Small delay for the success message animation
+                setTimeout(function() { showResults(capturedData, container); }, 400);
+            }
+        });
+        successObserver.observe(container, { childList: true, subtree: true });
+    });
+    formObserver.observe(container, { childList: true, subtree: true });
+
+    function captureFormData(form) {
+        var data = {};
+        // Radios
+        var radioNames = [];
+        form.querySelectorAll('input[type="radio"]').forEach(function(r) {
+            if (radioNames.indexOf(r.name) === -1) radioNames.push(r.name);
+        });
+        radioNames.forEach(function(name) {
+            var checked = form.querySelector('input[name="' + name + '"]:checked');
+            if (checked) data[name] = checked.value;
+        });
+        // Checkboxes
+        var cbNames = [];
+        form.querySelectorAll('input[type="checkbox"]').forEach(function(c) {
+            if (c.name && c.name !== '_bbf_hp' && cbNames.indexOf(c.name) === -1) cbNames.push(c.name);
+        });
+        cbNames.forEach(function(name) {
+            var checked = form.querySelectorAll('input[name="' + name + '"]:checked');
+            data[name] = Array.from(checked).map(function(c) { return c.value; });
+        });
+        return data;
+    }
+
+    function calculateScores(data) {
+        var scores = {};
+        for (var field in SCORING) {
+            var val = data[field];
+            if (!val) continue;
+            var values = Array.isArray(val) ? val : [val];
+            for (var i = 0; i < values.length; i++) {
+                var remedyScores = SCORING[field][values[i]];
+                if (remedyScores) {
+                    for (var remedy in remedyScores) {
+                        scores[remedy] = (scores[remedy] || 0) + remedyScores[remedy];
+                    }
+                }
+            }
+        }
+        // Sort by score descending
+        var sorted = Object.keys(scores).map(function(key) {
+            return { key: key, score: scores[key], name: REMEDIES[key].name, desc: REMEDIES[key].desc };
+        }).sort(function(a, b) { return b.score - a.score; });
+
+        return sorted;
+    }
+
+    function showResults(data, container) {
+        var results = calculateScores(data);
+        if (results.length === 0) return;
+
+        var maxScore = results[0].score;
+        var html = '<div class="remedy-results">';
+        html += '<h2>Your Remedy Profile</h2>';
+
+        // Show top 5 (or fewer)
+        var count = Math.min(results.length, 5);
+        for (var i = 0; i < count; i++) {
+            var r = results[i];
+            var pct = Math.round((r.score / maxScore) * 100);
+            html += '<div class="remedy-card">';
+            html += '<span class="rank">#' + (i + 1) + '</span>';
+            html += '<h3>' + r.name + '</h3>';
+            html += '<div class="score-label">' + r.score + ' points (' + pct + '% match)</div>';
+            html += '<div class="score-bar" style="width: ' + pct + '%"></div>';
+            html += '<div class="desc">' + r.desc + '</div>';
+            html += '</div>';
+        }
+
+        html += '<div class="remedy-disclaimer">';
+        html += '<strong>Disclaimer:</strong> This is a demonstration of BareBonesForms conditional logic and scoring capabilities. ';
+        html += 'It is not medical advice. Homeopathic remedy selection in practice requires individual consultation with a qualified practitioner. ';
+        html += 'The scoring algorithm is simplified for demonstration purposes.';
+        html += '</div>';
+        html += '<button class="remedy-retry" onclick="location.reload()">Try Again</button>';
+        html += '</div>';
+
+        // Replace the form container content
+        var msgEl = container.querySelector('.bbf-message');
+        if (msgEl) {
+            msgEl.innerHTML = html;
+        }
+    }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — 日本語 (Japanese) language pack
+ */
+BBF.registerLang('ja', {
+    loading:           '読み込み中…',
+    submitDefault:     '送信',
+    submittingDefault: '送信中…',
+    successDefault:    'ありがとうございます。送信が完了しました。',
+    errorDefault:      'エラーが発生しました。',
+    networkError:      'ネットワークエラーです。もう一度お試しください。',
+    serverError:       'サーバーエラー ({status})',
+    formNotFound:      'フォーム「{id}」が見つかりません ({status})',
+    loadError:         'フォームを読み込めませんでした: {message}',
+    required:          '{label}は必須です。',
+    invalidEmail:      '{label}は有効なメールアドレスでなければなりません。',
+    invalidUrl:        '{label}は有効なURLでなければなりません。',
+    invalidTel:        '{label}は有効な電話番号でなければなりません。',
+    invalidNumber:     '{label}は数値でなければなりません。',
+    numberMin:         '{label}は{min}以上でなければなりません。',
+    numberMax:         '{label}は{max}以下でなければなりません。',
+    invalidOption:     '{label}に無効な選択肢が含まれています。',
+    tooShort:          '{label}は{min}文字以上でなければなりません。',
+    tooLong:           '{label}は{max}文字以下でなければなりません。',
+    invalidFormat:     '{label}の形式が無効です。',
+    emailMismatch:    '{label}のアドレスが一致しません。',
+    dateMin:          '{label}は{min}以降の日付にしてください。',
+    dateMax:          '{label}は{max}以前の日付にしてください。',
+    nextPage:         '次へ',
+    prevPage:         '前へ',
+});

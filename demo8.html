@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo 8: Modalities Assessment &mdash; BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* Remedy results */
+.mod-results { margin-top: 20px; }
+.mod-results h2 { font-size: 1.3rem; margin-bottom: 16px; }
+.mod-card { background: var(--bg, #fff); border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 20px; margin-bottom: 10px; position: relative; }
+.mod-card .rank { position: absolute; top: 12px; right: 16px; font-size: 1.6rem; font-weight: 800; color: #e5e7eb; }
+.mod-card h3 { font-size: 1.05rem; margin-bottom: 2px; }
+.mod-card .score-bar { height: 6px; border-radius: 3px; margin: 8px 0; }
+.mod-card .score-label { font-size: 0.78rem; color: #6b7280; margin-bottom: 4px; }
+.mod-card .desc { font-size: 0.85rem; color: #4b5563; line-height: 1.5; }
+.mod-card .keynotes { font-size: 0.82rem; color: #6b7280; margin-top: 6px; font-style: italic; }
+.mod-card:nth-child(1) .score-bar { background: #10b981; }
+.mod-card:nth-child(1) h3 { color: #059669; }
+.mod-card:nth-child(2) .score-bar { background: #3b82f6; }
+.mod-card:nth-child(2) h3 { color: #2563eb; }
+.mod-card:nth-child(3) .score-bar { background: #8b5cf6; }
+.mod-card:nth-child(3) h3 { color: #7c3aed; }
+.mod-card:nth-child(n+4) .score-bar { background: #9ca3af; }
+.mod-disclaimer { font-size: 0.82rem; color: #6b7280; margin-top: 16px; padding: 12px 16px; background: #f9fafb; border-radius: 8px; line-height: 1.5; }
+.mod-retry { display: inline-block; margin-top: 12px; padding: 8px 20px; background: #10b981; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+.mod-retry:hover { background: #059669; }
+@media (prefers-color-scheme: dark) {
+    .mod-card { background: #1e1e2e; border-color: #334155; }
+    .mod-card .rank { color: #334155; }
+    .mod-card .desc { color: #94a3b8; }
+    .mod-card .keynotes { color: #94a3b8; }
+    .mod-card .score-label { color: #94a3b8; }
+    .mod-disclaimer { background: #16162a; color: #94a3b8; }
+}
+</style>
+</head>
+<body>
+
+<nav class="demo-nav">
+    <a href="demo1.html" class="demo-nav-brand">Bare<span>Bones</span>Forms</a>
+    <div class="demo-nav-links">
+        <a href="demo1.html">Demo 1</a>
+        <a href="demo2.html">Demo 2</a>
+        <a href="demo3.html">Demo 3</a>
+        <a href="demo4.html">Demo 4</a>
+        <a href="demo5.html">Demo 5</a>
+        <a href="demo6.html">Demo 6</a>
+        <a href="demo7.html">Demo 7</a>
+        <a href="demo8.html" class="active">Demo 8</a>
+        <span class="nav-sep">|</span>
+        <a href="docs.html">Docs</a>
+    </div>
+</nav>
+
+<div class="hero">
+    <div class="hero-number" style="background: rgba(236,72,153,0.15); color: #ec4899;">8</div>
+    <h1>Homeopathic Modalities</h1>
+    <p>Select body areas that bother you &mdash; for each, the same set of modality questions appears. All generated from a <strong>single reusable template</strong>. Demonstrates the new <code>templates</code>, <code>use</code>, and <code>prefix</code> properties. One template definition, six instances.</p>
+</div>
+
+<div class="server-notice">
+    This form demands a PHP server to function. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo8.html</code>.
+</div>
+
+<div class="setup-notice">
+    <h4>What works &amp; what needs setup</h4>
+    <div class="setup-item"><span class="ok">&#10003;</span> Fully functional out of the box. No configuration needed.</div>
+    <div class="setup-item"><span class="ok">&#128193;</span> Submissions are saved as JSON files in <code>submissions/demo-modalities/</code>.</div>
+</div>
+
+<div class="page-grid">
+    <div class="form-column">
+        <div id="mod-form" data-form="demo-modalities" data-show-title="true" data-hide-on-success="true"></div>
+        <div id="mod-results"></div>
+    </div>
+
+    <div class="sidebar-column">
+
+        <div class="info-card">
+            <h4>How templates work</h4>
+            <ul class="pipeline">
+                <li><span class="pip">1&#xFE0F;&#x20E3;</span> <span>Define a <code>modalities</code> template once: 5 fields (time, temperature, motion, relief, intensity).</span></li>
+                <li><span class="pip">2&#xFE0F;&#x20E3;</span> <span>Each body area group uses <code>"use": "modalities"</code> with a unique <code>"prefix"</code>.</span></li>
+                <li><span class="pip">3&#xFE0F;&#x20E3;</span> <span>Engine resolves: <code>time_worse</code> &rarr; <code>head_time_worse</code>, <code>stomach_time_worse</code>, etc.</span></li>
+                <li><span class="pip">&#10003;</span> <span>6 areas &times; 5 questions = 30 fields from a single 5-field template.</span></li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>Features demonstrated</h4>
+            <ul class="tech-list">
+                <li><code>templates</code> (reusable field sets)</li>
+                <li><code>use</code> + <code>prefix</code> on groups</li>
+                <li>conditional groups per checkbox</li>
+                <li>multi-page (3 pages)</li>
+                <li>client-side remedy scoring</li>
+                <li><code>data-hide-on-success</code></li>
+                <li>server stores the submission</li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>JSON savings</h4>
+            <div class="json-snippet">Without templates: 30 fields defined
+With templates:     5 fields + 6 references
+Reduction:         ~80% less JSON</div>
+        </div>
+
+        <a href="https://roguebard.net/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Music</span>
+            <h3>Rogue Bard</h3>
+            <p>Soulful jazz, emotional blues, raw rock &mdash; wrapped in philosophical lyrics.</p>
+            <span class="card-link">Listen now</span>
+        </a>
+
+        <a href="https://lasttrial.art/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Dark Fantasy</span>
+            <h3>The Last Trial</h3>
+            <p>A dark fantasy graphic novel. 200+ illustrated panels, an original soundtrack.</p>
+            <span class="card-link">Explore the story</span>
+        </a>
+    </div>
+</div>
+
+<div class="footer">
+    <p>BareBonesForms &mdash; forms for developers, not for clicking around.</p>
+    <div class="footer-links">
+        <a href="docs.html">Documentation</a>
+        <a href="sandbox.php">Sandbox</a>
+        <a href="check.php">Check Installation</a>
+    </div>
+</div>
+
+<script src="bbf.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    // ─── Remedy scoring by modality patterns ─────────────────
+    var REMEDIES = {
+        bryonia: {
+            name: 'Bryonia alba',
+            desc: 'The classic "don\'t move me" remedy. Worse from any motion, better from rest and pressure.',
+            keynotes: 'Worse motion, better rest, better pressure, thirsty',
+            score: function(d) {
+                var s = 0;
+                for (var a in d) {
+                    if (d[a].motion_influence === 'worse_motion') s += 3;
+                    if (d[a].helps && d[a].helps.indexOf('rest') >= 0) s += 2;
+                    if (d[a].helps && d[a].helps.indexOf('pressure') >= 0) s += 2;
+                    if (d[a].temp_influence === 'worse_warmth') s += 1;
+                }
+                if (d._general && d._general.thirst === 'extreme') s += 2;
+                return s;
+            }
+        },
+        rhus_tox: {
+            name: 'Rhus toxicodendron',
+            desc: 'Restless stiffness. Worse from initial motion and cold damp, but better as you keep moving.',
+            keynotes: 'Worse rest/initial motion, better continued motion, worse cold/damp',
+            score: function(d) {
+                var s = 0;
+                for (var a in d) {
+                    if (d[a].motion_influence === 'worse_rest') s += 3;
+                    if (d[a].motion_influence === 'better_motion') s += 3;
+                    if (d[a].temp_influence === 'worse_cold') s += 2;
+                    if (d[a].helps && d[a].helps.indexOf('warmth') >= 0) s += 2;
+                    if (d[a].time_worse === 'night') s += 1;
+                }
+                return s;
+            }
+        },
+        nux_vomica: {
+            name: 'Nux vomica',
+            desc: 'The over-indulgence remedy. Worse in the morning, cold, and from stimulants. Irritable and chilly.',
+            keynotes: 'Worse morning, worse cold, better warmth, digestive focus',
+            score: function(d) {
+                var s = 0;
+                for (var a in d) {
+                    if (d[a].time_worse === 'morning') s += 3;
+                    if (d[a].temp_influence === 'worse_cold') s += 2;
+                    if (d[a].helps && d[a].helps.indexOf('warmth') >= 0) s += 2;
+                }
+                if (d.stomach) s += 2;
+                if (d._general && d._general.thirst === 'increased') s += 1;
+                if (d._general && d._general.overall_worse === 'morning') s += 2;
+                return s;
+            }
+        },
+        pulsatilla: {
+            name: 'Pulsatilla',
+            desc: 'Changeable, weepy, better in open air. Thirstless despite fever. Symptoms wander.',
+            keynotes: 'Better fresh air, thirstless, worse evening, worse warmth',
+            score: function(d) {
+                var s = 0;
+                for (var a in d) {
+                    if (d[a].temp_influence === 'worse_warmth') s += 2;
+                    if (d[a].time_worse === 'evening') s += 2;
+                    if (d[a].helps && d[a].helps.indexOf('fresh_air') >= 0) s += 3;
+                    if (d[a].helps && d[a].helps.indexOf('cold_application') >= 0) s += 1;
+                }
+                if (d._general && d._general.thirst === 'thirstless') s += 3;
+                if (d._general && d._general.overall_worse === 'evening') s += 1;
+                return s;
+            }
+        },
+        arsenicum: {
+            name: 'Arsenicum album',
+            desc: 'Anxious restlessness with burning pains. Worse at night (especially after midnight), better from warmth.',
+            keynotes: 'Worse night/midnight, better warmth, restless, thirsty sips',
+            score: function(d) {
+                var s = 0;
+                for (var a in d) {
+                    if (d[a].time_worse === 'night') s += 3;
+                    if (d[a].temp_influence === 'worse_cold') s += 2;
+                    if (d[a].helps && d[a].helps.indexOf('warmth') >= 0) s += 2;
+                    if (d[a].intensity === 'severe') s += 1;
+                }
+                if (d._general && d._general.overall_worse === 'night') s += 2;
+                if (d._general && d._general.thirst === 'increased') s += 1;
+                return s;
+            }
+        },
+        belladonna: {
+            name: 'Belladonna',
+            desc: 'Sudden, intense onset. Throbbing pains, worse afternoon, worse from jarring. Hot, red, burning.',
+            keynotes: 'Sudden onset, worse afternoon, throbbing, worse motion/jarring',
+            score: function(d) {
+                var s = 0;
+                for (var a in d) {
+                    if (d[a].time_worse === 'afternoon') s += 3;
+                    if (d[a].intensity === 'severe') s += 2;
+                    if (d[a].motion_influence === 'worse_motion') s += 1;
+                    if (d[a].helps && d[a].helps.indexOf('cold_application') >= 0) s += 2;
+                }
+                if (d.head) s += 2;
+                if (d._general && d._general.overall_worse === 'afternoon') s += 1;
+                return s;
+            }
+        }
+    };
+
+    var AREAS = ['head', 'throat', 'chest', 'stomach', 'back', 'joints'];
+    var FIELDS = ['time_worse', 'temp_influence', 'motion_influence', 'helps', 'intensity'];
+
+    function getFormValue(form, name) {
+        // Checkbox: multiple values
+        var checked = form.querySelectorAll('input[name="' + name + '"]:checked');
+        if (checked.length > 1 || (checked.length === 1 && checked[0].type === 'checkbox')) {
+            var vals = [];
+            checked.forEach(function(c) { vals.push(c.value); });
+            return vals;
+        }
+        // Radio
+        var radio = form.querySelector('input[name="' + name + '"]:checked');
+        if (radio) return radio.value;
+        // Select
+        var sel = form.querySelector('select[name="' + name + '"]');
+        if (sel) return sel.value;
+        // Input
+        var inp = form.querySelector('input[name="' + name + '"]');
+        if (inp) return inp.value;
+        return '';
+    }
+
+    function captureData(form) {
+        var data = {};
+        var areas = getFormValue(form, 'areas');
+        if (!Array.isArray(areas)) areas = areas ? [areas] : [];
+
+        for (var i = 0; i < AREAS.length; i++) {
+            var area = AREAS[i];
+            if (areas.indexOf(area) < 0) continue;
+            data[area] = {};
+            for (var j = 0; j < FIELDS.length; j++) {
+                data[area][FIELDS[j]] = getFormValue(form, area + '_' + FIELDS[j]);
+            }
+        }
+
+        data._general = {
+            overall_worse: getFormValue(form, 'overall_worse'),
+            thirst: getFormValue(form, 'thirst')
+        };
+
+        return data;
+    }
+
+    function showResults(data) {
+        var el = document.getElementById('mod-results');
+        if (!el) return;
+
+        var scores = [];
+        var maxScore = 0;
+        for (var key in REMEDIES) {
+            var r = REMEDIES[key];
+            var s = r.score(data);
+            if (s > maxScore) maxScore = s;
+            scores.push({ key: key, name: r.name, desc: r.desc, keynotes: r.keynotes, score: s });
+        }
+
+        scores.sort(function(a, b) { return b.score - a.score; });
+
+        var h = '<div class="mod-results">';
+        h += '<h2>Remedy Profile</h2>';
+
+        for (var i = 0; i < scores.length; i++) {
+            var item = scores[i];
+            if (item.score === 0) continue;
+            var pct = maxScore > 0 ? Math.round((item.score / maxScore) * 100) : 0;
+            h += '<div class="mod-card">';
+            h += '<div class="rank">#' + (i + 1) + '</div>';
+            h += '<h3>' + item.name + '</h3>';
+            h += '<div class="score-label">' + item.score + ' points (' + pct + '% match)</div>';
+            h += '<div class="score-bar" style="width:' + pct + '%"></div>';
+            h += '<div class="desc">' + item.desc + '</div>';
+            h += '<div class="keynotes">' + item.keynotes + '</div>';
+            h += '</div>';
+        }
+
+        h += '<div class="mod-disclaimer"><strong>Disclaimer:</strong> This is a demonstration of form template reuse, not medical advice. Consult a qualified practitioner for real homeopathic treatment.</div>';
+        h += '<button class="mod-retry" onclick="location.reload()">Start Over</button>';
+        h += '</div>';
+
+        el.innerHTML = h;
+    }
+
+    // ─── Hook into form ──────────────────────────────────────
+    var container = document.getElementById('mod-form');
+    if (!container) return;
+
+    var formObserver = new MutationObserver(function() {
+        var form = container.querySelector('form.bbf-form');
+        if (!form) return;
+        formObserver.disconnect();
+
+        var captured = null;
+        form.addEventListener('submit', function() {
+            captured = captureData(form);
+        });
+
+        var successObserver = new MutationObserver(function() {
+            var success = container.querySelector('.bbf-success');
+            if (!success) return;
+            successObserver.disconnect();
+            if (captured) showResults(captured);
+        });
+        successObserver.observe(container, { childList: true, subtree: true });
+    });
+    formObserver.observe(container, { childList: true, subtree: true });
+})();
+</script>
+</body>
+</html>

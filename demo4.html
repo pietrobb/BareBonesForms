@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo 4: Advanced Features — BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+
+<!-- ─── Navigation ────────────────────────────────────────── -->
+
+<nav class="demo-nav">
+    <a href="demo1.html" class="demo-nav-brand">Bare<span>Bones</span>Forms</a>
+    <div class="demo-nav-links">
+        <a href="demo1.html">Demo 1</a>
+        <a href="demo2.html">Demo 2</a>
+        <a href="demo3.html">Demo 3</a>
+        <a href="demo4.html" class="active">Demo 4</a>
+        <a href="demo5.html">Demo 5</a>
+        <a href="demo6.html">Demo 6</a>
+        <a href="demo7.html">Demo 7</a>
+        <a href="demo8.html">Demo 8</a>
+        <span class="nav-sep">|</span>
+        <a href="docs.html">Docs</a>
+    </div>
+</nav>
+
+<!-- ─── Hero ──────────────────────────────────────────────── -->
+
+<div class="hero">
+    <div class="hero-number" style="background: rgba(168,85,247,0.15); color: #a855f7;">4</div>
+    <h1>Advanced Features</h1>
+    <p>A multi-page job application form. Sections, conditional logic, star ratings, column layout, email confirmation, "other" option — the full arsenal. Three pages, one submission.</p>
+</div>
+
+<!-- ─── PHP server notice ─────────────────────────────────── -->
+
+<div class="server-notice">
+    This form demands a PHP server to function. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo4.html</code> — lest you stare at an empty page and blame the wrong party.
+</div>
+
+<div class="setup-notice">
+    <h4>What works &amp; what needs setup</h4>
+    <div class="setup-item"><span class="ok">&#10003;</span> Form submission, storage, conditional logic, and multi-page all work out of the box.</div>
+    <div class="setup-item"><span class="ok">&#128193;</span> Submissions are saved as JSON files in <code>submissions/demo-advanced/</code>.</div>
+    <div class="setup-item"><span class="needs">&#9881;</span> <strong>Confirmation email to the applicant</strong> &mdash; to enable, open <code>config.php</code> and set:
+        <code>method</code> &rarr; <code>"smtp"</code>,
+        <code>smtp_host</code>, <code>smtp_port</code>, <code>smtp_user</code>, <code>smtp_pass</code> (your mail server credentials),
+        <code>from_email</code> (sender address).
+        The confirmation is sent to the email entered in the form. Template and subject are defined in <code>forms/demo-advanced.json</code> under <code>on_submit.confirm</code>.</div>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════
+     MAIN CONTENT
+     ═════════════════════════════════════════════════════════════ -->
+
+<div class="page-grid">
+
+    <!-- ─── LEFT: Live Form ───────────────────────────────── -->
+
+    <div class="form-column">
+
+        <!-- ════════════════════════════════════════════════════
+             ADVANCED FORM EMBED
+
+             This form uses:
+             - Multi-page (page_break fields)
+             - Sections (visual dividers)
+             - Conditional logic (show_if)
+             - Star ratings
+             - Email confirmation
+             - "Other" option
+             - Column layout
+             - Field sizes
+             - Custom CSS class
+             - Date validation (min/max)
+             - Pattern validation
+             ════════════════════════════════════════════════════ -->
+
+        <div data-form="demo-advanced" data-show-title="true"></div>
+
+        <!-- ════════════════════════════════════════════════════ -->
+
+    </div>
+
+    <!-- ─── RIGHT: Sidebar ────────────────────────────────── -->
+
+    <div class="sidebar-column">
+
+        <!-- What happens on submit -->
+        <div class="info-card">
+            <h4>What happens when you submit</h4>
+            <ul class="pipeline">
+                <li><span class="pip">1&#xFE0F;&#x20E3;</span> <span><strong>Page 1</strong> validates personal info — name, email confirmation match, phone, URL.</span></li>
+                <li><span class="pip">2&#xFE0F;&#x20E3;</span> <span><strong>Page 2</strong> validates position details — required fields, date range, conditional office field.</span></li>
+                <li><span class="pip">3&#xFE0F;&#x20E3;</span> <span><strong>Page 3</strong> validates skills — ratings, cover letter (50+ chars), pattern-matched referral code, consent.</span></li>
+                <li><span class="pip">&#10003;</span> <span>Server <strong>validates everything again</strong>, then stores the submission.</span></li>
+            </ul>
+            <p>Hidden fields (like "Preferred Office" when Remote is selected) are excluded from both validation and the submitted data. They simply cease to exist.</p>
+        </div>
+
+        <!-- Features demonstrated -->
+        <div class="info-card">
+            <h4>Features demonstrated</h4>
+            <ul class="tech-list">
+                <li>multi-page (3 pages)</li>
+                <li>section breaks</li>
+                <li>conditional logic (show_if)</li>
+                <li>star rating</li>
+                <li>email confirmation</li>
+                <li>"other" option</li>
+                <li>column layout (3-col, inline)</li>
+                <li>field sizes (small, medium)</li>
+                <li>date min/max validation</li>
+                <li>pattern validation</li>
+                <li>custom CSS class</li>
+                <li>min/max length</li>
+                <li>CSRF protection</li>
+                <li>honeypot anti-spam</li>
+            </ul>
+        </div>
+
+        <!-- Conditional logic explanation -->
+        <div class="info-card">
+            <h4>Conditional logic in action</h4>
+            <p>On page 2, choose "Remote" and the "Preferred Office" dropdown disappears. Choose "Hybrid" or "On-site" and it reappears. The hidden field is removed from the submission entirely.</p>
+            <div class="json-snippet"><span class="jk">"show_if"</span>: {
+  <span class="jk">"field"</span>: <span class="js">"work_type"</span>,
+  <span class="jk">"value"</span>: <span class="js">"remote"</span>,
+  <span class="jk">"op"</span>: <span class="js">"not"</span>
+}</div>
+            <p>Translation: show this field when <code>work_type</code> is NOT <code>"remote"</code>.</p>
+        </div>
+
+        <!-- Multi-page explanation -->
+        <div class="info-card">
+            <h4>Multi-page forms</h4>
+            <p>Insert a <code>page_break</code> field to split the form. Each page validates independently before you can advance. The submit button appears only on the last page.</p>
+            <div class="json-snippet">{ <span class="jk">"name"</span>: <span class="js">"page2"</span>, <span class="jk">"type"</span>: <span class="js">"page_break"</span> }</div>
+            <p>Previous/Next button labels are translatable via language packs.</p>
+        </div>
+
+        <!-- ─── Rogue Bard ────────────────────────────────── -->
+
+        <a href="https://roguebard.net/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Music</span>
+            <h3>Rogue Bard</h3>
+            <p>Soulful jazz, emotional blues, raw rock — wrapped in philosophical lyrics. Independent artist, uncompromising sound.</p>
+            <span class="card-link">Listen now</span>
+        </a>
+
+        <!-- ─── The Last Trial ────────────────────────────── -->
+
+        <a href="https://lasttrial.art/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Dark Fantasy</span>
+            <h3>The Last Trial</h3>
+            <p>A dark fantasy graphic novel. 200+ illustrated panels, an original soundtrack, and a story where the noblest deed comes at a price.</p>
+            <span class="card-link">Explore the story</span>
+        </a>
+
+    </div>
+</div>
+
+<!-- ─── Footer ────────────────────────────────────────────── -->
+
+<div class="footer">
+    <p>BareBonesForms — forms for developers, not for clicking around.</p>
+    <div class="footer-links">
+        <a href="docs.html">Documentation</a>
+        <a href="sandbox.php">Sandbox</a>
+        <a href="check.php">Check Installation</a>
+    </div>
+</div>
+
+<script src="bbf.js"></script>
+</body>
+</html>

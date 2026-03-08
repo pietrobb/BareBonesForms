@@ -1,0 +1,51 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-file",
+    "name": "Quick Feedback",
+    "description": "The simplest arrangement. Validate, store, done. No emails, no webhooks. Just the bones.",
+    "submit_label": "Send Feedback",
+    "submitting_label": "Saving...",
+    "success_message": "Saved! Check submissions/demo-file/ for the JSON file.",
+    "fields": [
+        {
+            "name": "name",
+            "type": "text",
+            "label": "Your Name",
+            "placeholder": "Jane Doe",
+            "required": true,
+            "minlength": 2
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "placeholder": "jane@example.com",
+            "required": true
+        },
+        {
+            "name": "rating",
+            "type": "radio",
+            "label": "How would you rate us?",
+            "required": true,
+            "options": [
+                { "value": "great", "label": "Great" },
+                { "value": "good", "label": "Good" },
+                { "value": "okay", "label": "Okay" },
+                { "value": "poor", "label": "Poor" }
+            ]
+        },
+        {
+            "name": "comment",
+            "type": "textarea",
+            "label": "Comment",
+            "placeholder": "Tell us more...",
+            "required": false,
+            "rows": 3,
+            "maxlength": 1000
+        }
+    ],
+    "on_submit": {
+        "store": true
+    }
+}

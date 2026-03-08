@@ -1,0 +1,92 @@
+<?php
+/**
+ * BareBonesForms — Configuration
+ *
+ * Copy this file to config.php and edit.
+ * BareBonesForms will not run without config.php.
+ */
+
+return [
+
+    // ─── Storage ────────────────────────────────────────────────
+    // "file"   = JSON files in /submissions (zero config, works everywhere)
+    // "sqlite" = SQLite database (file-based, zero config, SQL capable)
+    // "mysql"  = MySQL / MariaDB (fill in credentials below)
+    // "csv"    = CSV files in /submissions (one file per form, human-readable)
+    'storage' => 'file',
+
+    'sqlite' => [
+        'path' => __DIR__ . '/submissions/bbf.sqlite',
+    ],
+
+    'mysql' => [
+        'host'     => 'localhost',
+        'database' => 'barebones_forms',
+        'username' => 'root',
+        'password' => '',
+        'charset'  => 'utf8mb4',
+    ],
+
+    // ─── Email ──────────────────────────────────────────────────
+    // Uses PHP mail() by default. For production, use SMTP.
+    'mail' => [
+        'method'    => 'mail', // "mail" or "smtp"
+        'smtp_host' => '',
+        'smtp_port' => 587,
+        'smtp_user' => '',
+        'smtp_pass' => '',
+        'smtp_enc'  => 'tls', // "tls" or "ssl"
+        'from_email' => 'noreply@example.com',
+        'from_name'  => 'BareBonesForms',
+    ],
+
+    // ─── Security ───────────────────────────────────────────────
+    // CSRF protection (session-based, same-origin only)
+    // Disable if you only use cross-origin embedding
+    'csrf' => true,
+
+    // Allowed origins for CORS (empty = same origin only)
+    'allowed_origins' => [],
+
+    // Rate limiting: max submissions per IP per minute
+    'rate_limit' => 10,
+
+    // Honeypot field name (anti-spam, hidden field)
+    'honeypot_field' => '_bbf_hp',
+
+    // Webhook signing secret (HMAC-SHA256)
+    // When set, all webhook POSTs include X-BBF-Signature header
+    // Generate: php -r "echo bin2hex(random_bytes(32));"
+    'webhook_secret' => '',
+
+    // ─── API ────────────────────────────────────────────────────
+    // Token for submissions.php access (REQUIRED)
+    // submissions.php is blocked until you set a token here.
+    // Generate: php -r "echo bin2hex(random_bytes(16));"
+    'api_token' => '',
+
+    // ─── Privacy ────────────────────────────────────────────────
+    // What metadata to store with each submission (GDPR consideration)
+    'store_ip'         => true,   // set false to stop storing IP addresses
+    'store_user_agent' => true,   // set false to stop storing user-agent strings
+
+    // ─── Sandbox ─────────────────────────────────────────────────
+    // Enable sandbox mode for testing forms without side effects.
+    // When enabled, sandbox.php lets you test validation, preview
+    // emails/webhooks, and submit without storing or sending anything.
+    // Disable in production.
+    'sandbox' => false,
+
+    // ─── Language ───────────────────────────────────────────────
+    // Server-side validation messages language.
+    // Language files live in /lang (en.php, de.php, sk.php, …).
+    // Client-side language is set per form via data-lang attribute.
+    'lang' => 'en',
+
+    // ─── Paths ──────────────────────────────────────────────────
+    'forms_dir'       => __DIR__ . '/forms',
+    'submissions_dir' => __DIR__ . '/submissions',
+    'templates_dir'   => __DIR__ . '/templates',
+    'logs_dir'        => __DIR__ . '/logs',
+
+];

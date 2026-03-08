@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — Magyar (Hungarian) language pack
+ */
+BBF.registerLang('hu', {
+    loading:           'Betöltés…',
+    submitDefault:     'Küldés',
+    submittingDefault: 'Küldés folyamatban…',
+    successDefault:    'Köszönjük! Beküldése megérkezett.',
+    errorDefault:      'Valami hiba történt.',
+    networkError:      'Hálózati hiba. Kérjük, próbálja újra.',
+    serverError:       'Szerverhiba ({status})',
+    formNotFound:      'Az „{id}" űrlap nem található ({status})',
+    loadError:         'Az űrlap betöltése sikertelen: {message}',
+    required:          '{label} megadása kötelező.',
+    invalidEmail:      '{label} érvényes e-mail cím kell legyen.',
+    invalidUrl:        '{label} érvényes URL kell legyen.',
+    invalidTel:        '{label} érvényes telefonszám kell legyen.',
+    invalidNumber:     '{label} szám kell legyen.',
+    numberMin:         '{label} legalább {min} kell legyen.',
+    numberMax:         '{label} legfeljebb {max} lehet.',
+    invalidOption:     '{label} érvénytelen választást tartalmaz.',
+    tooShort:          '{label} legalább {min} karakter hosszú kell legyen.',
+    tooLong:           '{label} legfeljebb {max} karakter hosszú lehet.',
+    invalidFormat:     '{label} formátuma érvénytelen.',
+    emailMismatch:    'A(z) {label} címek nem egyeznek.',
+    dateMin:          '{label} legkorábban {min} lehet.',
+    dateMax:          '{label} legkésőbb {max} lehet.',
+    nextPage:         'Következő',
+    prevPage:         'Előző',
+});

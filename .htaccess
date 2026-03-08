@@ -1,0 +1,16 @@
+# BareBonesForms — Protect sensitive directories
+# Place this in the root or copy rules to your main .htaccess
+#
+# WARNING: These rules work on Apache only.
+# For Nginx or LiteSpeed, add equivalent rules to your server config.
+# See README.md → Security Model → Web server compatibility.
+
+# Block direct access to submissions, logs, and config
+<FilesMatch "^config\.php$">
+    Require all denied
+</FilesMatch>
+
+# Block access to submissions directory
+RewriteEngine On
+RewriteRule ^submissions/ - [F,L]
+RewriteRule ^logs/ - [F,L]

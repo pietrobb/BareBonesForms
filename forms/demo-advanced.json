@@ -1,0 +1,211 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-advanced",
+    "name": "Job Application",
+    "description": "A comprehensive application form demonstrating advanced features: multi-page, sections, conditional logic, star rating, column layout, email confirmation, and more.",
+    "submit_label": "Submit Application",
+    "label_position": "top",
+
+    "fields": [
+        {
+            "name": "section_personal",
+            "type": "section",
+            "title": "Personal Information"
+        },
+        {
+            "name": "full_name",
+            "type": "text",
+            "label": "Full Name",
+            "placeholder": "Jane Doe",
+            "required": true,
+            "minlength": 2,
+            "maxlength": 100
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email Address",
+            "placeholder": "jane@example.com",
+            "required": true,
+            "confirm": true,
+            "description": "We'll use this to contact you. Must be entered twice for confirmation."
+        },
+        {
+            "name": "phone",
+            "type": "tel",
+            "label": "Phone Number",
+            "placeholder": "+1 (555) 123-4567",
+            "size": "medium"
+        },
+        {
+            "name": "portfolio",
+            "type": "url",
+            "label": "Portfolio / Website",
+            "placeholder": "https://example.com",
+            "size": "medium",
+            "description": "Optional — share your best work."
+        },
+
+        {
+            "name": "page2",
+            "type": "page_break"
+        },
+
+        {
+            "name": "section_position",
+            "type": "section",
+            "title": "Position Details"
+        },
+        {
+            "name": "position",
+            "type": "select",
+            "label": "Position Applied For",
+            "required": true,
+            "other": true,
+            "other_label": "Other position",
+            "options": [
+                { "value": "frontend", "label": "Frontend Developer" },
+                { "value": "backend", "label": "Backend Developer" },
+                { "value": "fullstack", "label": "Full-Stack Developer" },
+                { "value": "design", "label": "UI/UX Designer" },
+                { "value": "devops", "label": "DevOps Engineer" },
+                { "value": "pm", "label": "Project Manager" }
+            ]
+        },
+        {
+            "name": "experience",
+            "type": "number",
+            "label": "Years of Experience",
+            "min": 0,
+            "max": 50,
+            "required": true,
+            "size": "small"
+        },
+        {
+            "name": "start_date",
+            "type": "date",
+            "label": "Earliest Start Date",
+            "min": "2026-04-01",
+            "max": "2027-01-01",
+            "size": "medium",
+            "required": true
+        },
+        {
+            "name": "work_type",
+            "type": "radio",
+            "label": "Preferred Work Arrangement",
+            "required": true,
+            "columns": "inline",
+            "options": [
+                { "value": "remote", "label": "Remote" },
+                { "value": "hybrid", "label": "Hybrid" },
+                { "value": "onsite", "label": "On-site" }
+            ]
+        },
+        {
+            "name": "office_location",
+            "type": "select",
+            "label": "Preferred Office",
+            "show_if": { "field": "work_type", "value": "remote", "op": "not" },
+            "options": [
+                { "value": "nyc", "label": "New York" },
+                { "value": "london", "label": "London" },
+                { "value": "berlin", "label": "Berlin" },
+                { "value": "tokyo", "label": "Tokyo" }
+            ]
+        },
+
+        {
+            "name": "page3",
+            "type": "page_break"
+        },
+
+        {
+            "name": "section_skills",
+            "type": "section",
+            "title": "Skills & Self-Assessment"
+        },
+        {
+            "name": "skills",
+            "type": "checkbox",
+            "label": "Technical Skills",
+            "columns": 3,
+            "other": true,
+            "other_label": "Other skill",
+            "options": [
+                { "value": "js", "label": "JavaScript" },
+                { "value": "ts", "label": "TypeScript" },
+                { "value": "php", "label": "PHP" },
+                { "value": "python", "label": "Python" },
+                { "value": "go", "label": "Go" },
+                { "value": "rust", "label": "Rust" },
+                { "value": "react", "label": "React" },
+                { "value": "vue", "label": "Vue" },
+                { "value": "sql", "label": "SQL" },
+                { "value": "claude_max", "label": "No skills, but I have a Claude Max subscription" }
+            ]
+        },
+        {
+            "name": "section_hired",
+            "type": "section",
+            "title": "You're hired. Just submit the form.",
+            "show_if": { "field": "skills", "value": "claude_max" }
+        },
+        {
+            "name": "assessment_group",
+            "type": "group",
+            "title": "Self-Assessment",
+            "show_if": { "field": "skills", "value": "claude_max", "op": "not" },
+            "fields": [
+                {
+                    "name": "rating_code",
+                    "type": "rating",
+                    "label": "Coding Skills",
+                    "required": true,
+                    "description": "Rate your overall coding proficiency (1 = beginner, 5 = expert)."
+                },
+                {
+                    "name": "rating_teamwork",
+                    "type": "rating",
+                    "label": "Teamwork",
+                    "required": true
+                },
+                {
+                    "name": "cover_letter",
+                    "type": "textarea",
+                    "label": "Cover Letter",
+                    "placeholder": "Tell us why you'd be a great fit...",
+                    "required": true,
+                    "minlength": 50,
+                    "maxlength": 2000,
+                    "rows": 6,
+                    "description": "Minimum 50 characters. Be yourself."
+                }
+            ]
+        },
+        {
+            "name": "referral_code",
+            "type": "text",
+            "label": "Referral Code",
+            "size": "small",
+            "css_class": "highlight-referral",
+            "description": "If someone referred you, enter their code.",
+            "pattern": "^REF-[A-Z0-9]{4,8}$",
+            "pattern_message": "Format: REF-XXXX (e.g. REF-A1B2C3)"
+        },
+        {
+            "name": "gdpr",
+            "type": "checkbox",
+            "label": "Consent",
+            "required": true,
+            "options": [
+                { "value": "yes", "label": "I agree to the processing of my personal data for recruitment purposes." }
+            ]
+        }
+    ],
+
+    "on_submit": {
+        "store": true
+    }
+}

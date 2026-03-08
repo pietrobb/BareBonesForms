@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — हिन्दी (Hindi) language pack
+ */
+BBF.registerLang('hi', {
+    loading:           'लोड हो रहा है…',
+    submitDefault:     'जमा करें',
+    submittingDefault: 'भेजा जा रहा है…',
+    successDefault:    'धन्यवाद! आपका फॉर्म प्राप्त हो गया है।',
+    errorDefault:      'कुछ गलत हो गया।',
+    networkError:      'नेटवर्क त्रुटि। कृपया पुनः प्रयास करें।',
+    serverError:       'सर्वर त्रुटि ({status})',
+    formNotFound:      'फॉर्म "{id}" नहीं मिला ({status})',
+    loadError:         'फॉर्म लोड नहीं हो सका: {message}',
+    required:          '{label} आवश्यक है।',
+    invalidEmail:      '{label} एक मान्य ईमेल पता होना चाहिए।',
+    invalidUrl:        '{label} एक मान्य URL होना चाहिए।',
+    invalidTel:        '{label} एक मान्य फ़ोन नंबर होना चाहिए।',
+    invalidNumber:     '{label} एक संख्या होनी चाहिए।',
+    numberMin:         '{label} कम से कम {min} होना चाहिए।',
+    numberMax:         '{label} अधिकतम {max} होना चाहिए।',
+    invalidOption:     '{label} में अमान्य चयन है।',
+    tooShort:          '{label} कम से कम {min} अक्षर होने चाहिए।',
+    tooLong:           '{label} अधिकतम {max} अक्षर होने चाहिए।',
+    invalidFormat:     '{label} का प्रारूप अमान्य है।',
+    emailMismatch:    '{label} पते मेल नहीं खाते।',
+    dateMin:          '{label} {min} या उसके बाद होना चाहिए।',
+    dateMax:          '{label} {max} या उससे पहले होना चाहिए।',
+    nextPage:         'अगला',
+    prevPage:         'पिछला',
+});

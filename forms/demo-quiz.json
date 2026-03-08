@@ -1,0 +1,201 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-quiz",
+    "name": "The Spanish Inquisition Entrance Exam",
+    "description": "Nobody expects this quiz! Answer carefully \u2014 wrong answers may result in being poked with the soft cushions.",
+    "submit_label": "Submit for Judgement",
+    "success_message": "Your answers have been recorded. The Inquisition will review them... eventually.",
+    "label_position": "top",
+
+    "fields": [
+        {
+            "name": "section_general",
+            "type": "section",
+            "title": "Part I: General Knowledge (of the Absurd)"
+        },
+        {
+            "name": "q_swallow",
+            "type": "radio",
+            "label": "What is the airspeed velocity of an unladen swallow?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "african", "label": "African or European?" },
+                { "value": "42", "label": "42 km/h" },
+                { "value": "fast", "label": "Faster than a coconut-laden one" },
+                { "value": "nobody", "label": "Nobody expects the Spanish Inquisition!" }
+            ]
+        },
+        {
+            "name": "q_witch",
+            "type": "radio",
+            "label": "How do you determine if someone is a witch?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "duck", "label": "See if they weigh the same as a duck" },
+                { "value": "float", "label": "Throw them in the pond" },
+                { "value": "newt", "label": "Ask if they turned someone into a newt" },
+                { "value": "hat", "label": "Check if they have a pointy hat" }
+            ]
+        },
+        {
+            "name": "q_holy_hand_grenade",
+            "type": "radio",
+            "label": "When using the Holy Hand Grenade of Antioch, to what number shalt thou count?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "3", "label": "Three" },
+                { "value": "5", "label": "Five" },
+                { "value": "1", "label": "One, then skip straight to three" },
+                { "value": "4", "label": "Four, being a nice round number" }
+            ]
+        },
+        {
+            "name": "q_parrot",
+            "type": "radio",
+            "label": "A customer brings you a dead parrot. What is the parrot doing?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "resting", "label": "It's resting" },
+                { "value": "pining", "label": "Pining for the fjords" },
+                { "value": "stunned", "label": "It's stunned" },
+                { "value": "dead", "label": "It has ceased to be" }
+            ]
+        },
+        {
+            "name": "q_ni",
+            "type": "radio",
+            "label": "What do the Knights Who Say Ni demand?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "shrubbery", "label": "A shrubbery!" },
+                { "value": "herring", "label": "A herring to cut down a tree" },
+                { "value": "ni", "label": "That you say 'Ni' back to them" },
+                { "value": "grail", "label": "The Holy Grail" }
+            ]
+        },
+
+        { "name": "page2", "type": "page_break" },
+
+        {
+            "name": "section_advanced",
+            "type": "section",
+            "title": "Part II: Advanced Silliness"
+        },
+        {
+            "name": "q_cheese",
+            "type": "radio",
+            "label": "You enter a cheese shop. What will happen?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "none", "label": "They are fresh out of every cheese you name" },
+                { "value": "cheddar", "label": "You get a nice bit of cheddar" },
+                { "value": "wensleydale", "label": "There's lovely Wensleydale in the back" },
+                { "value": "cheese", "label": "The cat ate the last piece" }
+            ]
+        },
+        {
+            "name": "q_black_knight",
+            "type": "radio",
+            "label": "The Black Knight has lost both arms. What does he say?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "scratch", "label": "'Tis but a scratch!" },
+                { "value": "flesh", "label": "It's just a flesh wound" },
+                { "value": "none", "label": "None shall pass" },
+                { "value": "run", "label": "Right, I'll do you for that!" }
+            ]
+        },
+        {
+            "name": "q_ministry",
+            "type": "radio",
+            "label": "At the Ministry of Silly Walks, your application was rejected. Why?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "silly", "label": "Your walk was not silly enough" },
+                { "value": "normal", "label": "You walked in normally like a fool" },
+                { "value": "grant", "label": "The government grant for silly walks was cut" },
+                { "value": "department", "label": "You went to the Ministry of Sensible Walks by mistake" }
+            ]
+        },
+        {
+            "name": "q_rabbit",
+            "type": "radio",
+            "label": "A cute white rabbit guards a cave. What should you do?",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "grenade", "label": "Use the Holy Hand Grenade" },
+                { "value": "run", "label": "RUN AWAY! RUN AWAY!" },
+                { "value": "pet", "label": "Pet the nice bunny" },
+                { "value": "brave", "label": "Charge it bravely like Sir Lancelot" }
+            ]
+        },
+        {
+            "name": "q_bridge",
+            "type": "radio",
+            "label": "The Bridgekeeper asks: 'What... is your favourite colour?'",
+            "required": true,
+            "shuffle": true,
+            "options": [
+                { "value": "blue", "label": "Blue" },
+                { "value": "yellow", "label": "Blue! No, yel\u2014 AAAAAARGH!" },
+                { "value": "green", "label": "Green... no wait, that's Sir Gawain's" },
+                { "value": "dont_know", "label": "I don't know that!" }
+            ]
+        },
+
+        { "name": "page3", "type": "page_break" },
+
+        {
+            "name": "section_identity",
+            "type": "section",
+            "title": "Part III: Identify Yourself (For the Records)"
+        },
+        {
+            "name": "student_name",
+            "type": "text",
+            "label": "Your Name (or Nom de Guerre)",
+            "required": true,
+            "maxlength": 100,
+            "placeholder": "e.g. Sir Robin the Not-Quite-So-Brave-as-Sir-Lancelot"
+        },
+        {
+            "name": "q_fav_sketch",
+            "type": "select",
+            "label": "Favourite Monty Python sketch?",
+            "shuffle": true,
+            "options": [
+                { "value": "parrot", "label": "Dead Parrot" },
+                { "value": "spam", "label": "Spam" },
+                { "value": "inquisition", "label": "Spanish Inquisition" },
+                { "value": "lumberjack", "label": "Lumberjack Song" },
+                { "value": "argument", "label": "Argument Clinic" },
+                { "value": "cheese", "label": "Cheese Shop" },
+                { "value": "silly_walks", "label": "Ministry of Silly Walks" },
+                { "value": "knights", "label": "Knights Who Say Ni" }
+            ],
+            "placeholder": "Choose wisely..."
+        },
+        {
+            "name": "notes",
+            "type": "textarea",
+            "label": "Any last words before judgement?",
+            "placeholder": "We are the knights who say... NI!",
+            "rows": 3,
+            "maxlength": 500
+        }
+    ],
+
+    "on_submit": {
+        "store": true
+    }
+}

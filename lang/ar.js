@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — العربية (Arabic) language pack
+ */
+BBF.registerLang('ar', {
+    loading:           'جارٍ التحميل…',
+    submitDefault:     'إرسال',
+    submittingDefault: 'جارٍ الإرسال…',
+    successDefault:    'شكراً لك! تم استلام النموذج بنجاح.',
+    errorDefault:      'حدث خطأ ما.',
+    networkError:      'خطأ في الشبكة. يرجى المحاولة مرة أخرى.',
+    serverError:       'خطأ في الخادم ({status})',
+    formNotFound:      'النموذج "{id}" غير موجود ({status})',
+    loadError:         'تعذّر تحميل النموذج: {message}',
+    required:          '{label} مطلوب.',
+    invalidEmail:      '{label} يجب أن يكون عنوان بريد إلكتروني صالح.',
+    invalidUrl:        '{label} يجب أن يكون عنوان URL صالح.',
+    invalidTel:        '{label} يجب أن يكون رقم هاتف صالح.',
+    invalidNumber:     '{label} يجب أن يكون رقماً.',
+    numberMin:         '{label} يجب أن يكون {min} على الأقل.',
+    numberMax:         '{label} يجب ألا يتجاوز {max}.',
+    invalidOption:     '{label} يحتوي على اختيار غير صالح.',
+    tooShort:          '{label} يجب أن يحتوي على {min} أحرف على الأقل.',
+    tooLong:           '{label} يجب ألا يتجاوز {max} حرفاً.',
+    invalidFormat:     '{label} بتنسيق غير صالح.',
+    emailMismatch:    'عناوين {label} غير متطابقة.',
+    dateMin:          '{label} يجب أن يكون في {min} أو بعده.',
+    dateMax:          '{label} يجب أن يكون في {max} أو قبله.',
+    nextPage:         'التالي',
+    prevPage:         'السابق',
+});

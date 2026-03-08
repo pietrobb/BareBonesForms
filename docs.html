@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BareBonesForms — Documentation</title>
+<style>
+:root {
+    --bg: #ffffff; --bg-sidebar: #f8f9fa; --bg-code: #f4f5f7; --bg-code-block: #1e1e2e;
+    --text: #1a1a2e; --text-muted: #6b7280; --text-code: #cdd6f4;
+    --border: #e5e7eb; --accent: #2563eb; --accent-light: #dbeafe;
+    --green: #059669; --red: #dc2626; --orange: #d97706;
+    --sidebar-w: 240px; --header-h: 52px;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #1a1a2e; --bg-sidebar: #16162a; --bg-code: #252540; --bg-code-block: #0f0f1a;
+        --text: #e2e8f0; --text-muted: #94a3b8; --text-code: #cdd6f4;
+        --border: #334155; --accent: #60a5fa; --accent-light: #1e3a5f;
+    }
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Header */
+.header { position: fixed; top: 0; left: 0; right: 0; height: var(--header-h); background: var(--bg-sidebar); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; z-index: 100; }
+.header h1 { font-size: 1.05rem; font-weight: 700; }
+.header h1 span { color: var(--accent); }
+.header .ver { font-size: 0.72rem; color: var(--text-muted); margin-left: 10px; background: var(--bg-code); padding: 2px 8px; border-radius: 4px; }
+
+/* Sidebar */
+.sidebar { position: fixed; top: var(--header-h); left: 0; bottom: 0; width: var(--sidebar-w); background: var(--bg-sidebar); border-right: 1px solid var(--border); overflow-y: auto; padding: 16px 0; z-index: 90; }
+.sidebar a { display: block; padding: 5px 20px; font-size: 0.82rem; color: var(--text-muted); }
+.sidebar a:hover { color: var(--accent); background: var(--accent-light); text-decoration: none; }
+.sidebar .group { padding: 14px 20px 4px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; color: var(--text-muted); }
+
+/* Content */
+.content { margin-left: var(--sidebar-w); margin-top: var(--header-h); padding: 32px 48px 80px; max-width: 860px; }
+.content h2 { font-size: 1.45rem; margin: 48px 0 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.content h2:first-child { margin-top: 0; border-top: none; padding-top: 0; }
+.content h3 { font-size: 1.1rem; margin: 28px 0 10px; }
+.content h4 { font-size: 0.95rem; margin: 20px 0 8px; }
+.content p { margin: 8px 0; }
+.content ul, .content ol { margin: 8px 0 8px 24px; }
+.content li { margin: 4px 0; }
+
+/* Inline code */
+code { font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; font-size: 0.86em; background: var(--bg-code); padding: 2px 6px; border-radius: 3px; }
+
+/* Code blocks */
+.code-block { position: relative; background: var(--bg-code-block); color: var(--text-code); border-radius: 8px; margin: 12px 0; overflow: hidden; }
+.code-block pre { padding: 16px 20px; overflow-x: auto; font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; font-size: 0.8rem; line-height: 1.5; white-space: pre; }
+.code-block .lang { position: absolute; top: 8px; right: 50px; font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.copy-btn { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,0.1); border: none; color: #94a3b8; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.72rem; }
+.copy-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.86rem; }
+th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+th { background: var(--bg-sidebar); font-weight: 600; white-space: nowrap; }
+td code { font-size: 0.82em; }
+
+/* Callout boxes */
+.callout { padding: 12px 16px; border-radius: 6px; margin: 12px 0; border-left: 4px solid; font-size: 0.88rem; }
+.callout.info { background: var(--accent-light); border-color: var(--accent); }
+.callout.warn { background: #fef3c7; border-color: var(--orange); }
+.callout.tip { background: #d1fae5; border-color: var(--green); }
+@media (prefers-color-scheme: dark) {
+    .callout.warn { background: #422006; }
+    .callout.tip { background: #064e3b; }
+}
+.callout strong { display: block; margin-bottom: 4px; }
+
+/* Collapsible */
+details { margin: 8px 0; }
+details summary { cursor: pointer; font-weight: 600; font-size: 0.88rem; color: var(--accent); }
+details summary:hover { text-decoration: underline; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .sidebar { display: none; }
+    .content { margin-left: 0; padding: 24px 16px 60px; }
+}
+
+/* Checklist */
+.checklist { list-style: none; margin-left: 0; padding: 0; }
+.checklist li { padding: 4px 0 4px 28px; position: relative; }
+.checklist li::before { content: '\2610'; position: absolute; left: 4px; color: var(--text-muted); }
+
+/* File tree */
+.file-tree { font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace; font-size: 0.82rem; background: var(--bg-code); padding: 16px 20px; border-radius: 8px; line-height: 1.6; white-space: pre; overflow-x: auto; }
+.file-tree .comment { color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>BareBonesForms <span>Docs</span></h1>
+    <span class="ver">v1.0 &middot; PHP 8.1+ &middot; March 2026</span>
+</div>
+
+<nav class="sidebar">
+    <div class="group">Getting Started</div>
+    <a href="#overview">Overview</a>
+    <a href="#genesis">The Genesis</a>
+    <a href="#quick-start">Quick Start</a>
+    <a href="#file-structure">File Structure</a>
+
+    <div class="group">Form Definition</div>
+    <a href="#form-json">Form JSON</a>
+    <a href="#field-types">Field Types</a>
+    <a href="#field-properties">Field Properties</a>
+    <a href="#advanced-features">Advanced Features</a>
+    <a href="#on-submit">on_submit Actions</a>
+
+    <div class="group">Frontend</div>
+    <a href="#embedding">Embedding</a>
+    <a href="#cross-domain">Cross-Domain</a>
+    <a href="#styling">Styling</a>
+    <a href="#language-support">Language Support</a>
+
+    <div class="group">Backend</div>
+    <a href="#storage">Storage Backends</a>
+    <a href="#submissions-api">Submissions API</a>
+    <a href="#email-templates">Email Templates</a>
+    <a href="#custom-actions">Custom Actions</a>
+
+    <div class="group">Security &amp; Ops</div>
+    <a href="#security">Security Model</a>
+    <a href="#privacy">Privacy</a>
+    <a href="#webhooks">Webhooks</a>
+    <a href="#sandbox">Sandbox Mode</a>
+    <a href="#production">Production Checklist</a>
+
+    <div class="group">Live Demos</div>
+    <a href="demo1.html">Demo 1 &mdash; Store Only</a>
+    <a href="demo2.html">Demo 2 &mdash; + Email</a>
+    <a href="demo3.html">Demo 3 &mdash; Full Pipeline</a>
+    <a href="demo4.html">Demo 4 &mdash; Advanced Features</a>
+    <a href="demo5.html">Demo 5 &mdash; Allergy Finder</a>
+    <a href="demo6.html">Demo 6 &mdash; Print Shop</a>
+    <a href="demo7.html">Demo 7 &mdash; Quiz</a>
+    <a href="demo8.html">Demo 8 &mdash; Templates</a>
+</nav>
+
+<main class="content">
+
+<!-- ============================================================ -->
+<h2 id="overview">Overview</h2>
+
+<p><strong>BareBonesForms</strong> is a zero-build PHP form engine for shared hosting. Define a form as JSON, upload to hosting, embed it in your page, collect submissions. No npm. No framework. No build step. No mercy for unnecessary complexity.</p>
+
+<p>What this engine provides:</p>
+<ul>
+    <li><strong>Server-side validation</strong> &mdash; the client is for appearances; the server is the law</li>
+    <li><strong>Email confirmation + admin notifications</strong> &mdash; so you know when someone knocks</li>
+    <li><strong>Four storage backends</strong> &mdash; file, SQLite, MySQL, CSV &mdash; one config line, per-form override</li>
+    <li><strong>Signed webhooks</strong> &mdash; HMAC-SHA256, because trust is a luxury</li>
+    <li><strong>Custom post-submit actions</strong> &mdash; your PHP, your rules</li>
+    <li><strong>Multi-page forms</strong> &mdash; split with page breaks, per-page validation</li>
+    <li><strong>Conditional logic</strong> &mdash; show/hide fields based on other field values</li>
+    <li><strong>Star ratings, sections, &ldquo;other&rdquo; option</strong> &mdash; the field types that matter</li>
+    <li><strong>Sandbox mode</strong> &mdash; test everything without consequences</li>
+</ul>
+
+<div class="callout tip">
+    <strong>Not one for reading? Watch the wheels turn.</strong>
+    If documentation is not how you prefer to spend your evening, go see it in action. Three live demos, each showing a different configuration &mdash; from the simplest arrangement to the full pipeline:<br><br>
+    <a href="demo1.html"><strong>Demo 1</strong> &mdash; Store only</a> &middot;
+    <a href="demo2.html"><strong>Demo 2</strong> &mdash; Store + admin email</a> &middot;
+    <a href="demo3.html"><strong>Demo 3</strong> &mdash; Store + webhook + emails</a> &middot;
+    <a href="demo4.html"><strong>Demo 4</strong> &mdash; Advanced features</a> &middot;
+    <a href="demo5.html"><strong>Demo 5</strong> &mdash; Allergy remedy finder</a> &middot;
+    <a href="demo6.html"><strong>Demo 6</strong> &mdash; Print shop order</a> &middot;
+    <a href="demo7.html"><strong>Demo 7</strong> &mdash; Monty Python quiz</a> &middot;
+    <a href="demo8.html"><strong>Demo 8</strong> &mdash; Reusable templates</a><br><br>
+    Come back here when you want to know <em>why</em> the wheels turn. Or don't. I ain't your schoolmaster.
+</div>
+
+<div class="callout info">
+    <strong>Built for</strong>
+    Plain PHP hosting, small and medium websites, and developers who want control without some bloated form system telling them how to live their life. Not built for drag-and-drop form building, enterprise workflow suites, or hoopleheads who need a GUI to tie their boots.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="genesis">The Genesis</h2>
+
+<p>On the eighth day of March, in the year 2026, after dragging several godforsaken websites &mdash; each shackled to a different version of some commercial form system whose name I shall not dignify by uttering aloud &mdash; through migrations that would test the patience of a saint and the sanity of a PHP developer alike, I poured myself a glass and declared: <em>enough</em>.</p>
+
+<p>Each site running its own damned version. Each version demanding a different PHP. Each update breaking something that worked perfectly fine the day before. The kind of chaos that makes a man question whether civilization was worth the trouble.</p>
+
+<p>And so I resolved to simplify. To strip it down to the bones. To build something I could understand, control, and deploy without begging some vendor's permission or reading their godforsaken changelog every fortnight. BareBonesForms is what emerged.</p>
+
+<p>If this tool serves you well, you owe me nothing. But should you feel inclined toward a gesture of goodwill &mdash; listen to my music at <a href="https://roguebard.net/" target="_blank">roguebard.net</a>, or lose yourself in the dark fantasy of <a href="https://lasttrial.art/" target="_blank">The Last Trial</a>. Entirely voluntary.</p>
+
+<!-- ============================================================ -->
+<h2 id="quick-start">Quick Start</h2>
+
+<p>Five steps. A man of moderate intelligence could manage it before his coffee goes cold.</p>
+
+<p><strong>1.</strong> Upload the <code>barebonesforms/</code> folder to your hosting.</p>
+<p><strong>2.</strong> Copy <code>config.example.php</code> &rarr; <code>config.php</code> and edit it. Once.</p>
+<p><strong>3.</strong> Create a form JSON in <code>forms/</code>.</p>
+<p><strong>4.</strong> Embed it in your page:</p>
+
+<div class="code-block"><span class="lang">html</span><pre>&lt;div data-form="kontakt"&gt;&lt;/div&gt;
+&lt;script src="/barebonesforms/bbf.js"&gt;&lt;/script&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>5.</strong> Done. The form renders, validates, and submits. Pour yourself a glass &mdash; beverage of your choosing, and sit back. You've earned it.</p>
+
+<!-- ============================================================ -->
+<h2 id="file-structure">File Structure</h2>
+
+<div class="file-tree">barebonesforms/
+├── config.example.php  <span class="comment">&larr; Copy to config.php. Edit once. Then forget about it.</span>
+├── submit.php          <span class="comment">&larr; POST handler. Don't touch unless you know what you're doing.</span>
+├── submissions.php     <span class="comment">&larr; API: list/export submissions</span>
+├── sandbox.php         <span class="comment">&larr; Test forms without consequences</span>
+├── check.php           <span class="comment">&larr; Installation diagnostics. Run it. Trust it.</span>
+├── docs.html           <span class="comment">&larr; This very document</span>
+├── bbf.js              <span class="comment">&larr; Form renderer (zero dependencies, as God intended)</span>
+├── bbf.css             <span class="comment">&larr; Default styles (optional &mdash; replace or delete it)</span>
+├── .htaccess           <span class="comment">&larr; Protects sensitive dirs (Apache only)</span>
+├── lang/               <span class="comment">&larr; Language packs (32 locales &times; 2 files each = 64 files)</span>
+│   ├── en.js / en.php  <span class="comment">&larr; English (reference)</span>
+│   ├── de.js / de.php  <span class="comment">&larr; German</span>
+│   └── ...             <span class="comment">&larr; 26 more languages</span>
+├── forms/
+│   ├── form.schema.json <span class="comment">&larr; JSON Schema for IDE autocomplete</span>
+│   └── kontakt.json     <span class="comment">&larr; Your form definitions</span>
+├── templates/
+│   ├── confirm.html    <span class="comment">&larr; Email to the person who submitted</span>
+│   └── notify.html     <span class="comment">&larr; Email to you, the administrator</span>
+├── submissions/        <span class="comment">&larr; Stored data (auto-created)</span>
+├── logs/               <span class="comment">&larr; Rate limit logs (auto-created)</span>
+└── actions/            <span class="comment">&larr; Custom post-submit actions (optional)</span></div>
+
+<!-- ============================================================ -->
+<h2 id="form-json">Form JSON Reference</h2>
+
+<p>Every form is a single JSON file in <code>forms/</code>. The <code>forms/form.schema.json</code> file provides <strong>IDE autocomplete and tooling validation</strong> &mdash; point your editor at it via <code>"$schema": "form.schema.json"</code>. Runtime validation is a separate matter, handled by <code>submit.php</code>, which trusts no one and nothing.</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "kontakt",
+    "name": "Contact Form",
+    "description": "Optional description shown above the form.",
+    "submit_label": "Send",
+    "submitting_label": "Sending&hellip;",
+    "success_message": "Thank you!",
+
+    "fields": [
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "placeholder": "john@example.com",
+            "required": true,
+            "description": "We'll never share your email."
+        }
+    ],
+
+    "on_submit": {
+        "store": true,
+        "confirm_email": {
+            "to": "{{email}}",
+            "subject": "Thanks, {{name}}!",
+            "template": "confirm.html"
+        },
+        "notify": {
+            "to": "admin@example.com",
+            "subject": "New contact: {{name}}",
+            "template": "notify.html"
+        },
+        "webhooks": [
+            "https://n8n.example.com/webhook/kontakt"
+        ],
+        "redirect": "https://example.com/thank-you",
+        "actions": [
+            { "type": "my_custom_action", "param": "value" }
+        ]
+    }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<!-- ============================================================ -->
+<h2 id="field-types">Field Types</h2>
+
+<p>Every field has a type, and every type has rules. The server enforces them all, regardless of what the client thinks it knows.</p>
+
+<table>
+    <tr><th>Type</th><th>Renders as</th><th>Validates</th></tr>
+    <tr><td><code>text</code></td><td>Text input</td><td>length, pattern</td></tr>
+    <tr><td><code>email</code></td><td>Email input</td><td>email format, confirm</td></tr>
+    <tr><td><code>tel</code></td><td>Phone input</td><td>phone pattern</td></tr>
+    <tr><td><code>url</code></td><td>URL input</td><td>URL format</td></tr>
+    <tr><td><code>number</code></td><td>Number input</td><td>numeric, min/max</td></tr>
+    <tr><td><code>date</code></td><td>Date picker</td><td>date min/max</td></tr>
+    <tr><td><code>textarea</code></td><td>Textarea</td><td>length</td></tr>
+    <tr><td><code>select</code></td><td>Dropdown</td><td>valid option, &ldquo;other&rdquo;</td></tr>
+    <tr><td><code>radio</code></td><td>Radio buttons</td><td>valid option, &ldquo;other&rdquo;</td></tr>
+    <tr><td><code>checkbox</code></td><td>Checkboxes / consent</td><td>valid option, &ldquo;other&rdquo;</td></tr>
+    <tr><td><code>password</code></td><td>Password input</td><td>length, pattern</td></tr>
+    <tr><td><code>hidden</code></td><td>Hidden input</td><td>&mdash;</td></tr>
+    <tr><td><code>rating</code></td><td>Star rating (1&ndash;5)</td><td>numeric, min/max</td></tr>
+    <tr><td><code>section</code></td><td>Visual divider</td><td>&mdash; (not submitted)</td></tr>
+    <tr><td><code>page_break</code></td><td>Multi-page split</td><td>&mdash; (not submitted)</td></tr>
+    <tr><td><code>group</code></td><td>Field container</td><td>&mdash; (children validated independently)</td></tr>
+</table>
+
+<div class="callout tip">
+    <strong>Naming convention</strong>
+    All field properties use lowercase: <code>minlength</code>, <code>maxlength</code>, <code>pattern_message</code>. This matches HTML attribute naming. Don't come to me with camelCase complaints.
+</div>
+
+<h4>Checkbox modes</h4>
+<p><strong>Single consent</strong> &mdash; one option: <code>"options": [{"value": "yes", "label": "I agree"}]</code></p>
+<p><strong>Multi-choice</strong> &mdash; multiple options, submitted as array.</p>
+
+<div class="callout info">
+    <strong>options required</strong>
+    <code>select</code>, <code>radio</code>, and <code>checkbox</code> all require the <code>options</code> property. Forget it, and the server will remind you &mdash; less politely than I do.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="field-properties">Field Properties</h2>
+
+<table>
+    <tr><th>Property</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>name</code></td><td>string</td><td>Field identifier (required, unique)</td></tr>
+    <tr><td><code>type</code></td><td>string</td><td>Field type (default: <code>"text"</code>)</td></tr>
+    <tr><td><code>label</code></td><td>string</td><td>Display label</td></tr>
+    <tr><td><code>placeholder</code></td><td>string</td><td>Placeholder text</td></tr>
+    <tr><td><code>description</code></td><td>string</td><td>Help text below label</td></tr>
+    <tr><td><code>required</code></td><td>boolean</td><td>Is required? (default: <code>false</code>)</td></tr>
+    <tr><td><code>minlength</code></td><td>integer</td><td>Minimum character length</td></tr>
+    <tr><td><code>maxlength</code></td><td>integer</td><td>Maximum character length</td></tr>
+    <tr><td><code>min</code></td><td>number</td><td>Minimum value (number/date types)</td></tr>
+    <tr><td><code>max</code></td><td>number</td><td>Maximum value (number/date types)</td></tr>
+    <tr><td><code>pattern</code></td><td>string</td><td>Regex validation pattern</td></tr>
+    <tr><td><code>pattern_message</code></td><td>string</td><td>Custom error for pattern mismatch</td></tr>
+    <tr><td><code>options</code></td><td>array</td><td>Options for select / radio / checkbox</td></tr>
+    <tr><td><code>rows</code></td><td>integer</td><td>Textarea rows (default: 4)</td></tr>
+    <tr><td><code>value</code></td><td>string</td><td>Default / preset value</td></tr>
+    <tr><td><code>size</code></td><td>string</td><td>Field width: <code>"small"</code>, <code>"medium"</code>, <code>"large"</code></td></tr>
+    <tr><td><code>css_class</code></td><td>string</td><td>Custom CSS class on field wrapper</td></tr>
+    <tr><td><code>columns</code></td><td>int/str</td><td>Radio/checkbox layout: <code>2</code>, <code>3</code>, or <code>"inline"</code></td></tr>
+    <tr><td><code>readonly</code></td><td>boolean</td><td>Makes the field read-only</td></tr>
+    <tr><td><code>other</code></td><td>boolean</td><td>Adds &ldquo;Other&rdquo; option with text input</td></tr>
+    <tr><td><code>other_label</code></td><td>string</td><td>Label for &ldquo;Other&rdquo; option (default: <code>"Other"</code>)</td></tr>
+    <tr><td><code>confirm</code></td><td>boolean</td><td>Adds confirmation field (email type)</td></tr>
+    <tr><td><code>shuffle</code></td><td>boolean</td><td>Randomize option order (radio/checkbox/select) or child field order (group) on each page load</td></tr>
+    <tr><td><code>show_if</code></td><td>object</td><td>Conditional visibility: <code>{field, value, op?}</code> or <code>{all: [...]}</code> / <code>{any: [...]}</code></td></tr>
+    <tr><td><code>title</code></td><td>string</td><td>Title for section or group</td></tr>
+    <tr><td><code>fields</code></td><td>array</td><td>Child fields (group type only)</td></tr>
+    <tr><td><code>use</code></td><td>string</td><td>Template name to clone as group children (group type only)</td></tr>
+    <tr><td><code>prefix</code></td><td>string</td><td>Prefix for template field names (used with <code>use</code>)</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="advanced-features">Advanced Features</h2>
+
+<h3>Label Position</h3>
+<p>By default, labels sit above their fields. Set <code>label_position</code> at the form level to place them alongside:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "label_position": "left",
+    "fields": [ ... ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Value</th><th>Effect</th></tr>
+    <tr><td><code>"top"</code></td><td>Default &mdash; labels above inputs</td></tr>
+    <tr><td><code>"left"</code></td><td>Labels to the left, inputs to the right</td></tr>
+    <tr><td><code>"right"</code></td><td>Labels to the right of inputs</td></tr>
+</table>
+
+<h3>Field Sizes</h3>
+<p>Control how wide a field renders. Useful when you don't need a full-width input for a ZIP code or age:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{ "name": "zip", "type": "text", "label": "ZIP Code", "size": "small" }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Size</th><th>Width</th></tr>
+    <tr><td><code>"small"</code></td><td>25% (min 120px)</td></tr>
+    <tr><td><code>"medium"</code></td><td>50% (min 180px)</td></tr>
+    <tr><td><code>"large"</code></td><td>Full width (default)</td></tr>
+</table>
+
+<h3>Column Layout</h3>
+<p>Radio buttons and checkboxes can be arranged in columns instead of a vertical stack:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "color",
+    "type": "checkbox",
+    "label": "Favorite colors",
+    "columns": 3,
+    "options": [
+        {"value": "red", "label": "Red"},
+        {"value": "blue", "label": "Blue"},
+        {"value": "green", "label": "Green"},
+        {"value": "yellow", "label": "Yellow"},
+        {"value": "purple", "label": "Purple"},
+        {"value": "orange", "label": "Orange"}
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Values: <code>2</code> (two columns), <code>3</code> (three columns), <code>"inline"</code> (side by side, wrapping).</p>
+
+<h3>&ldquo;Other&rdquo; Option</h3>
+<p>Add a free-text &ldquo;Other&rdquo; option to radio, checkbox, or select fields. When selected, a text input appears for the user to type their answer:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "source",
+    "type": "radio",
+    "label": "How did you hear about us?",
+    "other": true,
+    "other_label": "Something else",
+    "options": [
+        {"value": "google", "label": "Google"},
+        {"value": "friend", "label": "A friend"},
+        {"value": "social", "label": "Social media"}
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>The submitted value contains the actual text the user typed, not the placeholder <code>__other__</code> value. Server-side and client-side both resolve it.</p>
+
+<h3>Email Confirmation</h3>
+<p>Add <code>"confirm": true</code> to an email field to render a second &ldquo;Confirm email&rdquo; input. Both must match before submission:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{ "name": "email", "type": "email", "label": "Email", "confirm": true, "required": true }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Star Rating</h3>
+<p>The <code>rating</code> type renders an accessible star rating widget (1&ndash;5 by default). Fully keyboard-navigable with ARIA labels:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{ "name": "satisfaction", "type": "rating", "label": "How satisfied are you?", "required": true }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Use <code>min</code> and <code>max</code> to constrain the range if needed. The value is submitted as a number.</p>
+
+<h3>Section Breaks</h3>
+<p>Visual dividers to group related fields. Section fields are never submitted &mdash; they exist purely for layout:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{ "name": "section1", "type": "section", "title": "Personal Information" }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Multi-Page Forms</h3>
+<p>Insert <code>page_break</code> fields to split your form into pages. Previous/Next buttons appear automatically. Each page validates independently before advancing:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "fields": [
+        { "name": "name", "type": "text", "label": "Name", "required": true },
+        { "name": "email", "type": "email", "label": "Email", "required": true },
+        { "name": "page2", "type": "page_break" },
+        { "name": "message", "type": "textarea", "label": "Message" }
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>The submit button only appears on the last page. Navigation button labels (&ldquo;Next&rdquo;, &ldquo;Previous&rdquo;) are translatable via language packs.</p>
+
+<h3>Conditional Logic</h3>
+<p>Show or hide fields based on another field's value. A hidden field is excluded from both validation and submission &mdash; as if it doesn't exist:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "fields": [
+        {
+            "name": "contact_method",
+            "type": "radio",
+            "label": "Preferred contact method",
+            "options": [
+                {"value": "email", "label": "Email"},
+                {"value": "phone", "label": "Phone"}
+            ]
+        },
+        {
+            "name": "phone_number",
+            "type": "tel",
+            "label": "Phone number",
+            "show_if": { "field": "contact_method", "value": "phone" }
+        }
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>The <code>show_if</code> object supports:</p>
+<table>
+    <tr><th>Property</th><th>Description</th></tr>
+    <tr><td><code>field</code></td><td>Name of the field to watch</td></tr>
+    <tr><td><code>value</code></td><td>Value or array of values that trigger visibility</td></tr>
+    <tr><td><code>op</code></td><td>Set to <code>"not"</code> to invert &mdash; show when value does NOT match</td></tr>
+</table>
+
+<div class="callout tip">
+    <strong>Array values</strong>
+    Pass an array to match multiple values: <code>"value": ["email", "phone"]</code> shows the field when either is selected. With <code>"op": "not"</code>, it hides when any match.
+</div>
+
+<div class="callout tip">
+    <strong>Checkbox groups</strong>
+    Conditions work with checkbox groups out of the box. If the source field is a checkbox group, the condition matches when <em>any</em> checked value equals the target. For example, <code>"show_if": { "field": "skills", "value": "other" }</code> triggers when "other" is among the checked options &mdash; regardless of what else is selected.
+</div>
+
+<h3>Field Groups</h3>
+<p>The <code>group</code> type is a container that holds child fields. It renders a wrapper with an optional title and description. The key benefit: apply <code>show_if</code> to the group, and all children inherit the condition &mdash; show or hide an entire section with a single rule:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "assessment_group",
+    "type": "group",
+    "title": "Self-Assessment",
+    "description": "Rate yourself honestly.",
+    "show_if": { "field": "experience", "value": "0", "op": "gt" },
+    "fields": [
+        { "name": "rating_code", "type": "rating", "label": "Coding Skills", "required": true },
+        { "name": "rating_teamwork", "type": "rating", "label": "Teamwork", "required": true },
+        { "name": "cover_letter", "type": "textarea", "label": "Cover Letter", "required": true, "minlength": 50 }
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>When the group is hidden, its children are excluded from both validation and submission. Required fields inside a hidden group won't block the form. On the server side, the parent's <code>show_if</code> propagates to all children automatically.</p>
+
+<div class="callout info">
+    <strong>Groups are containers, not fields</strong>
+    A group itself is never submitted as data. Its children appear as top-level fields in the submission, just as if they weren't nested. Groups exist purely for conditional logic and visual structure.
+</div>
+
+<h3>Complex Conditions</h3>
+<p>Simple <code>show_if</code> checks one field against one value. For real-world forms, you often need compound logic &mdash; "show this if the user selected X <em>and</em> entered a number greater than Y." That's what <code>all</code> and <code>any</code> are for:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "senior_section",
+    "type": "section",
+    "title": "Senior Developer Details",
+    "show_if": {
+        "all": [
+            { "field": "position", "value": ["frontend", "backend", "fullstack"] },
+            { "field": "experience", "value": "5", "op": "gte" }
+        ]
+    }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Combinator</th><th>Logic</th><th>Description</th></tr>
+    <tr><td><code>all</code></td><td>AND</td><td>All conditions must be true</td></tr>
+    <tr><td><code>any</code></td><td>OR</td><td>At least one condition must be true</td></tr>
+</table>
+
+<p>Combinators nest freely. You can put <code>any</code> inside <code>all</code> inside <code>any</code> &mdash; as deep as your logic demands:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "show_if": {
+        "all": [
+            { "field": "gdpr", "value": "yes" },
+            {
+                "any": [
+                    { "field": "experience", "value": "3", "op": "gte" },
+                    { "field": "skills", "value": "react" }
+                ]
+            }
+        ]
+    }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>This reads: "Show if GDPR is agreed <strong>and</strong> (experience &ge; 3 <strong>or</strong> React is selected)."</p>
+
+<h3>Comparison Operators</h3>
+<p>The <code>op</code> property in conditions supports more than just equals and not-equals. Use these operators for numeric comparisons, text searches, and presence checks:</p>
+
+<table>
+    <tr><th>Operator</th><th>Meaning</th><th>Example use</th></tr>
+    <tr><td><em>(default)</em></td><td>Equals</td><td><code>{ "field": "color", "value": "red" }</code></td></tr>
+    <tr><td><code>not</code></td><td>Not equals</td><td><code>{ "field": "type", "value": "internal", "op": "not" }</code></td></tr>
+    <tr><td><code>gt</code></td><td>Greater than</td><td><code>{ "field": "age", "value": "18", "op": "gt" }</code></td></tr>
+    <tr><td><code>gte</code></td><td>Greater or equal</td><td><code>{ "field": "experience", "value": "5", "op": "gte" }</code></td></tr>
+    <tr><td><code>lt</code></td><td>Less than</td><td><code>{ "field": "score", "value": "50", "op": "lt" }</code></td></tr>
+    <tr><td><code>lte</code></td><td>Less or equal</td><td><code>{ "field": "budget", "value": "1000", "op": "lte" }</code></td></tr>
+    <tr><td><code>contains</code></td><td>Text contains</td><td><code>{ "field": "notes", "value": "urgent", "op": "contains" }</code></td></tr>
+    <tr><td><code>empty</code></td><td>Field is empty</td><td><code>{ "field": "phone", "op": "empty" }</code></td></tr>
+    <tr><td><code>not_empty</code></td><td>Field has value</td><td><code>{ "field": "referral", "op": "not_empty" }</code></td></tr>
+</table>
+
+<div class="callout tip">
+    <strong>Numeric comparisons</strong>
+    <code>gt</code>, <code>gte</code>, <code>lt</code>, <code>lte</code> parse both values as numbers. If either side isn't numeric, the condition evaluates to false. The <code>value</code> is always a string in JSON &mdash; the engine handles the conversion.
+</div>
+
+<div class="callout tip">
+    <strong>empty / not_empty</strong>
+    These operators don't need a <code>value</code> property. For checkbox groups, <code>empty</code> means nothing is checked; <code>not_empty</code> means at least one option is selected.
+</div>
+
+<h3>Date Validation</h3>
+<p>Date fields support <code>min</code> and <code>max</code> as date strings (ISO format). The browser's date picker respects them, and the server validates them:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{ "name": "event_date", "type": "date", "label": "Event Date", "min": "2026-01-01", "max": "2026-12-31" }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Readonly Fields</h3>
+<p>Set <code>"readonly": true</code> for fields that should be visible but not editable. Useful for pre-filled data:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{ "name": "ref", "type": "text", "label": "Reference", "value": "REF-2026-001", "readonly": true }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Custom CSS Classes</h3>
+<p>Add your own class to any field wrapper with <code>css_class</code>. Useful for custom styling without touching the global stylesheet:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{ "name": "vip_code", "type": "text", "label": "VIP Code", "css_class": "highlight-field" }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Reusable Templates</h3>
+
+<p>Define a set of fields once in the top-level <code>templates</code> object, then reference it from any <code>group</code> field with <code>"use"</code> and <code>"prefix"</code>. The engine clones the template fields and prefixes all names automatically. Internal <code>show_if</code> references between template fields are prefixed too; references to form-level fields stay unchanged.</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "templates": {
+        "modalities": [
+            { "name": "time_worse", "type": "radio", "label": "When worse?", ... },
+            { "name": "helps", "type": "checkbox", "label": "What helps?", ... }
+        ]
+    },
+    "fields": [
+        { "name": "areas", "type": "checkbox", "label": "Affected areas", ... },
+        {
+            "name": "head_group", "type": "group", "title": "Head",
+            "show_if": { "field": "areas", "value": "head" },
+            "use": "modalities", "prefix": "head_"
+        },
+        {
+            "name": "stomach_group", "type": "group", "title": "Stomach",
+            "show_if": { "field": "areas", "value": "stomach" },
+            "use": "modalities", "prefix": "stomach_"
+        }
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>This resolves to <code>head_time_worse</code>, <code>head_helps</code>, <code>stomach_time_worse</code>, <code>stomach_helps</code> &mdash; all from one template definition. See <a href="demo8.html">Demo 8</a> for a full example with 6 areas and 5 modality questions each.</p>
+
+<table>
+    <tr><th>Property</th><th>On</th><th>Description</th></tr>
+    <tr><td><code>templates</code></td><td>form root</td><td>Object of named template arrays. Each value is an array of field definitions.</td></tr>
+    <tr><td><code>use</code></td><td>group field</td><td>Name of the template to clone as this group&rsquo;s children.</td></tr>
+    <tr><td><code>prefix</code></td><td>group field</td><td>String prepended to every template field name (e.g. <code>"head_"</code>).</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="on-submit">on_submit Actions</h2>
+
+<p>The <code>on_submit</code> object governs what happens after a valid submission passes through the gates. Think of it as the chain of command &mdash; each action fires in order, and each does its appointed duty:</p>
+
+<table>
+    <tr><th>Property</th><th>Type</th><th>Description</th></tr>
+    <tr><td><code>store</code></td><td>boolean</td><td>Store submission (default: <code>true</code>)</td></tr>
+    <tr><td><code>confirm_email</code></td><td>object</td><td>Send email to respondent (<code>to</code>, <code>subject</code>, <code>template</code>)</td></tr>
+    <tr><td><code>notify</code></td><td>object</td><td>Send email to admin (<code>to</code>, <code>subject</code>, <code>template</code>)</td></tr>
+    <tr><td><code>webhooks</code></td><td>array</td><td>URLs to POST submission data to</td></tr>
+    <tr><td><code>redirect</code></td><td>string</td><td>URL to redirect after submission</td></tr>
+    <tr><td><code>actions</code></td><td>array</td><td>Custom server-side actions</td></tr>
+</table>
+
+<p>All string properties support <code>{{field_name}}</code> interpolation. The subject line <code>"New contact: {{name}}"</code> becomes <code>"New contact: John"</code> at the moment of sending.</p>
+
+<p>See the <a href="demo1.html">live demos</a> for practical examples &mdash; from the simplest store-only arrangement (<a href="demo1.html">Demo 1</a>) through admin notification (<a href="demo2.html">Demo 2</a>), the full pipeline with webhooks and confirmation emails (<a href="demo3.html">Demo 3</a>), advanced multi-page forms with conditional logic and field groups (<a href="demo4.html">Demo 4</a>), complex scoring engines (<a href="demo5.html">Demo 5</a>, <a href="demo6.html">Demo 6</a>), a quiz with shuffled options (<a href="demo7.html">Demo 7</a>), to reusable field templates (<a href="demo8.html">Demo 8</a>).</p>
+
+<!-- ============================================================ -->
+<h2 id="embedding">Embedding</h2>
+
+<h3>Auto-init (simplest)</h3>
+
+<p>Two lines. Even Johnny could manage it.</p>
+
+<div class="code-block"><span class="lang">html</span><pre>&lt;div data-form="kontakt"&gt;&lt;/div&gt;
+&lt;script src="/barebonesforms/bbf.js"&gt;&lt;/script&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Manual init</h3>
+
+<p>For those who prefer to hold the reins themselves:</p>
+
+<div class="code-block"><span class="lang">html</span><pre>&lt;div id="my-form"&gt;&lt;/div&gt;
+&lt;script src="/barebonesforms/bbf.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+    BBF.render('kontakt', '#my-form', {
+        showTitle: false,
+        hideOnSuccess: true
+    });
+&lt;/script&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Data attributes</h3>
+<table>
+    <tr><th>Attribute</th><th>Effect</th></tr>
+    <tr><td><code>data-form="kontakt"</code></td><td>Form ID to render</td></tr>
+    <tr><td><code>data-show-title="false"</code></td><td>Hide form title</td></tr>
+    <tr><td><code>data-hide-on-success="true"</code></td><td>Hide form fields after success</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="cross-domain">Cross-Domain Embedding</h2>
+
+<p>When the form lives on one server and the page on another &mdash; a situation that requires careful handling, like doing business with a man you don't entirely trust.</p>
+
+<div class="callout warn">
+    <strong>baseUrl is required</strong>
+    When embedding from a remote host, you <strong>must</strong> pass <code>baseUrl</code> pointing to your BareBonesForms installation. Without it, <code>bbf.js</code> will attempt to load form definitions from the current domain &mdash; which is not where they live. This will fail, and the form will not render.
+</div>
+
+<div class="code-block"><span class="lang">html</span><pre>&lt;div id="my-form"&gt;&lt;/div&gt;
+&lt;script src="https://forms.example.com/barebonesforms/bbf.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+    BBF.render('kontakt', '#my-form', {
+        baseUrl: 'https://forms.example.com/barebonesforms/'
+    });
+&lt;/script&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Add the embedding origin to <code>allowed_origins</code> in <code>config.php</code>:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'allowed_origins' => ['https://www.mysite.com'],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="callout info">
+    <strong>CSRF + CORS</strong>
+    CSRF tokens are automatically skipped for cross-origin requests (they're protected by CORS headers instead). Same-origin requests use session-based HMAC tokens. The system handles this distinction without your intervention.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="styling">Styling</h2>
+
+<p>Include <code>bbf.css</code> for clean defaults, or write your own from scratch. I don't care which. All elements use <code>bbf-*</code> class names, so they won't collide with your existing styles:</p>
+
+<table>
+    <tr><th>Class</th><th>Element</th></tr>
+    <tr><td><code>.bbf-form-container</code></td><td>Outer wrapper</td></tr>
+    <tr><td><code>.bbf-form</code></td><td>Form element</td></tr>
+    <tr><td><code>.bbf-field</code></td><td>Field wrapper</td></tr>
+    <tr><td><code>.bbf-label</code></td><td>Label</td></tr>
+    <tr><td><code>.bbf-input</code></td><td>Input / select / textarea</td></tr>
+    <tr><td><code>.bbf-submit</code></td><td>Submit button</td></tr>
+    <tr><td><code>.bbf-message</code></td><td>Success / error message</td></tr>
+    <tr><td><code>.bbf-field-error</code></td><td>Field error text</td></tr>
+    <tr><td><code>.bbf-has-error</code></td><td>Field wrapper when invalid</td></tr>
+</table>
+
+<p>Delete <code>bbf.css</code> entirely if you prefer. The JavaScript doesn't depend on it. The forms will render naked, and you can dress them however you see fit.</p>
+
+<!-- ============================================================ -->
+<h2 id="language-support">Language Support</h2>
+
+<p>BareBonesForms speaks 28 tongues &mdash; and if that ain't enough for the clientele you're entertaining, you can teach it a new one in under five minutes. Every validation message, button label, and status text is translatable, both on the client and the server.</p>
+
+<h3>Included Languages (28)</h3>
+<table>
+    <tr><th>Code</th><th>Language</th><th>Code</th><th>Language</th></tr>
+    <tr><td><code>en</code></td><td>English (default)</td><td><code>nl</code></td><td>Nederlands</td></tr>
+    <tr><td><code>de</code></td><td>Deutsch</td><td><code>pl</code></td><td>Polski</td></tr>
+    <tr><td><code>fr</code></td><td>Fran&ccedil;ais</td><td><code>cs</code></td><td>&Ccaron;e&scaron;tina</td></tr>
+    <tr><td><code>es</code></td><td>Espa&ntilde;ol</td><td><code>sk</code></td><td>Sloven&ccaron;ina</td></tr>
+    <tr><td><code>it</code></td><td>Italiano</td><td><code>hu</code></td><td>Magyar</td></tr>
+    <tr><td><code>pt</code></td><td>Portugu&ecirc;s</td><td><code>ro</code></td><td>Rom&acirc;n&atilde;</td></tr>
+    <tr><td><code>pt-br</code></td><td>Portugu&ecirc;s Brasileiro</td><td><code>bg</code></td><td>&#1041;&#1098;&#1083;&#1075;&#1072;&#1088;&#1089;&#1082;&#1080;</td></tr>
+    <tr><td><code>sv</code></td><td>Svenska</td><td><code>el</code></td><td>&#917;&#955;&#955;&#951;&#957;&#953;&#954;&#940;</td></tr>
+    <tr><td><code>da</code></td><td>Dansk</td><td><code>tr</code></td><td>T&uuml;rk&ccedil;e</td></tr>
+    <tr><td><code>nb</code></td><td>Norsk bokm&aring;l</td><td><code>ru</code></td><td>&#1056;&#1091;&#1089;&#1089;&#1082;&#1080;&#1081;</td></tr>
+    <tr><td><code>fi</code></td><td>Suomi</td><td><code>uk</code></td><td>&#1059;&#1082;&#1088;&#1072;&#1111;&#1085;&#1089;&#1100;&#1082;&#1072;</td></tr>
+    <tr><td><code>et</code></td><td>Eesti</td><td><code>id</code></td><td>Bahasa Indonesia</td></tr>
+    <tr><td><code>ja</code></td><td>&#26085;&#26412;&#35486;</td><td><code>ko</code></td><td>&#54620;&#44397;&#50612;</td></tr>
+    <tr><td><code>zh</code></td><td>&#20013;&#25991;&#31616;&#20307;</td><td><code>zh-tw</code></td><td>&#32321;&#39636;&#20013;&#25991;</td></tr>
+    <tr><td><code>ar</code></td><td>&#1575;&#1604;&#1593;&#1585;&#1576;&#1610;&#1577;</td><td><code>hi</code></td><td>&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</td></tr>
+    <tr><td><code>th</code></td><td>&#3652;&#3607;&#3618;</td><td><code>tlh</code></td><td>tlhIngan Hol (Klingon) &mdash; Qapla'!</td></tr>
+</table>
+
+<h3>Client-side</h3>
+<p>Load a language pack after <code>bbf.js</code> and set <code>data-lang</code> on your form container:</p>
+
+<div class="code-block"><span class="lang">html</span><pre>&lt;script src="bbf.js"&gt;&lt;/script&gt;
+&lt;script src="lang/de.js"&gt;&lt;/script&gt;
+&lt;div data-form="kontakt" data-lang="de"&gt;&lt;/div&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Or pass the language in JavaScript:</p>
+
+<div class="code-block"><span class="lang">js</span><pre>BBF.render('kontakt', '#my-form', { lang: 'de' });</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Multiple forms on one page can each speak a different language. A polyglot arrangement that would impress even the most seasoned saloon-keeper.</p>
+
+<h3>Server-side</h3>
+<p>Set in <code>config.php</code>:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'lang' => 'de',</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Server-side validation errors will be returned in the configured language. Any key not found in the language file falls back to English. No missing messages, no broken forms &mdash; the system is more forgiving than I am.</p>
+
+<h3>Adding a Custom Language</h3>
+<p>Create two files in the <code>lang/</code> directory. Use <code>lang/en.js</code> and <code>lang/en.php</code> as your reference &mdash; they contain every key.</p>
+
+<p><strong>Client-side</strong> (<code>lang/xx.js</code>) &mdash; 25 translatable keys:</p>
+<div class="code-block"><span class="lang">js</span><pre>BBF.registerLang('xx', {
+    loading:       'Loading&hellip;',
+    submitDefault: 'Submit',
+    required:      '{label} is required.',
+    invalidEmail:  '{label} must be a valid email.',
+    // &hellip; see lang/en.js for all keys
+});</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>Server-side</strong> (<code>lang/xx.php</code>) &mdash; 14 validation message keys:</p>
+<div class="code-block"><span class="lang">php</span><pre>&lt;?php
+return [
+    'required'     => '{label} is required.',
+    'invalidEmail' => '{label} must be a valid email.',
+    // &hellip; see lang/en.php for all keys
+];</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Placeholders use <code>{label}</code>, <code>{min}</code>, <code>{max}</code>, <code>{status}</code>, <code>{id}</code>, <code>{message}</code> syntax. The system replaces them at runtime. If you forget a key, the English default takes over. If you misspell a placeholder, well &mdash; that's on you.</p>
+
+<!-- ============================================================ -->
+<h2 id="storage">Storage Backends</h2>
+
+<p>Four backends. One config line. Choose your weapon:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'storage' => 'file',   // or 'sqlite', 'mysql', 'csv'</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>File storage (default)</h3>
+<p>JSON files in <code>submissions/{form_id}/</code>. Zero configuration. Works everywhere. File locking for race conditions. The simplest arrangement &mdash; and often the wisest.</p>
+
+<h3>SQLite</h3>
+<p>Single file database. Zero config, SQL capable. Auto-creates on first submission. WAL mode for concurrency. For a man who wants the power of SQL without the burden of running a database server.</p>
+<div class="code-block"><span class="lang">php</span><pre>'storage' => 'sqlite',
+'sqlite'  => ['path' => __DIR__ . '/submissions/bbf.sqlite'],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>MySQL / MariaDB</h3>
+<p>Set <code>'storage' => 'mysql'</code> and fill in credentials. Table <code>bbf_submissions</code> auto-created. For high-volume operations where file-based storage starts sweating.</p>
+
+<h3>CSV</h3>
+<p>One CSV per form in <code>submissions/{form_id}.csv</code>. Opens in Excel, Google Sheets, or whatever spreadsheet your accountant swears by. File-locked writes. Column order from form definition.</p>
+
+<div class="callout info">
+    <strong>A word of candor about CSV</strong>
+    Multi-checkbox values are joined with <code>;</code> in CSV cells. CSV is best understood as human-readable export storage, not a fully reversible archive. If that bothers you, use SQLite. I won't judge.
+</div>
+
+<h3>Comparison</h3>
+
+<table>
+    <tr><th></th><th>File (JSON)</th><th>SQLite</th><th>MySQL</th><th>CSV</th></tr>
+    <tr><td><strong>Setup</strong></td><td>Zero config</td><td>Zero config</td><td>Requires DB</td><td>Zero config</td></tr>
+    <tr><td><strong>Scale</strong></td><td>&lt; 1k/form</td><td>&lt; 100k/form</td><td>Any volume</td><td>&lt; 5k/form</td></tr>
+    <tr><td><strong>Queries</strong></td><td>Basic</td><td>Full SQL</td><td>Full SQL</td><td>Sequential</td></tr>
+    <tr><td><strong>Best for</strong></td><td>Prototypes</td><td>Medium sites</td><td>Production</td><td>Spreadsheets</td></tr>
+</table>
+
+<h3>Per-form storage override</h3>
+
+<p>The global <code>storage</code> setting in <code>config.php</code> applies to all forms by default. But you can override it for individual forms by adding <code>"storage"</code> to the form JSON:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "id": "survey",
+    "storage": "sqlite",
+    "fields": [ ... ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>This form will store to SQLite while all others continue using the global backend. Accepted values: <code>file</code>, <code>csv</code>, <code>sqlite</code>, <code>mysql</code>. The corresponding backend configuration (SQLite path, MySQL credentials) is still read from <code>config.php</code>.</p>
+
+<!-- ============================================================ -->
+<h2 id="submissions-api">Submissions API</h2>
+
+<p>Every submission that passes through this system is yours to query. But first &mdash; authentication. I don't let strangers walk behind my bar, and neither should you.</p>
+
+<p>Set <code>api_token</code> in <code>config.php</code>:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'api_token' => 'your-secret-token',</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Pass the token via header (recommended &mdash; keeps it out of server logs and browser history, where any passing scoundrel might see it):</p>
+
+<div class="code-block"><span class="lang">bash</span><pre># Recommended: header auth (keeps the token where it belongs — out of sight)
+curl -H "X-BBF-Token: your-secret-token" "submissions.php?form=kontakt"
+
+# Fallback: query param (acceptable, if you must)
+GET submissions.php?form=kontakt&amp;token=YOUR_TOKEN
+
+# Pagination
+GET submissions.php?form=kontakt&amp;token=YOUR_TOKEN&amp;limit=20&amp;offset=40
+
+# Date filter
+GET submissions.php?form=kontakt&amp;token=YOUR_TOKEN&amp;from=2024-01-01&amp;to=2024-12-31
+
+# Single submission
+GET submissions.php?form=kontakt&amp;id=bbf_a1b2c3d4&amp;token=YOUR_TOKEN
+
+# Export CSV
+GET submissions.php?form=kontakt&amp;format=csv&amp;token=YOUR_TOKEN</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Response format</h3>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "form": "kontakt",
+    "returned": 20,
+    "total": 142,
+    "limit": 20,
+    "offset": 40,
+    "submissions": [
+        {
+            "id": "bbf_a1b2c3d4e5f6",
+            "form": "kontakt",
+            "data": { "name": "John", "email": "john@example.com" },
+            "meta": { "submitted": "2024-06-15T10:30:00+02:00", "ip": "..." }
+        }
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>returned</code></td><td>Number of submissions in this page</td></tr>
+    <tr><td><code>total</code></td><td>Total matching submissions across all pages</td></tr>
+    <tr><td><code>limit</code></td><td>Max items per page (default: 100, max: 1000)</td></tr>
+    <tr><td><code>offset</code></td><td>Number of items skipped</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="email-templates">Email Templates</h2>
+
+<p>HTML templates in <code>templates/</code> use <code>{{field_name}}</code> placeholders. All values are HTML-escaped, because a man who doesn't sanitize his inputs deserves every injection he gets.</p>
+
+<table>
+    <tr><th>Variable</th><th>Value</th></tr>
+    <tr><td><code>{{_form}}</code></td><td>Form name</td></tr>
+    <tr><td><code>{{_id}}</code></td><td>Submission ID</td></tr>
+    <tr><td><code>{{_time}}</code></td><td>Submission timestamp</td></tr>
+    <tr><td><code>{{_summary}}</code></td><td>HTML table of all fields</td></tr>
+    <tr><td><code>{{field_name}}</code></td><td>Any form field value</td></tr>
+</table>
+
+<div class="callout tip">
+    <strong>UTF-8 support</strong>
+    Email subjects and sender names with diacritics are automatically RFC 2047 encoded (both SMTP and <code>mail()</code>). Because we live in a world where people have names with accents, and any system that cannot handle that is not fit for purpose.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="custom-actions">Custom Actions</h2>
+
+<p>A man sometimes needs to do things his own way. Create a PHP file in <code>actions/</code> and reference it in your form JSON:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>"actions": [
+    { "type": "log_to_crm", "crm_url": "https://..." }
+]</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="code-block"><span class="lang">php</span><pre>// actions/log_to_crm.php
+// Available variables: $action, $submission, $config
+
+$url = $action['crm_url'] ?? '';
+if ($url) {
+    file_get_contents($url . '?' . http_build_query($submission['data']));
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="callout warn">
+    <strong>Trusted code only &mdash; and I shall say this once</strong>
+    Actions run as PHP includes with full server access. They are not sandboxed. Only place code you trust in the <code>actions/</code> directory. If you let a stranger put files there, whatever follows is on your own head.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="security">Security Model</h2>
+
+<p>The world is full of those who would exploit what you build. BareBonesForms does not pretend this isn't so. Sensible defaults for shared PHP hosting &mdash; here is how we maintain order in this camp:</p>
+
+<table>
+    <tr><th>Protection</th><th>How</th></tr>
+    <tr><td><strong>CSRF tokens</strong></td><td>Session-based HMAC for same-origin. Automatic via <code>bbf.js</code>.</td></tr>
+    <tr><td><strong>Honeypot</strong></td><td>Hidden field catches bots. They walk right into it, the poor stupid creatures.</td></tr>
+    <tr><td><strong>Rate limiting</strong></td><td>File-locked per-IP counter. Default: 10/minute.</td></tr>
+    <tr><td><strong>Server-side validation</strong></td><td>All rules enforced on server. The client's opinion is noted and ignored.</td></tr>
+    <tr><td><strong>Input sanitization</strong></td><td><code>htmlspecialchars()</code> in all email templates. No exceptions.</td></tr>
+    <tr><td><strong>Email header injection</strong></td><td>To/Subject sanitized, emails validated.</td></tr>
+    <tr><td><strong>Signed webhooks</strong></td><td>HMAC-SHA256 via <code>X-BBF-Signature</code>.</td></tr>
+    <tr><td><strong>CORS control</strong></td><td>Configurable <code>allowed_origins</code>. Empty = same origin only.</td></tr>
+    <tr><td><strong>API authentication</strong></td><td>Token required. Disabled until you configure it.</td></tr>
+    <tr><td><strong>SQL injection</strong></td><td>PDO prepared statements. Every single one.</td></tr>
+    <tr><td><strong>Directory access</strong></td><td><code>.htaccess</code> blocks <code>/submissions/</code>, <code>/logs/</code>, <code>config.php</code>.</td></tr>
+    <tr><td><strong>CSV formula injection</strong></td><td>Cells starting with <code>=</code> <code>+</code> <code>-</code> <code>@</code> are prefixed. Your spreadsheet is safe.</td></tr>
+</table>
+
+<h3>Web server compatibility</h3>
+<p>The <code>.htaccess</code> works on <strong>Apache only</strong>. If you run Nginx or LiteSpeed, you'll need equivalent rules &mdash; fail to do so, and your submissions directory will be open to every passing scoundrel:</p>
+
+<div class="code-block"><span class="lang">nginx</span><pre>location ~ ^/(submissions|logs)/ { deny all; }
+location = /config.php { deny all; }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<!-- ============================================================ -->
+<h2 id="privacy">Privacy</h2>
+
+<p>By default, BareBonesForms stores IP address and user-agent with each submission. If your conscience &mdash; or your lawyer &mdash; demands otherwise:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'store_ip'         => false,  // stop storing IP addresses
+'store_user_agent' => false,  // stop storing user-agent strings</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Submissions always store the timestamp. Form field data is stored as submitted. What you do with it is your affair.</p>
+
+<!-- ============================================================ -->
+<h2 id="webhooks">Webhooks</h2>
+
+<p>When <code>webhook_secret</code> is set in <code>config.php</code>, every webhook POST carries a signature &mdash; so the receiving end knows the message is genuine and not some impostor's forgery:</p>
+
+<div class="code-block"><span class="lang">http</span><pre>X-BBF-Signature: sha256=&lt;hex-encoded-hmac&gt;</pre></div>
+
+<p>Verify on the receiving end. Trust, but verify. Actually &mdash; just verify:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>$payload = file_get_contents('php://input');
+$expected = 'sha256=' . hash_hmac('sha256', $payload, 'your-webhook-secret');
+$received = $_SERVER['HTTP_X_BBF_SIGNATURE'] ?? '';
+if (!hash_equals($expected, $received)) {
+    http_response_code(403);
+    exit('Invalid signature');
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<!-- ============================================================ -->
+<h2 id="sandbox">Sandbox Mode</h2>
+
+<p>A man ought to test his arrangements before the stakes are real. Enable in <code>config.php</code>:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'sandbox' => true,</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Then open <code>sandbox.php</code>. A dry run. A rehearsal before the curtain rises. The sandbox:</p>
+
+<ul>
+    <li>Renders any form from <code>forms/</code></li>
+    <li>Runs full server-side validation</li>
+    <li>Shows detailed validation results per field</li>
+    <li>Previews email content (confirmation + notification) with rendered templates</li>
+    <li>Lists webhook URLs that would be called</li>
+    <li>Shows custom action files and whether they exist</li>
+    <li>Does <strong>NOT</strong> store submissions, send emails, fire webhooks, or run actions</li>
+</ul>
+
+<div class="callout warn">
+    <strong>Disable before going public</strong>
+    Set <code>'sandbox' => false</code> before production. The sandbox exposes form definitions and email templates &mdash; information that belongs behind closed doors, not on the main street for every hooplehead to gawk at.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="production">Production Checklist</h2>
+
+<p>Before you open the doors to the public, attend to every item on this list. Skip one, and you'll regret it. I've seen it happen.</p>
+
+<ul class="checklist">
+    <li>Copy <code>config.example.php</code> &rarr; <code>config.php</code> and fill in all settings</li>
+    <li>Set a strong <code>api_token</code> for submissions API access</li>
+    <li>Set <code>webhook_secret</code> if using webhooks</li>
+    <li>Configure SMTP for reliable email delivery (<code>mail.method</code> &rarr; <code>smtp</code>)</li>
+    <li>Verify <code>.htaccess</code> works (or add Nginx/LiteSpeed equivalent)</li>
+    <li>Test with HTTPS &mdash; all forms should run over TLS</li>
+    <li>Review form definitions with <code>form.schema.json</code> validation</li>
+    <li>Set appropriate <code>rate_limit</code> for your traffic</li>
+    <li>Verify <code>submissions/</code> and <code>logs/</code> are not web-accessible</li>
+    <li>Set <code>allowed_origins</code> if embedding cross-domain</li>
+    <li>Review privacy settings: <code>store_ip</code> / <code>store_user_agent</code></li>
+    <li>Disable sandbox mode: <code>'sandbox' => false</code></li>
+    <li>Run <code>check.php</code> to verify installation</li>
+</ul>
+
+</main>
+
+<script>
+function copyCode(btn) {
+    const pre = btn.closest('.code-block').querySelector('pre');
+    const active = pre.querySelector('.tab-content.active');
+    const text = (active || pre).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+}
+
+// Highlight active sidebar link on scroll
+const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            document.querySelectorAll('.sidebar a').forEach(a => {
+                a.style.color = a.getAttribute('href') === '#' + entry.target.id
+                    ? 'var(--accent)' : '';
+                a.style.fontWeight = a.getAttribute('href') === '#' + entry.target.id
+                    ? '600' : '';
+            });
+        }
+    });
+}, { rootMargin: '-80px 0px -60% 0px' });
+
+document.querySelectorAll('.content h2[id]').forEach(h => observer.observe(h));
+</script>
+</body>
+</html>

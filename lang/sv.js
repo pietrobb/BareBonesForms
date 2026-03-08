@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — Svenska (Swedish) language pack
+ */
+BBF.registerLang('sv', {
+    loading:           'Laddar…',
+    submitDefault:     'Skicka',
+    submittingDefault: 'Skickar…',
+    successDefault:    'Tack! Ditt formulär har tagits emot.',
+    errorDefault:      'Något gick fel.',
+    networkError:      'Nätverksfel. Försök igen.',
+    serverError:       'Serverfel ({status})',
+    formNotFound:      'Formulär "{id}" hittades inte ({status})',
+    loadError:         'Kunde inte ladda formuläret: {message}',
+    required:          '{label} är obligatoriskt.',
+    invalidEmail:      '{label} måste vara en giltig e-postadress.',
+    invalidUrl:        '{label} måste vara en giltig URL.',
+    invalidTel:        '{label} måste vara ett giltigt telefonnummer.',
+    invalidNumber:     '{label} måste vara ett tal.',
+    numberMin:         '{label} måste vara minst {min}.',
+    numberMax:         '{label} får vara högst {max}.',
+    invalidOption:     '{label} innehåller ett ogiltigt val.',
+    tooShort:          '{label} måste vara minst {min} tecken.',
+    tooLong:           '{label} får vara högst {max} tecken.',
+    invalidFormat:     '{label} har ogiltigt format.',
+    emailMismatch:    '{label}-adresserna matchar inte.',
+    dateMin:          '{label} måste vara {min} eller senare.',
+    dateMax:          '{label} måste vara {max} eller tidigare.',
+    nextPage:         'Nästa',
+    prevPage:         'Föregående',
+});

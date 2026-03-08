@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — Українська (Ukrainian) language pack
+ */
+BBF.registerLang('uk', {
+    loading:           'Завантаження…',
+    submitDefault:     'Надіслати',
+    submittingDefault: 'Надсилання…',
+    successDefault:    'Дякуємо! Вашу форму отримано.',
+    errorDefault:      'Щось пішло не так.',
+    networkError:      'Помилка мережі. Спробуйте ще раз.',
+    serverError:       'Помилка сервера ({status})',
+    formNotFound:      'Форму «{id}» не знайдено ({status})',
+    loadError:         'Не вдалося завантажити форму: {message}',
+    required:          '{label} є обов\'язковим полем.',
+    invalidEmail:      '{label} має бути дійсною адресою електронної пошти.',
+    invalidUrl:        '{label} має бути дійсною URL-адресою.',
+    invalidTel:        '{label} має бути дійсним номером телефону.',
+    invalidNumber:     '{label} має бути числом.',
+    numberMin:         '{label} має бути не менше {min}.',
+    numberMax:         '{label} має бути не більше {max}.',
+    invalidOption:     '{label} містить недійсний вибір.',
+    tooShort:          '{label} має містити щонайменше {min} символів.',
+    tooLong:           '{label} має містити не більше {max} символів.',
+    invalidFormat:     '{label} має недійсний формат.',
+    emailMismatch:    'Адреси {label} не збігаються.',
+    dateMin:          '{label} має бути {min} або пізніше.',
+    dateMax:          '{label} має бути {max} або раніше.',
+    nextPage:         'Далі',
+    prevPage:         'Назад',
+});

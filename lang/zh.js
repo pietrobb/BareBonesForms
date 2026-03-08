@@ -1,0 +1,30 @@
+/**
+ * BareBonesForms — 中文 (Chinese Simplified) language pack
+ */
+BBF.registerLang('zh', {
+    loading:           '加载中…',
+    submitDefault:     '提交',
+    submittingDefault: '提交中…',
+    successDefault:    '谢谢！您的提交已收到。',
+    errorDefault:      '出了点问题。',
+    networkError:      '网络错误，请重试。',
+    serverError:       '服务器错误 ({status})',
+    formNotFound:      '未找到表单「{id}」({status})',
+    loadError:         '无法加载表单：{message}',
+    required:          '{label}为必填项。',
+    invalidEmail:      '{label}必须是有效的电子邮件地址。',
+    invalidUrl:        '{label}必须是有效的网址。',
+    invalidTel:        '{label}必须是有效的电话号码。',
+    invalidNumber:     '{label}必须是数字。',
+    numberMin:         '{label}不能小于{min}。',
+    numberMax:         '{label}不能大于{max}。',
+    invalidOption:     '{label}包含无效的选项。',
+    tooShort:          '{label}至少需要{min}个字符。',
+    tooLong:           '{label}不能超过{max}个字符。',
+    invalidFormat:     '{label}格式无效。',
+    emailMismatch:    '{label}地址不匹配。',
+    dateMin:          '{label}必须在{min}或之后。',
+    dateMax:          '{label}必须在{max}或之前。',
+    nextPage:         '下一步',
+    prevPage:         '上一步',
+});
