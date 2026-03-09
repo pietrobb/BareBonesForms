@@ -87,6 +87,83 @@
 
 /* large = default 100%, no class needed */
 
+/* ─── Label position: left ───────────── */
+
+.bbf-label-left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.bbf-label-left > .bbf-label {
+    flex: 0 0 auto;
+    min-width: 100px;
+    margin-bottom: 0;
+}
+
+.bbf-label-left > .bbf-input,
+.bbf-label-left > .bbf-input-group,
+.bbf-label-left > select.bbf-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.bbf-label-left > .bbf-field-desc {
+    flex-basis: 100%;
+}
+
+.bbf-label-left > .bbf-field-error {
+    flex-basis: 100%;
+}
+
+/* ─── Input prefix / suffix ──────────── */
+
+.bbf-input-group {
+    display: flex;
+    align-items: stretch;
+}
+
+.bbf-input-group > .bbf-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border-radius: 0;
+}
+
+.bbf-input-prefix,
+.bbf-input-suffix {
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    color: #555;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.bbf-input-prefix {
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+}
+
+.bbf-input-suffix {
+    border-left: none;
+    border-radius: 0 6px 6px 0;
+}
+
+.bbf-input-group > .bbf-input:first-child {
+    border-radius: 6px 0 0 6px;
+}
+
+.bbf-input-group > .bbf-input:last-child {
+    border-radius: 0 6px 6px 0;
+}
+
+.bbf-input-group > .bbf-input:only-child {
+    border-radius: 6px;
+}
+
 /* ─── Readonly ───────────────────────── */
 
 .bbf-readonly {

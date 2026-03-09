@@ -759,6 +759,9 @@
             // Custom CSS class
             if (field.css_class) wrap.className += ' ' + field.css_class;
 
+            // Label position: "left" puts label and input side by side
+            if (field.label_position === 'left') wrap.classList.add('bbf-label-left');
+
             // Label (for non-group fields)
             if (type !== 'radio' && type !== 'checkbox') {
                 if (field.label) {
@@ -865,7 +868,27 @@
             ariaDesc.push(`bbf-${field.name}-error`);
             input.setAttribute('aria-describedby', ariaDesc.join(' '));
 
-            wrap.appendChild(input);
+            // Prefix / suffix (e.g. "€", "kg", "ks")
+            if (field.prefix || field.suffix) {
+                const inputGroup = document.createElement('div');
+                inputGroup.className = 'bbf-input-group';
+                if (field.prefix) {
+                    const pre = document.createElement('span');
+                    pre.className = 'bbf-input-prefix';
+                    pre.textContent = field.prefix;
+                    inputGroup.appendChild(pre);
+                }
+                inputGroup.appendChild(input);
+                if (field.suffix) {
+                    const suf = document.createElement('span');
+                    suf.className = 'bbf-input-suffix';
+                    suf.textContent = field.suffix;
+                    inputGroup.appendChild(suf);
+                }
+                wrap.appendChild(inputGroup);
+            } else {
+                wrap.appendChild(input);
+            }
 
             // "Other" text field for select
             if (type === 'select' && field.other) {
