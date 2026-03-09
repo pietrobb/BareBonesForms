@@ -10,6 +10,27 @@ $config = null;
 $results = [];
 define('BBF_LOADED', true);
 
+// ─── Access control ─────────────────────────────────────────────
+// check.php exposes server details. Protect it:
+// - Localhost: always allowed (development)
+// - Remote: requires ?token=<api_token> from config.php
+$isLocal = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)
+    || ($_SERVER['SERVER_NAME'] ?? '') === 'localhost';
+
+if (!$isLocal) {
+    // Load config to get api_token for remote access
+    $configFile = __DIR__ . '/config.php';
+    if (file_exists($configFile)) {
+        $_tmpConfig = @require $configFile;
+        $apiToken = is_array($_tmpConfig) ? ($_tmpConfig['api_token'] ?? '') : '';
+        $providedToken = $_GET['token'] ?? '';
+        if ($apiToken === '' || !hash_equals($apiToken, $providedToken)) {
+            http_response_code(403);
+            die('<!DOCTYPE html><html><body style="font-family:system-ui;padding:40px;text-align:center"><h1>Access denied</h1><p>check.php exposes server details. On remote servers, pass your api_token:<br><code>check.php?token=YOUR_API_TOKEN</code></p><p style="margin-top:16px;color:#888;">On localhost, access is unrestricted.</p></body></html>');
+        }
+    }
+}
+
 function check(string $group, string $name, bool $pass, string $detail = '', string $level = 'error'): bool {
     global $results;
     $results[] = [

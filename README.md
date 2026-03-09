@@ -72,11 +72,12 @@ Demos 1–3 cover backend configuration. Demo 4 showcases the form engine's core
 1. Upload the barebonesforms/ folder to your hosting
 2. Copy config.example.php → config.php
 3. Fill in storage and mail settings
-4. Create a JSON file in forms/
-5. Embed: <div data-form="kontakt"></div>
+4. Open check.php in your browser — fix any errors it reports
+5. Delete check.php — it exposes server details
+6. Create a JSON file in forms/
+7. Embed: <div data-form="kontakt"></div>
          <script src="bbf.js"></script>
-6. Done. Pour yourself a glass — beverage of your choosing —
-   and sit back. You've earned it.
+8. Done.
 ```
 
 ---
@@ -581,8 +582,8 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] `submissions/` and `logs/` not web-accessible
 - [ ] `allowed_origins` set if embedding cross-domain
 - [ ] `'sandbox' => false` for production
-- [ ] `check.php` run, all checks passed
-- [ ] `check.php` deleted after verification
+- [ ] `check.php` run, all checks passed *(remote access requires `?token=<api_token>`)*
+- [ ] **`check.php` deleted after verification** — it exposes PHP version, extensions, paths, and config details
 
 ---
 

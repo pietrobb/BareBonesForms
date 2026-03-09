@@ -202,15 +202,16 @@ details summary:hover { text-decoration: underline; }
 
 <p><strong>1.</strong> Upload the <code>barebonesforms/</code> folder to your hosting.</p>
 <p><strong>2.</strong> Copy <code>config.example.php</code> &rarr; <code>config.php</code> and edit it. Once.</p>
-<p><strong>3.</strong> Create a form JSON in <code>forms/</code>.</p>
-<p><strong>4.</strong> Embed it in your page:</p>
+<p><strong>3.</strong> Open <code>check.php</code> in your browser &mdash; fix any errors it reports. Then <strong>delete check.php</strong> (it exposes server details to anyone who knows the URL).</p>
+<p><strong>4.</strong> Create a form JSON in <code>forms/</code>.</p>
+<p><strong>5.</strong> Embed it in your page:</p>
 
 <div class="code-block"><span class="lang">html</span><pre>&lt;div data-form="kontakt"&gt;&lt;/div&gt;
 &lt;script src="/barebonesforms/bbf.js"&gt;&lt;/script&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p>That's the full snippet. <code>bbf.js</code> auto-loads <code>bbf.css</code> from the same directory &mdash; no need for a separate <code>&lt;link&gt;</code> tag.</p>
 
-<p><strong>5.</strong> Done. The form renders, validates, and submits. Pour yourself a glass &mdash; beverage of your choosing, and sit back. You've earned it.</p>
+<p><strong>6.</strong> Done. The form renders, validates, and submits.</p>
 
 <!-- ============================================================ -->
 <h2 id="file-structure">File Structure</h2>
@@ -220,7 +221,7 @@ details summary:hover { text-decoration: underline; }
 ├── submit.php          <span class="comment">&larr; POST handler. Don't touch unless you know what you're doing.</span>
 ├── submissions.php     <span class="comment">&larr; API: list/export submissions</span>
 ├── sandbox.php         <span class="comment">&larr; Test forms without consequences</span>
-├── check.php           <span class="comment">&larr; Installation diagnostics. Run it. Trust it.</span>
+├── check.php           <span class="comment">&larr; Installation diagnostics. Run it. Then delete it.</span>
 ├── docs.html           <span class="comment">&larr; This very document</span>
 ├── bbf.js              <span class="comment">&larr; Form renderer (zero dependencies, as God intended)</span>
 ├── bbf.css             <span class="comment">&larr; Default styles (auto-loaded by bbf.js &mdash; override or replace as needed)</span>
@@ -1071,7 +1072,8 @@ if (!hash_equals($expected, $received)) {
     <li>Set <code>allowed_origins</code> if embedding cross-domain</li>
     <li>Review privacy settings: <code>store_ip</code> / <code>store_user_agent</code></li>
     <li>Disable sandbox mode: <code>'sandbox' => false</code></li>
-    <li>Run <code>check.php</code> to verify installation</li>
+    <li>Run <code>check.php</code> to verify installation (remote access requires <code>?token=&lt;api_token&gt;</code>)</li>
+    <li><strong>Delete <code>check.php</code> after verification</strong> &mdash; it exposes PHP version, extensions, directory paths, and configuration details</li>
 </ul>
 
 </main>
