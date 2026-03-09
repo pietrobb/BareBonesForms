@@ -14,6 +14,7 @@
  * Authentication required. Set api_token in config.php.
  */
 
+define('BBF_LOADED', true);
 if (!file_exists(__DIR__ . '/config.php')) {
     http_response_code(500);
     header('Content-Type: application/json; charset=utf-8');

@@ -10,6 +10,7 @@
 
 // ─── Bootstrap ──────────────────────────────────────────────────
 error_reporting(E_ALL);
+define('BBF_LOADED', true);
 if (!file_exists(__DIR__ . '/config.php')) {
     http_response_code(500);
     header('Content-Type: application/json; charset=utf-8');

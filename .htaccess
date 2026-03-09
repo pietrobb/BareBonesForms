@@ -1,16 +1,31 @@
-# BareBonesForms — Protect sensitive directories
-# Place this in the root or copy rules to your main .htaccess
+# BareBonesForms — Protect sensitive files and directories
+# These rules work on Apache with mod_rewrite enabled.
 #
-# WARNING: These rules work on Apache only.
-# For Nginx or LiteSpeed, add equivalent rules to your server config.
-# See README.md → Security Model → Web server compatibility.
+# ─── Nginx equivalent (add to your server block) ──────────────
+# location ~ ^/config        { deny all; return 403; }
+# location ~ \.(bak|swp|save|orig|old)$ { deny all; return 403; }
+# location ~ ~$              { deny all; return 403; }
+# location ~ /\.git          { deny all; return 403; }
+# location ~ ^/submissions/  { deny all; return 403; }
+# location ~ ^/logs/         { deny all; return 403; }
+# ───────────────────────────────────────────────────────────────
 
-# Block direct access to submissions, logs, and config
-<FilesMatch "^config\.php$">
+# Block all config files — config.php, config.example.php,
+# and editor backups: config.php~, config.php.bak, .config.php.swp, etc.
+<FilesMatch "^config">
     Require all denied
 </FilesMatch>
 
-# Block access to submissions directory
+# Block editor backup and temp files (any file)
+# Catches: file.php~, file.bak, file.swp, file.save, file.orig, #file#
+<FilesMatch "\.(bak|swp|save|orig|old)$|~$|^#.*#$">
+    Require all denied
+</FilesMatch>
+
+# Block .git and other hidden version control directories
 RewriteEngine On
+RewriteRule ^\.git - [F,L]
+
+# Block access to submissions and logs directories
 RewriteRule ^submissions/ - [F,L]
 RewriteRule ^logs/ - [F,L]

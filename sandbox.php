@@ -10,6 +10,7 @@
  */
 
 // Bootstrap
+define('BBF_LOADED', true);
 if (!file_exists(__DIR__ . '/config.php')) {
     die('Missing config.php. Copy config.example.php to config.php and edit it.');
 }

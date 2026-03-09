@@ -6,6 +6,9 @@
  * BareBonesForms will not run without config.php.
  */
 
+// Security: prevent direct browser access (only included by BBF scripts)
+defined('BBF_LOADED') || exit;
+
 return [
 
     // ─── Storage ────────────────────────────────────────────────

@@ -8,6 +8,7 @@
 
 $config = null;
 $results = [];
+define('BBF_LOADED', true);
 
 function check(string $group, string $name, bool $pass, string $detail = '', string $level = 'error'): bool {
     global $results;
@@ -124,7 +125,19 @@ foreach ($dirs as $label => $dir) {
 // ═════════════════════════════════════════════════════════════
 
 check('Security', '.htaccess present', file_exists(__DIR__ . '/.htaccess'),
-    'Protects config.php and data dirs on Apache. For Nginx, configure manually.', 'warn');
+    'Protects config.php and data dirs on Apache. For Nginx, see .htaccess for equivalent rules.', 'warn');
+
+// Check that config.php is not web-accessible (active probe)
+$selfUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http')
+    . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
+    . dirname($_SERVER['REQUEST_URI'] ?? '/') . '/config.php';
+$ctx = stream_context_create(['http' => ['timeout' => 3, 'ignore_errors' => true]]);
+$probe = @file_get_contents($selfUrl, false, $ctx);
+$probeBlocked = ($probe === false || (isset($http_response_header) && preg_match('/\b(403|404)\b/', $http_response_header[0] ?? '')));
+check('Security', 'config.php blocked via HTTP', $probeBlocked,
+    $probeBlocked
+        ? 'Direct HTTP access to config.php is denied.'
+        : 'WARNING: config.php may be accessible via browser! Verify your .htaccess or server config blocks it.');
 
 // Check that core files exist
 check('Security', 'submit.php exists', file_exists(__DIR__ . '/submit.php'));
