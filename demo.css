@@ -211,6 +211,8 @@ body {
 .form-column .bbf-option        { color: var(--text-primary); }
 .form-column .bbf-fieldset      { color: var(--text-primary); }
 .form-column .bbf-section-title { color: var(--text-primary); }
+.form-column .bbf-section-desc  { color: var(--text-muted); }
+.form-column .bbf-group-title   { color: var(--text-primary); }
 .form-column .bbf-section       { border-color: var(--card-border); }
 
 .form-column .bbf-input,
