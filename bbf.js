@@ -548,6 +548,9 @@
                 // Validate ALL data fields (flatten groups, skip non-data types)
                 const allFields = allFlat.filter(f => f.type !== 'page_break' && f.type !== 'section' && f.type !== 'group');
                 const errors = this._validate(allFields, el, langCode);
+                // Cross-field validations
+                const crossErrors = this._validateCrossField(form.validations, el);
+                Object.assign(errors, crossErrors);
                 this._showErrors(el, errors);
                 if (Object.keys(errors).length > 0) return;
 
@@ -1305,6 +1308,37 @@
             return errors;
         },
 
+        // Cross-field validations (form.validations array)
+        _validateCrossField: function(validations, formEl) {
+            var errors = {};
+            if (!validations || !validations.length) return errors;
+            var self = this;
+            validations.forEach(function(rule) {
+                var fields = rule.fields || [];
+                var key = '_validation_' + fields.join('_');
+                if (rule.type === 'min_sum') {
+                    var sum = 0;
+                    fields.forEach(function(name) {
+                        var val = parseFloat(self._getFieldValue(formEl, name)) || 0;
+                        sum += val;
+                    });
+                    if (sum < (rule.min || 1)) {
+                        errors[key] = rule.message || 'Validation failed';
+                    }
+                } else if (rule.type === 'min_filled') {
+                    var filled = 0;
+                    fields.forEach(function(name) {
+                        var val = self._getFieldValue(formEl, name);
+                        if (val !== '' && val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) filled++;
+                    });
+                    if (filled < (rule.min || 1)) {
+                        errors[key] = rule.message || 'Validation failed';
+                    }
+                }
+            });
+            return errors;
+        },
+
         _showErrors: function(formEl, errors) {
             this._clearErrors(formEl);
             let firstInput = null;
@@ -1318,6 +1352,14 @@
                     if (inp) {
                         inp.setAttribute('aria-invalid', 'true');
                         if (!firstInput) firstInput = inp;
+                    }
+                } else if (name.startsWith('_validation_')) {
+                    // Cross-field error — show in form message area
+                    const msgEl = formEl.querySelector('.bbf-message');
+                    if (msgEl) {
+                        msgEl.className = 'bbf-message bbf-message-error';
+                        msgEl.textContent = msg;
+                        msgEl.style.display = '';
                     }
                 }
             });

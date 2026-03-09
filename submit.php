@@ -450,6 +450,35 @@ if ($isSandbox) {
     exit;
 }
 
+// ─── Cross-field validations ────────────────────────────────────
+if (!empty($form['validations'])) {
+    foreach ($form['validations'] as $rule) {
+        $ruleFields = $rule['fields'] ?? [];
+        $ruleType = $rule['type'] ?? '';
+        $ruleMin = $rule['min'] ?? 1;
+        $ruleMsg = $rule['message'] ?? 'Validation failed';
+
+        if ($ruleType === 'min_sum') {
+            $sum = 0;
+            foreach ($ruleFields as $fn) {
+                $sum += floatval($input[$fn] ?? 0);
+            }
+            if ($sum < $ruleMin) {
+                $errors['_cross_' . implode('_', $ruleFields)] = $ruleMsg;
+            }
+        } elseif ($ruleType === 'min_filled') {
+            $filled = 0;
+            foreach ($ruleFields as $fn) {
+                $v = $input[$fn] ?? '';
+                if ($v !== '' && $v !== null && !(is_array($v) && empty($v))) $filled++;
+            }
+            if ($filled < $ruleMin) {
+                $errors['_cross_' . implode('_', $ruleFields)] = $ruleMsg;
+            }
+        }
+    }
+}
+
 // ─── Production: reject invalid submissions ─────────────────────
 if (!empty($errors)) {
     respond(422, 'Validation failed.', ['errors' => $errors]);
