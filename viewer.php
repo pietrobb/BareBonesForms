@@ -326,8 +326,19 @@ if ($action === 'delete') {
 if ($action === 'export') {
     $formId = sanitizeId($_GET['form'] ?? '');
     if (!$formId) viewerRespond(400, ['error' => 'Missing form ID.']);
+    $exportFrom = $_GET['from'] ?? null;
+    $exportTo   = $_GET['to'] ?? null;
+    $exportLimit = 100000;
+    $last = $_GET['last'] ?? '';
+    if ($last !== '' && $exportFrom === null) {
+        if (preg_match('/^(\d+)d$/i', $last, $m))      $exportFrom = date('Y-m-d', strtotime("-{$m[1]} days"));
+        elseif (preg_match('/^(\d+)h$/i', $last, $m))   $exportFrom = date('c', strtotime("-{$m[1]} hours"));
+        elseif (preg_match('/^(\d+)w$/i', $last, $m))    $exportFrom = date('Y-m-d', strtotime("-{$m[1]} weeks"));
+        elseif (preg_match('/^(\d+)m$/i', $last, $m))    $exportFrom = date('Y-m-d', strtotime("-{$m[1]} months"));
+        elseif (preg_match('/^(\d+)$/', $last, $m))       $exportLimit = max(1, min(100000, intval($m[1])));
+    }
     $total = null;
-    $subs = loadSubsPage($formId, $config, 100000, 0, $_GET['from'] ?? null, $_GET['to'] ?? null, $total);
+    $subs = loadSubsPage($formId, $config, $exportLimit, 0, $exportFrom, $exportTo, $total);
     $defFile = $formsDir . '/' . $formId . '.json';
     $def = file_exists($defFile) ? @json_decode(file_get_contents($defFile), true) : null;
     header('Content-Type: text/csv; charset=utf-8');

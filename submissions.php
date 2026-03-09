@@ -53,6 +53,22 @@ $offset = max(0, intval($_GET['offset'] ?? 0));
 $dateFrom = $_GET['from'] ?? null;
 $dateTo = $_GET['to'] ?? null;
 
+// Convenience: ?last=7d, ?last=24h, ?last=30 (items)
+$last = $_GET['last'] ?? '';
+if ($last !== '' && $dateFrom === null) {
+    if (preg_match('/^(\d+)d$/i', $last, $m)) {
+        $dateFrom = date('Y-m-d', strtotime("-{$m[1]} days"));
+    } elseif (preg_match('/^(\d+)h$/i', $last, $m)) {
+        $dateFrom = date('c', strtotime("-{$m[1]} hours"));
+    } elseif (preg_match('/^(\d+)w$/i', $last, $m)) {
+        $dateFrom = date('Y-m-d', strtotime("-{$m[1]} weeks"));
+    } elseif (preg_match('/^(\d+)m$/i', $last, $m)) {
+        $dateFrom = date('Y-m-d', strtotime("-{$m[1]} months"));
+    } elseif (preg_match('/^(\d+)$/', $last, $m)) {
+        $limit = max(1, min(10000, intval($m[1])));
+    }
+}
+
 $total = null;
 switch ($config['storage']) {
     case 'mysql':
