@@ -965,6 +965,13 @@
                 inp.name = field.name;
                 inp.id = `bbf-${field.name}-${i}`;
                 inp.value = typeof o === 'object' ? o.value : o;
+                // Default checked: field.value (string for radio, array for checkbox) or option-level checked
+                if (typeof o === 'object' && o.checked) {
+                    inp.checked = true;
+                } else if (field.value !== undefined) {
+                    if (type === 'radio' && String(field.value) === inp.value) inp.checked = true;
+                    else if (type === 'checkbox' && Array.isArray(field.value) && field.value.includes(inp.value)) inp.checked = true;
+                }
                 const span = document.createElement('span');
                 span.textContent = typeof o === 'object' ? o.label : o;
                 optWrap.appendChild(inp);
