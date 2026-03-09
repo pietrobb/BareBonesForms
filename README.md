@@ -6,7 +6,7 @@ Define a form as JSON. Upload to hosting. Embed. Collect submissions. Done.
 
 PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 32 Languages · Shared-hosting friendly
 
-**[Documentation →](docs.html)** · **[Sandbox →](sandbox.php)** · **[Installation Check →](check.php)** · **[Live Demos →](demo1.html)**
+**[Documentation →](docs.html)** · **[Sandbox →](sandbox.php)** · **[Viewer →](viewer.php)** · **[Editor →](editor.php)** · **[Installation Check →](check.php)** · **[Live Demos →](demo1.html)**
 
 ---
 
@@ -34,12 +34,14 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 - **Cross-domain embedding** — Host forms on one server, embed on another. CORS handled.
 - **CSRF protection** — Session-based HMAC tokens, automatic via `bbf.js`.
 - **Multi-page forms** — Split forms with page breaks. Previous/Next navigation with per-page validation.
-- **Conditional logic** — Show/hide fields based on other field values. Supports `all`/`any` compound conditions with nesting. Nine comparison operators: equals, not, gt, gte, lt, lte, contains, empty, not_empty. Hidden fields excluded from validation and submission.
+- **Conditional logic** — Show/hide fields based on other field values. Supports `all`/`any` compound conditions with nesting. Nine comparison operators: equals, not, gt, gte, lt, lte, contains, empty, not_empty. Hidden fields excluded from validation and submission. Optional smooth animations via `"animate_conditions": true`.
 - **Field groups** — Container type with `show_if` — show or hide a whole section of fields with one condition. Children inherit the parent's visibility rule.
 - **Reusable templates** — Define a set of fields once, reference it from multiple groups with `"use"` + `"prefix"`. One template, many instances.
 - **Star ratings** — Accessible rating widget with keyboard and screen reader support.
 - **Honeypot + rate limiting** — Built-in bot protection. No external services needed.
-- **Submissions API** — List, filter, export as JSON or CSV. Token-authenticated.
+- **Submissions API** — List, filter, export as JSON or CSV. Token-authenticated. Quick export via `?last=7d`.
+- **Submissions Viewer** — Built-in dashboard (`viewer.php`) for browsing, searching, and exporting submissions.
+- **Form Editor** — Visual JSON editor (`editor.php`) with live preview, schema validation, and field snippets.
 
 **Built for:** PHP shared hosting, small–medium websites, developers who want control.
 
@@ -115,6 +117,7 @@ Every form uses `schema_version: 1`. The included `form.schema.json` provides ID
     "submit_label": "Send",
     "success_message": "Thank you!",
     "label_position": "top",
+    "animate_conditions": true,
 
     "fields": [
         {
@@ -433,7 +436,24 @@ GET submissions.php?form=kontakt&id=bbf_a1b2c3d4&token=YOUR_TOKEN
 
 # Export CSV
 GET submissions.php?form=kontakt&format=csv&token=YOUR_TOKEN
+
+# Quick export with ?last= shorthand
+GET submissions.php?form=kontakt&format=csv&token=YOUR_TOKEN&last=7d
+GET submissions.php?form=kontakt&format=csv&token=YOUR_TOKEN&last=24h
+GET submissions.php?form=kontakt&format=csv&token=YOUR_TOKEN&last=50
 ```
+
+### Quick export: `?last=`
+
+| Value | Meaning |
+|-------|---------|
+| `7d`  | Last 7 days |
+| `24h` | Last 24 hours |
+| `2w`  | Last 2 weeks |
+| `3m`  | Last 3 months |
+| `50`  | Last 50 submissions (sets `limit`) |
+
+Time-based values set `from` automatically. Plain numbers set `limit`. Ignored if `from` is already provided.
 
 Set `api_token` in `config.php`. Pass via header (recommended) or query param:
 ```bash
@@ -572,6 +592,8 @@ barebonesforms/
 ├── submit.php          ← POST handler
 ├── submissions.php     ← API: list/export submissions
 ├── sandbox.php         ← Test forms without side effects
+├── viewer.php          ← Submissions dashboard (optional, delete if unused)
+├── editor.php          ← Visual JSON form editor (optional, delete if unused)
 ├── check.php           ← Installation diagnostics
 ├── docs.html           ← Full documentation (standalone)
 ├── bbf.js              ← Form renderer (zero dependencies)
@@ -633,6 +655,8 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] `'sandbox' => false` for production
 - [ ] `check.php` run, all checks passed *(remote access requires `?token=<api_token>`)*
 - [ ] **`check.php` deleted after verification** — it exposes PHP version, extensions, paths, and config details
+- [ ] `editor.php` deleted or protected — can modify form definitions
+- [ ] `viewer.php` deleted or protected — exposes submission data
 
 ---
 

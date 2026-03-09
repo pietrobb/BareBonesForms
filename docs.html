@@ -127,6 +127,10 @@ details summary:hover { text-decoration: underline; }
     <a href="#email-templates">Email Templates</a>
     <a href="#custom-actions">Custom Actions</a>
 
+    <div class="group">Developer Tools</div>
+    <a href="#viewer">Submissions Viewer</a>
+    <a href="#editor">Form Editor</a>
+
     <div class="group">Security &amp; Ops</div>
     <a href="#security">Security Model</a>
     <a href="#privacy">Privacy</a>
@@ -221,6 +225,8 @@ details summary:hover { text-decoration: underline; }
 ├── submit.php          <span class="comment">&larr; POST handler. Don't touch unless you know what you're doing.</span>
 ├── submissions.php     <span class="comment">&larr; API: list/export submissions</span>
 ├── sandbox.php         <span class="comment">&larr; Test forms without consequences</span>
+├── viewer.php         <span class="comment">&larr; Submissions dashboard. Beautiful. Optional. Delete if unused.</span>
+├── editor.php         <span class="comment">&larr; Visual JSON form editor with live preview. Delete if unused.</span>
 ├── check.php           <span class="comment">&larr; Installation diagnostics. Run it. Then delete it.</span>
 ├── docs.html           <span class="comment">&larr; This very document</span>
 ├── bbf.js              <span class="comment">&larr; Form renderer (zero dependencies, as God intended)</span>
@@ -501,6 +507,17 @@ details summary:hover { text-decoration: underline; }
     <strong>Checkbox groups</strong>
     Conditions work with checkbox groups out of the box. If the source field is a checkbox group, the condition matches when <em>any</em> checked value equals the target. For example, <code>"show_if": { "field": "skills", "value": "other" }</code> triggers when "other" is among the checked options &mdash; regardless of what else is selected.
 </div>
+
+<h3>Animated Conditions</h3>
+<p>By default, conditional fields appear and disappear instantly. Add <code>"animate_conditions": true</code> at the form level to enable smooth expand/collapse transitions:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "id": "my-form",
+    "animate_conditions": true,
+    "fields": [ ... ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Fields slide in with a 300ms transition (max-height + opacity). The initial page load is always instant &mdash; no flickering. Only user-triggered changes animate.</p>
 
 <h3>Field Groups</h3>
 <p>The <code>group</code> type is a container that holds child fields. It renders a wrapper with an optional title and description. The key benefit: apply <code>show_if</code> to the group, and all children inherit the condition &mdash; show or hide an entire section with a single rule:</p>
@@ -907,7 +924,27 @@ GET submissions.php?form=kontakt&amp;token=YOUR_TOKEN&amp;from=2024-01-01&amp;to
 GET submissions.php?form=kontakt&amp;id=bbf_a1b2c3d4&amp;token=YOUR_TOKEN
 
 # Export CSV
-GET submissions.php?form=kontakt&amp;format=csv&amp;token=YOUR_TOKEN</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+GET submissions.php?form=kontakt&amp;format=csv&amp;token=YOUR_TOKEN
+
+# Quick export with ?last= shorthand
+GET submissions.php?form=kontakt&amp;format=csv&amp;token=YOUR_TOKEN&amp;last=7d
+GET submissions.php?form=kontakt&amp;format=csv&amp;token=YOUR_TOKEN&amp;last=24h
+GET submissions.php?form=kontakt&amp;format=csv&amp;token=YOUR_TOKEN&amp;last=50</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Quick export: <code>?last=</code></h3>
+
+<p>The <code>last</code> parameter is a shorthand for common date/count filters. Saves you from calculating dates at 2 AM:</p>
+
+<table>
+    <tr><th>Value</th><th>Meaning</th><th>Example</th></tr>
+    <tr><td><code>7d</code></td><td>Last 7 days</td><td><code>?last=7d</code></td></tr>
+    <tr><td><code>24h</code></td><td>Last 24 hours</td><td><code>?last=24h</code></td></tr>
+    <tr><td><code>2w</code></td><td>Last 2 weeks</td><td><code>?last=2w</code></td></tr>
+    <tr><td><code>3m</code></td><td>Last 3 months</td><td><code>?last=3m</code></td></tr>
+    <tr><td><code>50</code></td><td>Last 50 submissions</td><td><code>?last=50</code></td></tr>
+</table>
+
+<p>Works with both JSON and CSV format. When <code>last</code> is a time-based value, it sets <code>from</code> automatically. When it's a plain number, it sets <code>limit</code>. If <code>from</code> is already provided, <code>last</code> is ignored.</p>
 
 <h3>Response format</h3>
 
@@ -974,6 +1011,70 @@ if ($url) {
 <div class="callout warn">
     <strong>Trusted code only &mdash; and I shall say this once</strong>
     Actions run as PHP includes with full server access. They are not sandboxed. Only place code you trust in the <code>actions/</code> directory. If you let a stranger put files there, whatever follows is on your own head.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="viewer">Submissions Viewer</h2>
+
+<p><code>viewer.php</code> is a built-in dashboard for browsing, searching, and exporting form submissions. It reads directly from your configured storage backend &mdash; no extra setup needed.</p>
+
+<h3>Access</h3>
+<p>Localhost: unrestricted. Remote: requires <code>api_token</code> in the URL. Authentication persists in the session &mdash; AJAX calls work without repeating the token.</p>
+
+<div class="code-block"><span class="lang">url</span><pre>viewer.php?token=YOUR_API_TOKEN</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Features</h3>
+<table>
+    <tr><th>Feature</th><th>Description</th></tr>
+    <tr><td><strong>Form list</strong></td><td>Sidebar with all forms and submission counts</td></tr>
+    <tr><td><strong>Stats dashboard</strong></td><td>Total, today, this week, this month &mdash; at a glance</td></tr>
+    <tr><td><strong>Card-based list</strong></td><td>Submission preview cards with relative timestamps</td></tr>
+    <tr><td><strong>Detail view</strong></td><td>Full submission with field labels from form definition, sections, type-aware formatting (stars for ratings, tags for checkboxes, links for URLs/emails)</td></tr>
+    <tr><td><strong>Search</strong></td><td>Client-side text search across loaded submissions</td></tr>
+    <tr><td><strong>Date filter</strong></td><td>Server-side from/to date range filtering</td></tr>
+    <tr><td><strong>CSV export</strong></td><td>Download filtered results. Supports <code>?last=</code> shorthand.</td></tr>
+    <tr><td><strong>Delete</strong></td><td>Delete individual submissions (file, SQLite, MySQL &mdash; not CSV)</td></tr>
+    <tr><td><strong>Dark mode</strong></td><td>Follows system preference automatically</td></tr>
+</table>
+
+<h3>Direct CSV export</h3>
+<p>You can also call the export endpoint directly for automation or bookmarks:</p>
+
+<div class="code-block"><span class="lang">url</span><pre># Last 7 days (requires active session)
+viewer.php?action=export&amp;form=contact&amp;last=7d
+
+# Or use submissions.php with token (no session needed)
+submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=7d
+submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=24h
+submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="callout warn">
+    <strong>Delete in production.</strong> Like <code>sandbox.php</code> and <code>check.php</code>, the viewer is a developer tool. Delete it if you don't need it on production, or protect it behind your own authentication layer.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="editor">Form Editor</h2>
+
+<p><code>editor.php</code> is a visual JSON editor with live preview. A developer tool, not a drag-and-drop builder &mdash; you edit the JSON directly with instant feedback, syntax validation, field snippets, and a live-rendered form preview.</p>
+
+<h3>Access</h3>
+<p>Same as the viewer: localhost unrestricted, remote requires <code>api_token</code>. Session-persisted.</p>
+
+<div class="code-block"><span class="lang">url</span><pre>editor.php?token=YOUR_API_TOKEN</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Features</h3>
+<table>
+    <tr><th>Feature</th><th>Description</th></tr>
+    <tr><td><strong>Form list</strong></td><td>Create, rename, delete forms</td></tr>
+    <tr><td><strong>JSON editor</strong></td><td>Dark-themed editor with line numbers, Tab indent, error gutter</td></tr>
+    <tr><td><strong>Live preview</strong></td><td>Real-time form rendering via iframe + postMessage</td></tr>
+    <tr><td><strong>Schema validation</strong></td><td>Validates against form schema in real time</td></tr>
+    <tr><td><strong>Field snippets</strong></td><td>One-click insertion for all 16 field types</td></tr>
+    <tr><td><strong>Keyboard shortcuts</strong></td><td>Ctrl+S save, Ctrl+Shift+F format, Tab indent</td></tr>
+</table>
+
+<div class="callout warn">
+    <strong>Delete in production.</strong> The editor can modify your form definitions. Delete it when you're done building, or protect it behind your own auth.
 </div>
 
 <!-- ============================================================ -->
@@ -1124,6 +1225,8 @@ if (!hash_equals($expected, $received)) {
     <li>Disable sandbox mode: <code>'sandbox' => false</code></li>
     <li>Run <code>check.php</code> to verify installation (remote access requires <code>?token=&lt;api_token&gt;</code>)</li>
     <li><strong>Delete <code>check.php</code> after verification</strong> &mdash; it exposes PHP version, extensions, directory paths, and configuration details</li>
+    <li><strong>Delete or protect <code>editor.php</code></strong> &mdash; can modify form definitions on the server</li>
+    <li><strong>Delete or protect <code>viewer.php</code></strong> &mdash; exposes submission data to anyone with the token</li>
 </ul>
 
 </main>
