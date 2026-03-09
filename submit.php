@@ -483,7 +483,9 @@ if (($onSubmit['store'] ?? true) !== false) {
     if (!empty($form['storage']) && in_array($form['storage'], ['file', 'csv', 'sqlite', 'mysql'], true)) {
         $storeConfig['storage'] = $form['storage'];
     }
-    store($submission, $storeConfig, $form['fields']);
+    if (!store($submission, $storeConfig, $form['fields'])) {
+        respond(500, 'Submission could not be saved. Please try again later.');
+    }
 }
 
 // ─── Confirmation email to respondent ───────────────────────────
@@ -809,32 +811,35 @@ function collectData(array $fields, array $input): array {
     return $data;
 }
 
-function store(array $submission, array $config, array $formFields = []): void {
+function store(array $submission, array $config, array $formFields = []): bool {
     switch ($config['storage']) {
         case 'mysql':
-            storeMysql($submission, $config['mysql']);
-            break;
+            return storeMysql($submission, $config['mysql']);
         case 'sqlite':
-            storeSqlite($submission, $config);
-            break;
+            return storeSqlite($submission, $config);
         case 'csv':
-            storeCsv($submission, $config['submissions_dir'], $formFields);
-            break;
+            return storeCsv($submission, $config['submissions_dir'], $formFields);
         default:
-            storeFile($submission, $config['submissions_dir']);
+            return storeFile($submission, $config['submissions_dir']);
     }
 }
 
-function storeFile(array $submission, string $dir): void {
+function storeFile(array $submission, string $dir): bool {
     $formDir = $dir . '/' . $submission['form'];
-    if (!is_dir($formDir)) {
-        mkdir($formDir, 0755, true);
+    if (!is_dir($formDir) && !mkdir($formDir, 0755, true)) {
+        error_log("BareBonesForms: Cannot create directory $formDir");
+        return false;
     }
     $file = $formDir . '/' . $submission['id'] . '.json';
-    file_put_contents($file, json_encode($submission, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    $result = file_put_contents($file, json_encode($submission, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+    if ($result === false) {
+        error_log("BareBonesForms: Failed to write $file");
+        return false;
+    }
+    return true;
 }
 
-function storeMysql(array $submission, array $dbConfig): void {
+function storeMysql(array $submission, array $dbConfig): bool {
     try {
         $dsn = "mysql:host={$dbConfig['host']};dbname={$dbConfig['database']};charset={$dbConfig['charset']}";
         $pdo = new PDO($dsn, $dbConfig['username'], $dbConfig['password'], [
@@ -859,12 +864,14 @@ function storeMysql(array $submission, array $dbConfig): void {
             json_encode($submission['data'], JSON_UNESCAPED_UNICODE),
             json_encode($submission['meta'], JSON_UNESCAPED_UNICODE),
         ]);
+        return true;
     } catch (PDOException $e) {
         error_log("BareBonesForms MySQL error: " . $e->getMessage());
+        return false;
     }
 }
 
-function storeSqlite(array $submission, array $config): void {
+function storeSqlite(array $submission, array $config): bool {
     try {
         $dbFile = $config['sqlite']['path'] ?? $config['submissions_dir'] . '/bbf.sqlite';
         $dir = dirname($dbFile);
@@ -893,8 +900,10 @@ function storeSqlite(array $submission, array $config): void {
             json_encode($submission['meta'], JSON_UNESCAPED_UNICODE),
             $submission['meta']['submitted'] ?? date('c'),
         ]);
+        return true;
     } catch (PDOException $e) {
         error_log("BareBonesForms SQLite error: " . $e->getMessage());
+        return false;
     }
 }
 
@@ -906,8 +915,11 @@ function csvSanitize(string $val): string {
     return $val;
 }
 
-function storeCsv(array $submission, string $dir, array $formFields): void {
-    if (!is_dir($dir)) mkdir($dir, 0755, true);
+function storeCsv(array $submission, string $dir, array $formFields): bool {
+    if (!is_dir($dir) && !mkdir($dir, 0755, true)) {
+        error_log("BareBonesForms: Cannot create directory $dir");
+        return false;
+    }
 
     $file = $dir . '/' . $submission['form'] . '.csv';
     $fieldNames = array_column($formFields, 'name');
@@ -915,7 +927,8 @@ function storeCsv(array $submission, string $dir, array $formFields): void {
     $fp = fopen($file, 'c+');
     if (!$fp || !flock($fp, LOCK_EX)) {
         if ($fp) fclose($fp);
-        return;
+        error_log("BareBonesForms: Cannot open/lock $file");
+        return false;
     }
 
     // Write headers if file is empty
@@ -941,6 +954,7 @@ function storeCsv(array $submission, string $dir, array $formFields): void {
     fflush($fp);
     flock($fp, LOCK_UN);
     fclose($fp);
+    return true;
 }
 
 function sendEmail(string $to, string $subject, string $body, array $mailConfig): void {
@@ -1069,7 +1083,10 @@ function fireWebhook(string $url, array $data, string $secret = ''): void {
             'ignore_errors' => true,
         ],
     ];
-    @file_get_contents($url, false, stream_context_create($opts));
+    $result = @file_get_contents($url, false, stream_context_create($opts));
+    if ($result === false) {
+        error_log("BareBonesForms: Webhook failed for $url");
+    }
 }
 
 function renderTemplate(string $templateFile, array $vars): string {

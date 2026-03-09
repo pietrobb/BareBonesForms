@@ -633,11 +633,19 @@ textarea.addEventListener('keydown', (e) => {
 async function saveForm() {
     if (READ_ONLY || !state.formId) return;
     try {
+        // Warn about validation errors (but don't block save)
+        const result = await api.validate(textarea.value);
+        if (!result.valid) {
+            const count = result.errors.length;
+            if (!confirm('Form has ' + count + ' validation error(s):\n\n' +
+                result.errors.map(e => (e.path ? e.path + ': ' : '') + e.message).join('\n') +
+                '\n\nSave anyway?')) return;
+        }
         await api.save(state.formId, textarea.value);
         state.originalJson = textarea.value;
         state.isDirty = false;
         updateHeader();
-        flash('Saved');
+        flash(result.valid ? 'Saved' : 'Saved (with warnings)');
         // Refresh list in case name changed
         renderFormList(await api.list());
     } catch(err) { flash(err.message, true); }

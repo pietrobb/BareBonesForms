@@ -1,0 +1,85 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  php-lint:
+    name: PHP syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+      - name: Lint all PHP files
+        run: |
+          errors=0
+          while IFS= read -r file; do
+            if ! php -l "$file" > /dev/null 2>&1; then
+              php -l "$file"
+              errors=$((errors + 1))
+            fi
+          done < <(find . -name '*.php' -not -path './vendor/*')
+          if [ $errors -gt 0 ]; then
+            echo "::error::$errors PHP file(s) have syntax errors"
+            exit 1
+          fi
+          echo "All PHP files passed syntax check"
+
+  js-lint:
+    name: JS syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Lint all JS files
+        run: |
+          errors=0
+          while IFS= read -r file; do
+            if ! node --check "$file" 2>/dev/null; then
+              echo "Syntax error: $file"
+              errors=$((errors + 1))
+            fi
+          done < <(find . -name '*.js' -not -path './vendor/*' -not -path './node_modules/*')
+          if [ $errors -gt 0 ]; then
+            echo "::error::$errors JS file(s) have syntax errors"
+            exit 1
+          fi
+          echo "All JS files passed syntax check"
+
+  smoke-test:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    needs: [php-lint, js-lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+      - name: Setup config
+        run: cp config.example.php config.php
+      - name: Start PHP server
+        run: php -S 127.0.0.1:8089 &
+      - name: Wait for server
+        run: sleep 2
+      - name: GET submit.php (should return CSRF token)
+        run: |
+          response=$(curl -s http://127.0.0.1:8089/submit.php)
+          echo "$response"
+          echo "$response" | grep -q "csrf_token" || { echo "::error::CSRF endpoint failed"; exit 1; }
+      - name: GET check.php
+        run: |
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8089/check.php)
+          echo "check.php returned HTTP $status"
+          [ "$status" -eq 200 ] || { echo "::error::check.php returned $status"; exit 1; }
+      - name: Load demo form definition
+        run: |
+          response=$(curl -s http://127.0.0.1:8089/submit.php?form=demo-file)
+          echo "$response"
+          echo "$response" | grep -q "fields" || echo "No demo-file form (OK if not included)"
