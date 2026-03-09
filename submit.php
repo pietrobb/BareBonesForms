@@ -1034,7 +1034,9 @@ function renderTemplate(string $templateFile, array $vars): string {
     $template = file_get_contents($templateFile);
     foreach ($vars as $key => $value) {
         if (is_string($value) || is_numeric($value)) {
-            $template = str_replace('{{' . $key . '}}', htmlspecialchars((string)$value), $template);
+            // Internal variables (_summary, _time, etc.) contain trusted HTML — don't escape
+            $safe = str_starts_with($key, '_') ? (string)$value : htmlspecialchars((string)$value);
+            $template = str_replace('{{' . $key . '}}', $safe, $template);
         }
     }
     return $template;
@@ -1050,16 +1052,29 @@ function interpolate(string $text, array $data): string {
 }
 
 function buildSummary(array $fields, array $data): string {
+    return "<table style='border-collapse:collapse'>" . buildSummaryRows($fields, $data) . "</table>";
+}
+
+function buildSummaryRows(array $fields, array $data): string {
     $lines = [];
     foreach ($fields as $field) {
+        $type = $field['type'] ?? 'text';
+        // Skip non-data fields
+        if (in_array($type, ['section', 'page_break', 'hidden'])) continue;
+        // Recurse into groups — show children, not the group itself
+        if ($type === 'group' && !empty($field['fields'])) {
+            $lines[] = buildSummaryRows($field['fields'], $data);
+            continue;
+        }
         $label = $field['label'] ?? $field['name'];
         $value = $data[$field['name']] ?? '';
         if (is_array($value)) $value = implode(', ', $value);
+        if ($value === '') continue; // skip empty optional fields
         $lines[] = "<tr><td style='padding:4px 12px 4px 0;font-weight:bold;vertical-align:top'>"
             . htmlspecialchars($label) . "</td><td style='padding:4px 0'>"
             . htmlspecialchars($value) . "</td></tr>";
     }
-    return "<table style='border-collapse:collapse'>" . implode('', $lines) . "</table>";
+    return implode('', $lines);
 }
 
 function checkRateLimit(string $ip, int $maxPerMinute, string $logsDir): bool {
