@@ -208,6 +208,8 @@ details summary:hover { text-decoration: underline; }
 <div class="code-block"><span class="lang">html</span><pre>&lt;div data-form="kontakt"&gt;&lt;/div&gt;
 &lt;script src="/barebonesforms/bbf.js"&gt;&lt;/script&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
+<p>That's the full snippet. <code>bbf.js</code> auto-loads <code>bbf.css</code> from the same directory &mdash; no need for a separate <code>&lt;link&gt;</code> tag.</p>
+
 <p><strong>5.</strong> Done. The form renders, validates, and submits. Pour yourself a glass &mdash; beverage of your choosing, and sit back. You've earned it.</p>
 
 <!-- ============================================================ -->
@@ -661,7 +663,7 @@ details summary:hover { text-decoration: underline; }
 
 <h3>Auto-init (simplest)</h3>
 
-<p>Two lines. Even Johnny could manage it.</p>
+<p>One script tag, one div. <code>bbf.js</code> auto-loads <code>bbf.css</code> from the same directory &mdash; no manual <code>&lt;link&gt;</code> needed.</p>
 
 <div class="code-block"><span class="lang">html</span><pre>&lt;div data-form="kontakt"&gt;&lt;/div&gt;
 &lt;script src="/barebonesforms/bbf.js"&gt;&lt;/script&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
@@ -717,20 +719,47 @@ details summary:hover { text-decoration: underline; }
 <!-- ============================================================ -->
 <h2 id="styling">Styling</h2>
 
-<p>Include <code>bbf.css</code> for clean defaults, or write your own from scratch. I don't care which. All elements use <code>bbf-*</code> class names, so they won't collide with your existing styles:</p>
+<p><code>bbf.css</code> is <strong>auto-loaded</strong> by <code>bbf.js</code> &mdash; if the stylesheet sits next to the script, it will be injected into <code>&lt;head&gt;</code> automatically. No need to add a <code>&lt;link&gt;</code> tag manually (though you still can). To use your own styles instead, either override the classes below or delete <code>bbf.css</code> entirely.</p>
+
+<h3>CSS class reference</h3>
+
+<p>All elements use <code>bbf-*</code> class names, so they won't collide with your existing styles.</p>
 
 <table>
-    <tr><th>Class</th><th>Element</th></tr>
-    <tr><td><code>.bbf-form-container</code></td><td>Outer wrapper</td></tr>
-    <tr><td><code>.bbf-form</code></td><td>Form element</td></tr>
-    <tr><td><code>.bbf-field</code></td><td>Field wrapper</td></tr>
-    <tr><td><code>.bbf-label</code></td><td>Label</td></tr>
-    <tr><td><code>.bbf-input</code></td><td>Input / select / textarea</td></tr>
-    <tr><td><code>.bbf-submit</code></td><td>Submit button</td></tr>
-    <tr><td><code>.bbf-message</code></td><td>Success / error message</td></tr>
-    <tr><td><code>.bbf-field-error</code></td><td>Field error text</td></tr>
-    <tr><td><code>.bbf-has-error</code></td><td>Field wrapper when invalid</td></tr>
+    <tr><th>You want to style&hellip;</th><th>Class</th><th>Element</th></tr>
+    <tr><td>Overall container</td><td><code>.bbf-form-container</code></td><td>Outer <code>&lt;div&gt;</code> wrapping the form</td></tr>
+    <tr><td>The form itself</td><td><code>.bbf-form</code></td><td><code>&lt;form&gt;</code> element</td></tr>
+    <tr><td>Form title</td><td><code>.bbf-title</code></td><td><code>&lt;h2&gt;</code> above the form</td></tr>
+    <tr><td>Form description</td><td><code>.bbf-description</code></td><td><code>&lt;p&gt;</code> below the title</td></tr>
+    <tr><td>A field row</td><td><code>.bbf-field</code></td><td>Wrapper <code>&lt;div&gt;</code> around each field</td></tr>
+    <tr><td>Field label</td><td><code>.bbf-label</code></td><td><code>&lt;label&gt;</code></td></tr>
+    <tr><td>Help text below label</td><td><code>.bbf-field-desc</code></td><td><code>&lt;span&gt;</code> for description</td></tr>
+    <tr><td>Text input / textarea</td><td><code>.bbf-input</code></td><td><code>&lt;input&gt;</code>, <code>&lt;textarea&gt;</code></td></tr>
+    <tr><td>Dropdown</td><td><code>.bbf-form select</code></td><td><code>&lt;select&gt;</code></td></tr>
+    <tr><td>Radio/checkbox option</td><td><code>.bbf-option</code></td><td><code>&lt;label&gt;</code> wrapping each option</td></tr>
+    <tr><td>Radio/checkbox group</td><td><code>.bbf-fieldset</code></td><td>Wrapping <code>&lt;fieldset&gt;</code></td></tr>
+    <tr><td>Section heading</td><td><code>.bbf-section-title</code></td><td><code>&lt;h3&gt;</code> for section breaks</td></tr>
+    <tr><td>Section description</td><td><code>.bbf-section-desc</code></td><td><code>&lt;p&gt;</code> below section heading</td></tr>
+    <tr><td>Group heading</td><td><code>.bbf-group-title</code></td><td><code>&lt;h3&gt;</code> for group titles</td></tr>
+    <tr><td>Submit button</td><td><code>.bbf-submit</code></td><td><code>&lt;button type="submit"&gt;</code></td></tr>
+    <tr><td>Success message</td><td><code>.bbf-success</code></td><td>After successful submission</td></tr>
+    <tr><td>Error message</td><td><code>.bbf-error</code></td><td>Form-level error</td></tr>
+    <tr><td>Field error text</td><td><code>.bbf-field-error</code></td><td>Per-field validation message</td></tr>
+    <tr><td>Invalid field wrapper</td><td><code>.bbf-has-error</code></td><td>Added to <code>.bbf-field</code> when invalid</td></tr>
+    <tr><td>Page navigation</td><td><code>.bbf-page-nav</code></td><td>Previous / Next / Submit row</td></tr>
+    <tr><td>Star rating</td><td><code>.bbf-rating</code></td><td>Star rating container</td></tr>
 </table>
+
+<h3>Quick examples</h3>
+
+<div class="code-block"><span class="lang">css</span><pre>/* Make inputs rounded */
+.bbf-input, .bbf-form select { border-radius: 8px; }
+
+/* Red submit button */
+.bbf-submit { background: #dc3545; }
+
+/* Larger labels */
+.bbf-label { font-size: 1.1em; font-weight: 700; }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p>Delete <code>bbf.css</code> entirely if you prefer. The JavaScript doesn't depend on it. The forms will render naked, and you can dress them however you see fit.</p>
 

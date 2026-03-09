@@ -28,6 +28,25 @@
             return src.substring(0, src.lastIndexOf('/') + 1);
         })(),
 
+        // ─── Auto-load bbf.css if not already present ───────
+        _cssInjected: (function() {
+            const scripts = document.getElementsByTagName('script');
+            const src = scripts[scripts.length - 1].src;
+            const base = src.substring(0, src.lastIndexOf('/') + 1);
+            const cssUrl = base + 'bbf.css';
+            // Check if already loaded
+            const links = document.querySelectorAll('link[rel="stylesheet"]');
+            for (let i = 0; i < links.length; i++) {
+                if (links[i].href === cssUrl) return true;
+            }
+            // Inject it
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = cssUrl;
+            document.head.appendChild(link);
+            return true;
+        })(),
+
         // ─── Language ────────────────────────────────────────
         // Default messages (English). Override by loading a language file
         // or calling BBF.registerLang().
