@@ -1100,6 +1100,20 @@ function renderTemplate(string $templateFile, array $vars): string {
         return $out;
     }
     $template = file_get_contents($templateFile);
+
+    // Conditional sections: {{#var}}...{{/var}} — shown only if var is truthy/non-empty
+    $template = preg_replace_callback('/\{\{#(\w+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
+        $val = $vars[$m[1]] ?? '';
+        return ($val !== '' && $val !== '0' && $val !== null) ? $m[2] : '';
+    }, $template);
+
+    // Inverted sections: {{^var}}...{{/var}} — shown only if var is falsy/empty
+    $template = preg_replace_callback('/\{\{\^(\w+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
+        $val = $vars[$m[1]] ?? '';
+        return ($val === '' || $val === '0' || $val === null) ? $m[2] : '';
+    }, $template);
+
+    // Variable substitution
     foreach ($vars as $key => $value) {
         if (is_string($value) || is_numeric($value)) {
             // Internal variables (_summary, _time, etc.) contain trusted HTML — don't escape
@@ -1107,6 +1121,10 @@ function renderTemplate(string $templateFile, array $vars): string {
             $template = str_replace('{{' . $key . '}}', $safe, $template);
         }
     }
+
+    // Clean up any remaining unreplaced tags
+    $template = preg_replace('/\{\{[a-zA-Z_]\w*\}\}/', '', $template);
+
     return $template;
 }
 
