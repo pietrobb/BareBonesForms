@@ -27,4 +27,5 @@ BBF.registerLang('ja', {
     dateMax:          '{label}は{max}以前の日付にしてください。',
     nextPage:         '次へ',
     prevPage:         '前へ',
+    crossFieldDefault:'入力内容を確認してください。',
 });

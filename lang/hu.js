@@ -27,4 +27,5 @@ BBF.registerLang('hu', {
     dateMax:          '{label} legkésőbb {max} lehet.',
     nextPage:         'Következő',
     prevPage:         'Előző',
+    crossFieldDefault:'Kérjük, ellenőrizze az adatokat.',
 });

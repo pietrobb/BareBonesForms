@@ -32,4 +32,5 @@ BBF.registerLang('sk', {
     dateMax:          '{label} musí byť {max} alebo skôr.',
     nextPage:         'Ďalej',
     prevPage:         'Späť',
+    crossFieldDefault:'Skontrolujte prosím zadané údaje.',
 });

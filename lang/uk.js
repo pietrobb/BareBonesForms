@@ -27,4 +27,5 @@ BBF.registerLang('uk', {
     dateMax:          '{label} має бути {max} або раніше.',
     nextPage:         'Далі',
     prevPage:         'Назад',
+    crossFieldDefault:'Будь ласка, перевірте введені дані.',
 });

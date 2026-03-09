@@ -27,4 +27,5 @@ BBF.registerLang('ru', {
     dateMax:          '{label} должно быть {max} или раньше.',
     nextPage:         'Далее',
     prevPage:         'Назад',
+    crossFieldDefault:'Пожалуйста, проверьте введённые данные.',
 });

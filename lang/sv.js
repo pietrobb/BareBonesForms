@@ -27,4 +27,5 @@ BBF.registerLang('sv', {
     dateMax:          '{label} måste vara {max} eller tidigare.',
     nextPage:         'Nästa',
     prevPage:         'Föregående',
+    crossFieldDefault:'Kontrollera dina uppgifter.',
 });

@@ -29,4 +29,5 @@ BBF.registerLang('tlh', {
     dateMax:          '{label} {max} pagh puS nIS.',
     nextPage:         'veb',
     prevPage:         'ret',
+    crossFieldDefault:'DaH yIqel.',
 });

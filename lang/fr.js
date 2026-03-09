@@ -27,4 +27,5 @@ BBF.registerLang('fr', {
     dateMax:          '{label} doit être le {max} ou avant.',
     nextPage:         'Suivant',
     prevPage:         'Précédent',
+    crossFieldDefault:'Veuillez vérifier vos données.',
 });

@@ -27,4 +27,5 @@ BBF.registerLang('bg', {
     dateMax:          '{label} трябва да бъде на или преди {max}.',
     nextPage:         'Напред',
     prevPage:         'Назад',
+    crossFieldDefault:'Моля, проверете въведените данни.',
 });

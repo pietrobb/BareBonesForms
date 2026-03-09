@@ -27,4 +27,5 @@ BBF.registerLang('fi', {
     dateMax:          '{label} on oltava {max} tai aikaisempi.',
     nextPage:         'Seuraava',
     prevPage:         'Edellinen',
+    crossFieldDefault:'Tarkista syöttämäsi tiedot.',
 });

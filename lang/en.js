@@ -34,4 +34,5 @@ BBF.registerLang('en', {
     dateMax:          '{label} must be on or before {max}.',
     nextPage:         'Next',
     prevPage:         'Previous',
+    crossFieldDefault:'Please check your input.',
 });

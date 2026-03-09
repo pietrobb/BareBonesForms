@@ -76,6 +76,7 @@
             dateMax:          '{label} must be on or before {max}.',
             nextPage:         'Next',
             prevPage:         'Previous',
+            crossFieldDefault:'Please check your input.',
         },
 
         // Registered language packs: { de: {...}, sk: {...}, ... }
@@ -549,7 +550,7 @@
                 const allFields = allFlat.filter(f => f.type !== 'page_break' && f.type !== 'section' && f.type !== 'group');
                 const errors = this._validate(allFields, el, langCode);
                 // Cross-field validations
-                const crossErrors = this._validateCrossField(form.validations, el);
+                const crossErrors = this._validateCrossField(form.validations, el, langCode);
                 Object.assign(errors, crossErrors);
                 this._showErrors(el, errors);
                 if (Object.keys(errors).length > 0) return;
@@ -1309,10 +1310,11 @@
         },
 
         // Cross-field validations (form.validations array)
-        _validateCrossField: function(validations, formEl) {
+        _validateCrossField: function(validations, formEl, langCode) {
             var errors = {};
             if (!validations || !validations.length) return errors;
             var self = this;
+            var fallback = this._t('crossFieldDefault', {}, langCode);
             validations.forEach(function(rule) {
                 var fields = rule.fields || [];
                 var key = '_validation_' + fields.join('_');
@@ -1323,7 +1325,7 @@
                         sum += val;
                     });
                     if (sum < (rule.min || 1)) {
-                        errors[key] = rule.message || 'Validation failed';
+                        errors[key] = rule.message || fallback;
                     }
                 } else if (rule.type === 'min_filled') {
                     var filled = 0;
@@ -1332,7 +1334,7 @@
                         if (val !== '' && val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) filled++;
                     });
                     if (filled < (rule.min || 1)) {
-                        errors[key] = rule.message || 'Validation failed';
+                        errors[key] = rule.message || fallback;
                     }
                 }
             });

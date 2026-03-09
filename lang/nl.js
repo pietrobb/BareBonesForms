@@ -27,4 +27,5 @@ BBF.registerLang('nl', {
     dateMax:          '{label} moet op of voor {max} zijn.',
     nextPage:         'Volgende',
     prevPage:         'Vorige',
+    crossFieldDefault:'Controleer uw invoer.',
 });

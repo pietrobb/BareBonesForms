@@ -27,4 +27,5 @@ BBF.registerLang('et', {
     dateMax:          '{label} peab olema {max} või varem.',
     nextPage:         'Järgmine',
     prevPage:         'Eelmine',
+    crossFieldDefault:'Palun kontrollige oma andmeid.',
 });

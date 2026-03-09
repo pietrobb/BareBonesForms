@@ -27,4 +27,5 @@ BBF.registerLang('th', {
     dateMax:          '{label} ต้องเป็นวันที่ {max} หรือก่อนหน้านั้น',
     nextPage:         'ถัดไป',
     prevPage:         'ก่อนหน้า',
+    crossFieldDefault:'กรุณาตรวจสอบข้อมูลของคุณ',
 });

@@ -27,4 +27,5 @@ BBF.registerLang('tr', {
     dateMax:          '{label} en geç {max} olmalıdır.',
     nextPage:         'Sonraki',
     prevPage:         'Önceki',
+    crossFieldDefault:'Lütfen girişlerinizi kontrol edin.',
 });

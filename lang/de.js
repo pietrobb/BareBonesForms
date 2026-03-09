@@ -32,4 +32,5 @@ BBF.registerLang('de', {
     dateMax:          '{label} muss am oder vor dem {max} liegen.',
     nextPage:         'Weiter',
     prevPage:         'Zurück',
+    crossFieldDefault:'Bitte überprüfen Sie Ihre Eingaben.',
 });

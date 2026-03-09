@@ -27,4 +27,5 @@ BBF.registerLang('ro', {
     dateMax:          '{label} trebuie să fie {max} sau înainte.',
     nextPage:         'Următor',
     prevPage:         'Anterior',
+    crossFieldDefault:'Verificați datele introduse.',
 });

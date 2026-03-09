@@ -27,4 +27,5 @@ BBF.registerLang('ko', {
     dateMax:          '{label}은(는) {max} 이전이어야 합니다.',
     nextPage:         '다음',
     prevPage:         '이전',
+    crossFieldDefault:'입력 내용을 확인해 주세요.',
 });

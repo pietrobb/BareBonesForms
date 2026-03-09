@@ -27,4 +27,5 @@ BBF.registerLang('id', {
     dateMax:          '{label} harus pada atau sebelum {max}.',
     nextPage:         'Berikutnya',
     prevPage:         'Sebelumnya',
+    crossFieldDefault:'Silakan periksa masukan Anda.',
 });

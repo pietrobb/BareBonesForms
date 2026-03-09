@@ -27,4 +27,5 @@ BBF.registerLang('cs', {
     dateMax:          '{label} musí být {max} nebo dříve.',
     nextPage:         'Další',
     prevPage:         'Zpět',
+    crossFieldDefault:'Zkontrolujte prosím zadané údaje.',
 });

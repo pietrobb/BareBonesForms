@@ -27,4 +27,5 @@ BBF.registerLang('zh-tw', {
     dateMax:          '{label}必須在{max}或之前。',
     nextPage:         '下一步',
     prevPage:         '上一步',
+    crossFieldDefault:'請檢查您的輸入。',
 });

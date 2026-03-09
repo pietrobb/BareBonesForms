@@ -27,4 +27,5 @@ BBF.registerLang('ar', {
     dateMax:          '{label} يجب أن يكون في {max} أو قبله.',
     nextPage:         'التالي',
     prevPage:         'السابق',
+    crossFieldDefault:'يرجى التحقق من مدخلاتك.',
 });

@@ -27,4 +27,5 @@ BBF.registerLang('hi', {
     dateMax:          '{label} {max} या उससे पहले होना चाहिए।',
     nextPage:         'अगला',
     prevPage:         'पिछला',
+    crossFieldDefault:'कृपया अपना इनपुट जाँचें।',
 });
