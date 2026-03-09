@@ -488,6 +488,33 @@ if (($onSubmit['store'] ?? true) !== false) {
     }
 }
 
+// ─── Resolve option labels for templates ────────────────────────
+$templateData = $data;
+foreach ($form['fields'] as $f) {
+    if (!in_array($f['type'] ?? 'text', ['select', 'radio', 'checkbox'], true)) continue;
+    $name = $f['name'] ?? '';
+    if ($name === '' || !isset($data[$name])) continue;
+    $val = $data[$name];
+    $labels = [];
+    foreach ($f['options'] ?? [] as $opt) {
+        if (is_array($opt)) {
+            $optVal = (string)($opt['value'] ?? '');
+            $optLabel = $opt['label'] ?? $optVal;
+        } else {
+            $optVal = (string)$opt;
+            $optLabel = $optVal;
+        }
+        if (is_array($val)) {
+            if (in_array($optVal, $val, true)) $labels[] = $optLabel;
+        } elseif ((string)$val === $optVal) {
+            $labels[] = $optLabel;
+        }
+    }
+    if (!empty($labels)) {
+        $templateData[$name . '_label'] = implode(', ', $labels);
+    }
+}
+
 // ─── Confirmation email to respondent ───────────────────────────
 if (!empty($onSubmit['confirm_email'])) {
     $ce = $onSubmit['confirm_email'];
@@ -495,7 +522,7 @@ if (!empty($onSubmit['confirm_email'])) {
     $subject = interpolate($ce['subject'] ?? 'Thank you', $data);
     $body = renderTemplate(
         $config['templates_dir'] . '/' . basename($ce['template'] ?? 'confirm.html'),
-        array_merge($data, [
+        array_merge($templateData, [
             '_form'    => $form['name'] ?? $formId,
             '_id'      => $submissionId,
             '_time'    => $timestamp,
@@ -513,7 +540,7 @@ if (!empty($onSubmit['notify'])) {
 
     $body = renderTemplate(
         $config['templates_dir'] . '/' . basename($n['template'] ?? 'notify.html'),
-        array_merge($data, [
+        array_merge($templateData, [
             '_form'     => $form['name'] ?? $formId,
             '_id'       => $submissionId,
             '_time'     => $timestamp,

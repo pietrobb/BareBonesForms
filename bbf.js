@@ -297,6 +297,21 @@
             return true;
         },
 
+        // Apply show_if on individual options within radio/checkbox/select
+        _applyOptionConditions: function(formEl) {
+            var self = this;
+            formEl.querySelectorAll('[data-option-show-if]').forEach(function(optEl) {
+                var cond = JSON.parse(optEl.getAttribute('data-option-show-if'));
+                var visible = self._evalCondition(cond, formEl);
+                optEl.style.display = visible ? '' : 'none';
+                // If hiding a checked option, uncheck it
+                if (!visible) {
+                    var inp = optEl.querySelector('input');
+                    if (inp && inp.checked) { inp.checked = false; }
+                }
+            });
+        },
+
         // Recursively collect all source field names from a condition tree
         _collectSources: function(cond) {
             const sources = new Set();
@@ -359,16 +374,25 @@
             const sources = new Set();
             fields.forEach(f => {
                 if (f.show_if) this._collectSources(f.show_if).forEach(s => sources.add(s));
+                // Collect sources from option-level show_if
+                if (f.options) f.options.forEach(o => {
+                    if (typeof o === 'object' && o.show_if) this._collectSources(o.show_if).forEach(s => sources.add(s));
+                });
             });
+            var handler = function() {
+                self._applyConditions(formEl, fields, animate);
+                self._applyOptionConditions(formEl);
+            };
             sources.forEach(srcName => {
                 const inputs = formEl.querySelectorAll(`[name="${srcName}"]`);
                 inputs.forEach(inp => {
-                    inp.addEventListener('change', () => self._applyConditions(formEl, fields, animate));
-                    inp.addEventListener('input', () => self._applyConditions(formEl, fields, animate));
+                    inp.addEventListener('change', handler);
+                    inp.addEventListener('input', handler);
                 });
             });
             // Initial state (always instant, no animation)
             this._applyConditions(formEl, fields, false);
+            this._applyOptionConditions(formEl);
         },
 
         // ─── Build form ──────────────────────────────────────
@@ -860,6 +884,7 @@
             if (field.min !== undefined) input.min = field.min;
             if (field.max !== undefined) input.max = field.max;
             if (field.pattern) input.pattern = field.pattern;
+            if (field.autocomplete) input.autocomplete = field.autocomplete;
             if (field.value !== undefined) input.value = field.value;
 
             // Accessibility: link input to description and error
@@ -988,17 +1013,24 @@
                 inp.name = field.name;
                 inp.id = `bbf-${field.name}-${i}`;
                 inp.value = typeof o === 'object' ? o.value : o;
-                // Default checked: field.value (string for radio, array for checkbox) or option-level checked
+                // Default checked: field.value (string or array) or option-level checked
                 if (typeof o === 'object' && o.checked) {
                     inp.checked = true;
                 } else if (field.value !== undefined) {
-                    if (type === 'radio' && String(field.value) === inp.value) inp.checked = true;
-                    else if (type === 'checkbox' && Array.isArray(field.value) && field.value.includes(inp.value)) inp.checked = true;
+                    var fv = field.value;
+                    // Normalize: checkbox accepts both string and array
+                    if (type === 'checkbox' && !Array.isArray(fv)) fv = [String(fv)];
+                    if (type === 'radio' && String(fv) === inp.value) inp.checked = true;
+                    else if (type === 'checkbox' && Array.isArray(fv) && fv.map(String).includes(inp.value)) inp.checked = true;
                 }
                 const span = document.createElement('span');
                 span.textContent = typeof o === 'object' ? o.label : o;
                 optWrap.appendChild(inp);
                 optWrap.appendChild(span);
+                // Conditional option visibility
+                if (typeof o === 'object' && o.show_if) {
+                    optWrap.setAttribute('data-option-show-if', JSON.stringify(o.show_if));
+                }
                 optionsWrap.appendChild(optWrap);
             });
 

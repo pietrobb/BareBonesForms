@@ -97,7 +97,7 @@
 }
 
 .bbf-label-left > .bbf-label {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     min-width: 100px;
     margin-bottom: 0;
 }
