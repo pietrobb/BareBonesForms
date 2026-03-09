@@ -15,7 +15,7 @@
  *   <script src="lang/de.js"></script>
  *   <div data-form="kontakt" data-lang="de"></div>
  *
- * Styling: Add your own CSS or use the included bbf.css for a clean default.
+ * Styling: bbf.css is auto-loaded by this script. Override with your own CSS as needed.
  */
 
 (function() {

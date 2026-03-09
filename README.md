@@ -17,7 +17,7 @@ PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 32 Languages · Sh
 <script src="bbf.js"></script>
 ```
 
-That's it. Two lines. The form loads from `forms/kontakt.json`, validates, and submits to `submit.php`.
+That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — no `<link>` tag needed. The form loads from `forms/kontakt.json`, validates, and submits to `submit.php`.
 
 ---
 
@@ -206,6 +206,8 @@ Every form uses `schema_version: 1`. The included `form.schema.json` provides ID
 <div data-form="kontakt"></div>
 <script src="/path/to/bbf.js"></script>
 ```
+
+`bbf.js` auto-loads `bbf.css` from the same directory. No separate `<link>` tag required.
 
 ### Manual
 
