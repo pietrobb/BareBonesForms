@@ -993,15 +993,65 @@ if ($url) {
     <tr><td><strong>CORS control</strong></td><td>Configurable <code>allowed_origins</code>. Empty = same origin only.</td></tr>
     <tr><td><strong>API authentication</strong></td><td>Token required. Disabled until you configure it.</td></tr>
     <tr><td><strong>SQL injection</strong></td><td>PDO prepared statements. Every single one.</td></tr>
-    <tr><td><strong>Directory access</strong></td><td><code>.htaccess</code> blocks <code>/submissions/</code>, <code>/logs/</code>, <code>config.php</code>.</td></tr>
+    <tr><td><strong>Directory access</strong></td><td><code>.htaccess</code> blocks 7 directories, all config files, editor backups, and dotfiles.</td></tr>
     <tr><td><strong>CSV formula injection</strong></td><td>Cells starting with <code>=</code> <code>+</code> <code>-</code> <code>@</code> are prefixed. Your spreadsheet is safe.</td></tr>
+    <tr><td><strong>Config protection</strong></td><td><code>defined('BBF_LOADED') || exit;</code> guard &mdash; even if <code>.htaccess</code> fails, direct access outputs nothing.</td></tr>
+    <tr><td><strong>Template traversal</strong></td><td><code>basename()</code> on all template paths &mdash; <code>../../config.php</code> in form JSON is neutralized.</td></tr>
+    <tr><td><strong>SSRF protection</strong></td><td>Webhook URLs validated against private/reserved IP ranges (127.x, 10.x, 172.16.x, 192.168.x, 169.254.x).</td></tr>
+    <tr><td><strong>Error suppression</strong></td><td><code>display_errors</code> forced OFF &mdash; PHP errors logged to server, never shown to browsers.</td></tr>
+    <tr><td><strong>Definition stripping</strong></td><td>Form definition API strips <code>on_submit</code> and <code>storage</code> &mdash; webhook URLs, emails, and actions are not exposed.</td></tr>
 </table>
 
-<h3>Web server compatibility</h3>
-<p>The <code>.htaccess</code> works on <strong>Apache only</strong>. If you run Nginx or LiteSpeed, you'll need equivalent rules &mdash; fail to do so, and your submissions directory will be open to every passing scoundrel:</p>
+<h3>What <code>.htaccess</code> blocks</h3>
+<p>The included <code>.htaccess</code> is comprehensive. Here is what it denies:</p>
+<ul>
+    <li><strong>Directories:</strong> <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>backups/</code></li>
+    <li><strong>Files:</strong> <code>config*</code> (all variants), <code>forms/*.json</code>, <code>lang/*.php</code></li>
+    <li><strong>Editor backups:</strong> <code>*.bak</code>, <code>*.swp</code>, <code>*.save</code>, <code>*.orig</code>, <code>*~</code></li>
+    <li><strong>Dotfiles:</strong> <code>.git/</code>, <code>.env</code>, <code>.htpasswd</code> &mdash; everything starting with a dot</li>
+    <li><strong>Directory listing:</strong> OFF globally (<code>Options -Indexes</code>)</li>
+</ul>
 
-<div class="code-block"><span class="lang">nginx</span><pre>location ~ ^/(submissions|logs)/ { deny all; }
-location = /config.php { deny all; }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<h3>Web server compatibility</h3>
+<p>The <code>.htaccess</code> works on <strong>Apache only</strong>. If you run Nginx or LiteSpeed, you need equivalent rules &mdash; fail to add them and your credentials, submissions, and templates will be accessible to anyone who guesses the URL:</p>
+
+<div class="code-block"><span class="lang">nginx</span><pre># Add to your server {} block
+location ~ ^/config        { deny all; return 403; }
+location ~ ^/(submissions|logs|templates|actions|backups|lang)/ { deny all; return 403; }
+location ~ /forms/.*\.json$ { deny all; return 403; }
+location ~ /\.(git|env|htaccess|htpasswd) { deny all; return 403; }
+autoindex off;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Daily security self-check</h3>
+<p><code>submit.php</code> runs a lightweight self-check once every 24 hours. Non-blocking, log-only &mdash; no forms affected, no users aware. It writes warnings to PHP's <code>error_log</code> when it detects:</p>
+<ul>
+    <li><code>check.php</code> still exists on the server</li>
+    <li>Sandbox mode is ON</li>
+    <li><code>api_token</code> is empty</li>
+    <li><code>webhook_secret</code> is empty</li>
+    <li><code>.htaccess</code> is missing</li>
+    <li><code>display_errors</code> is ON in PHP config</li>
+</ul>
+<p>Check your PHP error log periodically. Or set up log monitoring. The warnings will be there &mdash; waiting patiently for someone responsible to read them.</p>
+
+<h3><code>check.php</code> &mdash; installation diagnostics</h3>
+<p>Run <code>check.php</code> after installation. It verifies your setup and actively probes for security issues:</p>
+<ul>
+    <li>PHP version, extensions, and configuration</li>
+    <li>Storage backend connectivity</li>
+    <li>Form JSON validity and field definitions</li>
+    <li><strong>Active HTTP probes</strong> on <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>forms/</code> &mdash; verifies each one is actually blocked</li>
+    <li><code>config.php</code> accessibility via HTTP</li>
+    <li><code>BBF_LOADED</code> guard presence in <code>config.php</code></li>
+    <li><code>display_errors</code> state</li>
+    <li>Sandbox mode state</li>
+    <li>Leftover diagnostic files (<code>phpinfo.php</code>, <code>test.php</code>, etc.)</li>
+</ul>
+<p>Access: localhost = unrestricted. Remote = requires <code>?token=&lt;api_token&gt;</code>.</p>
+<div class="callout warn">
+    <strong>Delete <code>check.php</code> after verification.</strong>
+    It exposes PHP version, loaded extensions, directory paths, storage backend details, and form structure. Even with token protection, this file has no business existing on a production server.
+</div>
 
 <!-- ============================================================ -->
 <h2 id="privacy">Privacy</h2>
@@ -1050,8 +1100,8 @@ if (!hash_equals($expected, $received)) {
 </ul>
 
 <div class="callout warn">
-    <strong>Disable before going public</strong>
-    Set <code>'sandbox' => false</code> before production. The sandbox exposes form definitions and email templates &mdash; information that belongs behind closed doors, not on the main street for every hooplehead to gawk at.
+    <strong>Disable before going public.</strong>
+    Set <code>'sandbox' => false</code> before production. The sandbox exposes form definitions, webhook URLs, email templates, and action file existence. On remote servers, sandbox access requires <code>?token=&lt;api_token&gt;</code> &mdash; but even so, disable it when you're done testing.
 </div>
 
 <!-- ============================================================ -->

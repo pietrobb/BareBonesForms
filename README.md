@@ -473,7 +473,56 @@ Four backends. One config line:
 | **API authentication**    | Token required for `submissions.php`                           |
 | **SQL injection**         | PDO prepared statements                                        |
 | **CSV formula injection** | Prefix sanitization for `=`, `+`, `-`, `@`                     |
-| **Directory access**      | `.htaccess` blocks `/submissions/`, `/logs/`, `config.php`     |
+| **Directory access**      | `.htaccess` blocks 7 directories + all dotfiles (see below)    |
+| **Config protection**     | `defined('BBF_LOADED')` guard + `.htaccess` deny on all `config*` files |
+| **Template traversal**    | `basename()` on all template paths — blocks `../../config.php` |
+| **SSRF protection**       | Webhook URLs validated — private/reserved IPs blocked           |
+| **Error suppression**     | `display_errors` forced OFF — errors logged, never shown       |
+| **Definition stripping**  | API form endpoint strips `on_submit` and `storage` from response |
+
+### What `.htaccess` blocks
+
+The included `.htaccess` protects seven directories, all config files, editor backup files, and dotfiles:
+
+```
+Blocked directories:  submissions/, logs/, templates/, actions/, backups/, forms/*.json, lang/*.php
+Blocked files:        config* (all variants), *.bak, *.swp, *.save, *.orig, *~
+Blocked dotfiles:     .git/, .env, .htpasswd — everything starting with a dot
+Directory listing:    OFF globally (Options -Indexes)
+```
+
+> **Apache only.** For Nginx, equivalent rules are documented as comments inside `.htaccess`. Copy them into your `server {}` block — fail to do so and your credentials will be visible to anyone who asks.
+
+### Daily security self-check
+
+`submit.php` runs a lightweight self-check once per day (non-blocking, log-only). It writes warnings to PHP's `error_log` if it detects:
+
+- `check.php` still exists on the server
+- Sandbox mode is ON
+- `api_token` is empty
+- `webhook_secret` is empty
+- `.htaccess` is missing
+- `display_errors` is ON in PHP config
+
+No forms are blocked. No users are affected. The warnings appear in your server's PHP error log — check it periodically, or set up log monitoring.
+
+### `check.php` — installation diagnostics
+
+Run `check.php` after installation to verify your setup. It tests:
+
+- PHP version, extensions, and configuration
+- Storage backend connectivity (file/SQLite/MySQL/CSV)
+- Form JSON validity and field definitions
+- **Active HTTP probes** on 5 directories (submissions, logs, templates, actions, forms) to verify they're blocked
+- `config.php` accessibility via HTTP
+- `BBF_LOADED` guard presence in `config.php`
+- `display_errors` state
+- Sandbox mode state
+- Leftover diagnostic files (`phpinfo.php`, `test.php`, etc.)
+
+Access control: localhost = unrestricted. Remote = requires `?token=<api_token>`.
+
+**Delete `check.php` after verification** — it exposes PHP version, extensions, directory paths, storage details, and form structure.
 
 ### Privacy
 
