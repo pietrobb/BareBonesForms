@@ -10,6 +10,8 @@
  */
 
 // ─── Bootstrap ──────────────────────────────────────────────────
+error_reporting(E_ALL);
+ini_set('display_errors', '0');   // Never leak errors to browser — log only
 define('BBF_LOADED', true);
 if (!file_exists(__DIR__ . '/config.php')) {
     die('Missing config.php. Copy config.example.php to config.php and edit it.');

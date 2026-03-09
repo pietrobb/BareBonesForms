@@ -749,7 +749,11 @@ function validate(array $fields, array $input): array {
 
         // Options (select, radio, checkbox)
         if (!empty($field['options'])) {
-            $validOptions = array_column($field['options'], 'value');
+            // Support both string options ["A","B"] and object options [{value:"a",label:"A"}]
+            $validOptions = [];
+            foreach ($field['options'] as $opt) {
+                $validOptions[] = is_array($opt) ? (string)($opt['value'] ?? '') : (string)$opt;
+            }
             // Allow __other__ sentinel when field has "other": true
             if (!empty($field['other'])) {
                 $validOptions[] = '__other__';
