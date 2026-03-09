@@ -6,6 +6,8 @@
     "description": "A comprehensive application form demonstrating advanced features: multi-page, sections, conditional logic, star rating, column layout, email confirmation, and more.",
     "submit_label": "Submit Application",
     "label_position": "top",
+    "animate_conditions": true,
+
 
     "fields": [
         {

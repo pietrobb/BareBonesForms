@@ -306,19 +306,56 @@
             return sources;
         },
 
-        _applyConditions: function(formEl, fields) {
+        _applyConditions: function(formEl, fields, animate) {
             fields.forEach(field => {
                 if (!field.show_if) return;
                 const wrap = formEl.querySelector(`[data-field="${field.name}"]`);
                 if (!wrap) return;
 
                 const visible = this._evalCondition(field.show_if, formEl);
-                wrap.style.display = visible ? '' : 'none';
-                wrap.setAttribute('data-conditional-hidden', visible ? '' : 'true');
+                const wasHidden = wrap.getAttribute('data-conditional-hidden') === 'true';
+
+                if (!animate || (visible && !wasHidden) || (!visible && wasHidden)) {
+                    // No animation: instant show/hide (initial state or no change)
+                    wrap.style.display = visible ? '' : 'none';
+                    wrap.setAttribute('data-conditional-hidden', visible ? '' : 'true');
+                    return;
+                }
+
+                if (visible) {
+                    // Animate in
+                    wrap.setAttribute('data-conditional-hidden', '');
+                    wrap.style.display = '';
+                    wrap.style.overflow = 'hidden';
+                    wrap.style.maxHeight = '0';
+                    wrap.style.opacity = '0';
+                    requestAnimationFrame(() => {
+                        wrap.style.transition = 'max-height 0.3s ease, opacity 0.25s ease';
+                        wrap.style.maxHeight = wrap.scrollHeight + 'px';
+                        wrap.style.opacity = '1';
+                        const done = () => { wrap.style.maxHeight = ''; wrap.style.overflow = ''; wrap.style.transition = ''; wrap.style.opacity = ''; wrap.removeEventListener('transitionend', done); };
+                        wrap.addEventListener('transitionend', done, { once: true });
+                        setTimeout(done, 350); // fallback
+                    });
+                } else {
+                    // Animate out
+                    wrap.style.maxHeight = wrap.scrollHeight + 'px';
+                    wrap.style.overflow = 'hidden';
+                    requestAnimationFrame(() => {
+                        wrap.style.transition = 'max-height 0.3s ease, opacity 0.2s ease';
+                        wrap.style.maxHeight = '0';
+                        wrap.style.opacity = '0';
+                        const done = () => { wrap.style.display = 'none'; wrap.style.transition = ''; wrap.style.maxHeight = ''; wrap.style.overflow = ''; wrap.style.opacity = ''; wrap.removeEventListener('transitionend', done); };
+                        wrap.addEventListener('transitionend', done, { once: true });
+                        setTimeout(done, 350); // fallback
+                    });
+                    wrap.setAttribute('data-conditional-hidden', 'true');
+                }
             });
         },
 
-        _bindConditions: function(formEl, fields) {
+        _bindConditions: function(formEl, fields, animate) {
+            const self = this;
             const sources = new Set();
             fields.forEach(f => {
                 if (f.show_if) this._collectSources(f.show_if).forEach(s => sources.add(s));
@@ -326,12 +363,12 @@
             sources.forEach(srcName => {
                 const inputs = formEl.querySelectorAll(`[name="${srcName}"]`);
                 inputs.forEach(inp => {
-                    inp.addEventListener('change', () => this._applyConditions(formEl, fields));
-                    inp.addEventListener('input', () => this._applyConditions(formEl, fields));
+                    inp.addEventListener('change', () => self._applyConditions(formEl, fields, animate));
+                    inp.addEventListener('input', () => self._applyConditions(formEl, fields, animate));
                 });
             });
-            // Initial state
-            this._applyConditions(formEl, fields);
+            // Initial state (always instant, no animation)
+            this._applyConditions(formEl, fields, false);
         },
 
         // ─── Build form ──────────────────────────────────────
@@ -569,7 +606,7 @@
             // Bind conditional logic (use flattened fields to catch group children)
             const condFields = allFlat.filter(f => f.show_if);
             if (condFields.length > 0) {
-                this._bindConditions(el, allFlat);
+                this._bindConditions(el, allFlat, !!form.animate_conditions);
             }
 
             return el;
