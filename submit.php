@@ -10,6 +10,7 @@
 
 // ─── Bootstrap ──────────────────────────────────────────────────
 error_reporting(E_ALL);
+ini_set('display_errors', '0');   // Never leak errors to browser — log only
 define('BBF_LOADED', true);
 if (!file_exists(__DIR__ . '/config.php')) {
     http_response_code(500);
@@ -186,6 +187,31 @@ function compareValues($currentVal, $targetVal, string $op): bool {
 
 $config = require __DIR__ . '/config.php';
 
+// ─── Daily security self-check (non-blocking, log-only) ─────────
+$_bbfCheckFile = ($config['logs_dir'] ?? __DIR__ . '/logs') . '/.security_check';
+if (!file_exists($_bbfCheckFile) || filemtime($_bbfCheckFile) < time() - 86400) {
+    @file_put_contents($_bbfCheckFile, date('c'));
+    $_bbfWarnings = [];
+    if (file_exists(__DIR__ . '/check.php'))
+        $_bbfWarnings[] = 'check.php still exists — it exposes server details. Delete it after verification.';
+    if (!empty($config['sandbox']))
+        $_bbfWarnings[] = 'Sandbox mode is ON. Disable for production: \'sandbox\' => false';
+    if (empty($config['api_token']))
+        $_bbfWarnings[] = 'api_token is empty — submissions API is unprotected.';
+    if (empty($config['webhook_secret']))
+        $_bbfWarnings[] = 'webhook_secret is empty — webhook payloads will be unsigned.';
+    if (!file_exists(__DIR__ . '/.htaccess'))
+        $_bbfWarnings[] = '.htaccess is missing — config.php, submissions/, and logs/ may be web-accessible.';
+    if (ini_get('display_errors') && strtolower(ini_get('display_errors')) !== 'off' && ini_get('display_errors') !== '0')
+        $_bbfWarnings[] = 'PHP display_errors is ON — error messages may leak paths and credentials to browsers.';
+    if ($_bbfWarnings) {
+        error_log('BareBonesForms security check (' . count($_bbfWarnings) . ' warning(s)):');
+        foreach ($_bbfWarnings as $_w) error_log('  ⚠ ' . $_w);
+    }
+    unset($_bbfWarnings, $_w);
+}
+unset($_bbfCheckFile);
+
 // ─── Server-side i18n ────────────────────────────────────────────
 $langCode = $config['lang'] ?? 'en';
 $langFile = __DIR__ . '/lang/' . preg_replace('/[^a-z0-9-]/', '', $langCode) . '.php';
@@ -253,7 +279,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         if (!$defFormId) respond(400, 'Missing ?form= parameter.');
         $defFile = $config['forms_dir'] . "/$defFormId.json";
         if (!file_exists($defFile)) respond(404, "Form '$defFormId' not found.");
-        echo file_get_contents($defFile);
+        // Strip server-side config from response — client doesn't need
+        // webhook URLs, email addresses, actions, or storage settings
+        $def = json_decode(file_get_contents($defFile), true);
+        if ($def !== null) {
+            unset($def['on_submit'], $def['storage']);
+        }
+        echo json_encode($def, JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -372,7 +404,7 @@ if ($isSandbox) {
             'subject' => interpolate($ce['subject'] ?? 'Thank you', $data),
             'template' => $ce['template'] ?? 'confirm.html',
             'body_preview' => renderTemplate(
-                $config['templates_dir'] . '/' . ($ce['template'] ?? 'confirm.html'),
+                $config['templates_dir'] . '/' . basename($ce['template'] ?? 'confirm.html'),
                 array_merge($data, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId])
             ),
         ];
@@ -385,7 +417,7 @@ if ($isSandbox) {
             'subject' => interpolate($n['subject'] ?? "New submission: $formId", $data),
             'template' => $n['template'] ?? 'notify.html',
             'body_preview' => renderTemplate(
-                $config['templates_dir'] . '/' . ($n['template'] ?? 'notify.html'),
+                $config['templates_dir'] . '/' . basename($n['template'] ?? 'notify.html'),
                 array_merge($data, [
                     '_form'    => $form['name'] ?? $formId,
                     '_id'      => $submissionId,
@@ -460,7 +492,7 @@ if (!empty($onSubmit['confirm_email'])) {
     $to = interpolate($ce['to'], $data);
     $subject = interpolate($ce['subject'] ?? 'Thank you', $data);
     $body = renderTemplate(
-        $config['templates_dir'] . '/' . ($ce['template'] ?? 'confirm.html'),
+        $config['templates_dir'] . '/' . basename($ce['template'] ?? 'confirm.html'),
         array_merge($data, [
             '_form'    => $form['name'] ?? $formId,
             '_id'      => $submissionId,
@@ -478,7 +510,7 @@ if (!empty($onSubmit['notify'])) {
     $subject = interpolate($n['subject'] ?? "New submission: $formId", $data);
 
     $body = renderTemplate(
-        $config['templates_dir'] . '/' . ($n['template'] ?? 'notify.html'),
+        $config['templates_dir'] . '/' . basename($n['template'] ?? 'notify.html'),
         array_merge($data, [
             '_form'     => $form['name'] ?? $formId,
             '_id'       => $submissionId,
@@ -1004,6 +1036,17 @@ function sendSmtp(string $to, string $subject, string $body, array $headers, arr
 }
 
 function fireWebhook(string $url, array $data, string $secret = ''): void {
+    // SSRF protection: block internal/private network targets
+    $parsed = parse_url($url);
+    $scheme = strtolower($parsed['scheme'] ?? '');
+    if (!in_array($scheme, ['http', 'https'], true)) return;
+    $host = $parsed['host'] ?? '';
+    if ($host === '') return;
+    $ip = gethostbyname($host);
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+        error_log("BareBonesForms: Webhook blocked — target resolves to private/reserved IP: $host → $ip");
+        return;
+    }
     $json = json_encode($data, JSON_UNESCAPED_UNICODE);
     $headers = "Content-Type: application/json\r\nContent-Length: " . strlen($json) . "\r\n";
     if ($secret !== '') {

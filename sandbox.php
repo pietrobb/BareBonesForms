@@ -21,6 +21,17 @@ if (empty($config['sandbox'])) {
     die('<!DOCTYPE html><html><body style="font-family:system-ui;padding:40px;text-align:center"><h1>Sandbox disabled</h1><p>Set <code>\'sandbox\' => true</code> in config.php to enable testing.</p></body></html>');
 }
 
+// Sandbox exposes server details — restrict to localhost or require api_token
+$isLocal = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true);
+if (!$isLocal) {
+    $apiToken = $config['api_token'] ?? '';
+    $provided = $_GET['token'] ?? ($_SERVER['HTTP_X_BBF_TOKEN'] ?? '');
+    if ($apiToken === '' || !hash_equals($apiToken, $provided)) {
+        http_response_code(403);
+        die('<!DOCTYPE html><html><body style="font-family:system-ui;padding:40px;text-align:center"><h1>Access denied</h1><p>Sandbox exposes server details. On remote servers, pass your api_token:<br><code>sandbox.php?token=YOUR_API_TOKEN</code></p></body></html>');
+    }
+}
+
 // List available forms
 $formsDir = $config['forms_dir'] ?? __DIR__ . '/forms';
 $formFiles = glob($formsDir . '/*.json');

@@ -1,14 +1,16 @@
-# BareBonesForms — Protect sensitive files and directories
-# These rules work on Apache with mod_rewrite enabled.
+# BareBonesForms — Security Rules
+# These rules work on Apache with mod_rewrite and AllowOverride All.
 #
 # ─── Nginx equivalent (add to your server block) ──────────────
 # location ~ ^/config        { deny all; return 403; }
-# location ~ \.(bak|swp|save|orig|old)$ { deny all; return 403; }
-# location ~ ~$              { deny all; return 403; }
-# location ~ /\.git          { deny all; return 403; }
-# location ~ ^/submissions/  { deny all; return 403; }
-# location ~ ^/logs/         { deny all; return 403; }
+# location ~ ^/(submissions|logs|templates|actions|backups|lang)/ { deny all; return 403; }
+# location ~ /forms/.*\.json$ { deny all; return 403; }
+# location ~ /\.(git|env|htaccess|htpasswd) { deny all; return 403; }
+# autoindex off;
 # ───────────────────────────────────────────────────────────────
+
+# Disable directory listing globally
+Options -Indexes
 
 # Block all config files — config.php, config.example.php,
 # and editor backups: config.php~, config.php.bak, .config.php.swp, etc.
@@ -18,14 +20,23 @@
 
 # Block editor backup and temp files (any file)
 # Catches: file.php~, file.bak, file.swp, file.save, file.orig, #file#
-<FilesMatch "\.(bak|swp|save|orig|old)$|~$|^#.*#$">
+<FilesMatch "\.(bak|swp|save|orig|old)$|\.bak-|~$|^#.*#$">
     Require all denied
 </FilesMatch>
 
-# Block .git and other hidden version control directories
 RewriteEngine On
-RewriteRule ^\.git - [F,L]
 
-# Block access to submissions and logs directories
+# Block all dot-files and dot-directories (.git, .env, .htpasswd, etc.)
+RewriteRule (^|/)\. - [F,L]
+
+# Block sensitive directories
 RewriteRule ^submissions/ - [F,L]
 RewriteRule ^logs/ - [F,L]
+RewriteRule ^templates/ - [F,L]
+RewriteRule ^actions/ - [F,L]
+RewriteRule ^backups/ - [F,L]
+
+# Block direct access to form JSON definitions and lang PHP files
+# (forms are served via submit.php?action=definition, lang via include)
+RewriteRule ^forms/.*\.json$ - [F,L]
+RewriteRule ^lang/.*\.php$ - [F,L]

@@ -170,6 +170,53 @@ $formsDir = $dirs['forms'];
 check('Security', 'No config.php in forms/', !file_exists($formsDir . '/config.php'),
     'config.php must not be placed in the forms directory.');
 
+// BBF_LOADED guard in config.php
+if ($hasConfig) {
+    $cfgSrc = file_get_contents($configFile);
+    check('Security', 'config.php has BBF_LOADED guard',
+        str_contains($cfgSrc, 'BBF_LOADED'),
+        str_contains($cfgSrc, 'BBF_LOADED')
+            ? 'Guard prevents direct browser access.'
+            : 'Add: defined(\'BBF_LOADED\') || exit; — protects against direct access if .htaccess is bypassed.');
+}
+
+// display_errors should be off
+$dispErrors = ini_get('display_errors');
+$dispOff = !$dispErrors || strtolower($dispErrors) === 'off' || $dispErrors === '0';
+check('Security', 'display_errors is OFF', $dispOff,
+    $dispOff ? 'Errors logged, not shown to browsers.'
+             : 'display_errors is ON — PHP errors may leak paths and credentials. Set display_errors=Off in php.ini.', 'warn');
+
+// Probe directories that should be blocked
+$baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http')
+    . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
+    . rtrim(dirname($_SERVER['REQUEST_URI'] ?? '/'), '/');
+$probeCtx = stream_context_create(['http' => ['timeout' => 3, 'ignore_errors' => true]]);
+foreach (['submissions', 'logs', 'templates', 'actions', 'forms'] as $probeDir) {
+    $http_response_header = null;
+    $probeResult = @file_get_contents("$baseUrl/$probeDir/", false, $probeCtx);
+    $dirBlocked = ($probeResult === false || (isset($http_response_header[0]) && preg_match('/\b(403|404)\b/', $http_response_header[0])));
+    check('Security', "$probeDir/ blocked via HTTP", $dirBlocked,
+        $dirBlocked ? "Directory listing denied."
+                    : "WARNING: $probeDir/ may be browsable! Add Options -Indexes and RewriteRule to .htaccess.");
+}
+
+// Check for common leftover files that shouldn't be in production
+$dangerousFiles = ['phpinfo.php', 'info.php', 'test.php', 'pi.php'];
+foreach ($dangerousFiles as $df) {
+    if (file_exists(__DIR__ . '/' . $df)) {
+        check('Security', "No $df in root", false,
+            "$df exists — it may expose server information. Delete it.");
+    }
+}
+
+// Sandbox should be off in production
+if ($config) {
+    check('Security', 'Sandbox disabled', empty($config['sandbox']),
+        empty($config['sandbox']) ? 'Sandbox is OFF.'
+            : 'Sandbox is ON — exposes form previews, webhook URLs, and template rendering. Disable for production.', 'warn');
+}
+
 // ═════════════════════════════════════════════════════════════
 // Form Definitions
 // ═════════════════════════════════════════════════════════════
