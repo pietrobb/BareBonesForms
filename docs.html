@@ -364,6 +364,7 @@ details summary:hover { text-decoration: underline; }
     <tr><td><code>other_label</code></td><td>string</td><td>Label for &ldquo;Other&rdquo; option (default: <code>"Other"</code>)</td></tr>
     <tr><td><code>confirm</code></td><td>boolean</td><td>Adds confirmation field (email type)</td></tr>
     <tr><td><code>shuffle</code></td><td>boolean</td><td>Randomize option order (radio/checkbox/select) or child field order (group) on each page load</td></tr>
+    <tr><td><code>autocomplete</code></td><td>string</td><td>Browser autocomplete hint (<code>"email"</code>, <code>"tel"</code>, <code>"given-name"</code>, etc.)</td></tr>
     <tr><td><code>show_if</code></td><td>object</td><td>Conditional visibility: <code>{field, value, op?}</code> or <code>{all: [...]}</code> / <code>{any: [...]}</code></td></tr>
     <tr><td><code>title</code></td><td>string</td><td>Title for section or group</td></tr>
     <tr><td><code>fields</code></td><td>array</td><td>Child fields (group type only)</td></tr>
@@ -632,6 +633,50 @@ details summary:hover { text-decoration: underline; }
     <strong>empty / not_empty</strong>
     These operators don't need a <code>value</code> property. For checkbox groups, <code>empty</code> means nothing is checked; <code>not_empty</code> means at least one option is selected.
 </div>
+
+<h3>Conditional Options</h3>
+<p>Individual radio/checkbox options can have their own <code>show_if</code>, letting you filter options dynamically without duplicating fields:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "shipping",
+    "type": "radio",
+    "label": "Shipping method",
+    "options": [
+        {"value": "post_sk", "label": "Slovenská pošta", "show_if": {"field": "country", "value": "SK"}},
+        {"value": "post_cz", "label": "Česká pošta", "show_if": {"field": "country", "value": "CZ"}},
+        {"value": "pickup", "label": "Osobný odber"}
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Options without <code>show_if</code> are always visible. When an option is hidden, it is automatically unchecked.</p>
+
+<h3>Cross-Field Validation</h3>
+<p>Form-level <code>validations</code> array for rules that span multiple fields. Two rule types:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "validations": [
+        {
+            "type": "min_sum",
+            "fields": ["qty_book1", "qty_book2", "qty_book3"],
+            "min": 1,
+            "message": "Objednajte aspoň jednu knihu."
+        },
+        {
+            "type": "min_filled",
+            "fields": ["phone", "email"],
+            "min": 1,
+            "message": "Vyplňte telefón alebo email."
+        }
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Type</th><th>Rule</th></tr>
+    <tr><td><code>min_sum</code></td><td>Sum of numeric field values must be &ge; <code>min</code></td></tr>
+    <tr><td><code>min_filled</code></td><td>At least <code>min</code> fields must be non-empty</td></tr>
+</table>
+
+<p>Validated both client-side (error in form message area) and server-side (422 response).</p>
 
 <h3>Date Validation</h3>
 <p>Date fields support <code>min</code> and <code>max</code> as date strings (ISO format). The browser's date picker respects them, and the server validates them:</p>
@@ -1027,6 +1072,12 @@ GET submissions.php?form=kontakt&amp;format=csv&amp;token=YOUR_TOKEN&amp;last=50
 </table>
 
 <p>Unreplaced <code>{{tags}}</code> are automatically removed from the output.</p>
+
+<h3>Option Labels in Templates</h3>
+<p>For select/radio/checkbox fields, the raw value is available as <code>{{fieldname}}</code> and the display label as <code>{{fieldname_label}}</code>:</p>
+
+<div class="code-block"><span class="lang">html</span><pre>Payment: {{payment_method_label}}   &rarr;  "Cash on delivery (+€1)"
+Shipping: {{shipping_label}}        &rarr;  "Slovenská pošta"</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <div class="callout tip">
     <strong>UTF-8 support</strong>

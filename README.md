@@ -34,7 +34,8 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 - **Cross-domain embedding** — Host forms on one server, embed on another. CORS handled.
 - **CSRF protection** — Session-based HMAC tokens, automatic via `bbf.js`.
 - **Multi-page forms** — Split forms with page breaks. Previous/Next navigation with per-page validation.
-- **Conditional logic** — Show/hide fields based on other field values. Supports `all`/`any` compound conditions with nesting. Nine comparison operators: equals, not, gt, gte, lt, lte, contains, empty, not_empty. Hidden fields excluded from validation and submission. Optional smooth animations via `"animate_conditions": true`.
+- **Conditional logic** — Show/hide fields based on other field values. Supports `all`/`any` compound conditions with nesting. Nine comparison operators: equals, not, gt, gte, lt, lte, contains, empty, not_empty. Hidden fields excluded from validation and submission. Optional smooth animations via `"animate_conditions": true`. Per-option `show_if` on radio/checkbox/select for dynamic option filtering.
+- **Cross-field validation** — Form-level rules: `min_sum` (total of numeric fields) and `min_filled` (at least N fields filled). Client + server validated.
 - **Field groups** — Container type with `show_if` — show or hide a whole section of fields with one condition. Children inherit the parent's visibility rule.
 - **Reusable templates** — Define a set of fields once, reference it from multiple groups with `"use"` + `"prefix"`. One template, many instances.
 - **Star ratings** — Accessible rating widget with keyboard and screen reader support.
@@ -199,6 +200,7 @@ Every form uses `schema_version: 1`. The included `form.schema.json` provides ID
 | `other_label`     | string  | Label for "Other" option (default: `"Other"`)        |
 | `confirm`         | boolean | Adds confirmation field (email type)                 |
 | `shuffle`         | boolean | Randomize option order (radio/checkbox/select) or child field order (group) |
+| `autocomplete`    | string  | Browser autocomplete hint (`"email"`, `"tel"`, `"given-name"`, etc.) |
 | `show_if`         | object  | Conditional visibility: `{field, value, op?}` or `{all: [...]}` / `{any: [...]}` |
 | `title`           | string  | Title for section or group                           |
 | `fields`          | array   | Child fields (group type only)                       |
@@ -600,6 +602,64 @@ Show or hide parts of a template based on whether a field has a value:
 | `{{^var}}...{{/var}}` | Show block if `var` is falsy (empty) |
 
 Unreplaced `{{tags}}` are automatically removed from the output.
+
+Option labels are available as `{{fieldname_label}}` — resolves to the display label instead of the raw value:
+
+```
+Payment: {{payment_method_label}}   →  "Cash on delivery (+€1)"
+```
+
+---
+
+## Conditional Options
+
+Individual radio/checkbox options can have their own `show_if`:
+
+```json
+{
+  "name": "shipping",
+  "type": "radio",
+  "options": [
+    {"value": "post", "label": "Slovenská pošta", "show_if": {"field": "country", "value": "SK"}},
+    {"value": "ceska_posta", "label": "Česká pošta", "show_if": {"field": "country", "value": "CZ"}},
+    {"value": "pickup", "label": "Osobný odber"}
+  ]
+}
+```
+
+Options without `show_if` are always visible. Hidden options are automatically unchecked.
+
+---
+
+## Cross-Field Validation
+
+Form-level `validations` array for rules that span multiple fields:
+
+```json
+{
+  "validations": [
+    {
+      "type": "min_sum",
+      "fields": ["qty_book1", "qty_book2", "qty_book3"],
+      "min": 1,
+      "message": "Objednajte aspoň jednu knihu."
+    },
+    {
+      "type": "min_filled",
+      "fields": ["phone", "email"],
+      "min": 1,
+      "message": "Vyplňte telefón alebo email."
+    }
+  ]
+}
+```
+
+| Type | Rule |
+|------|------|
+| `min_sum` | Sum of numeric field values must be ≥ `min` |
+| `min_filled` | At least `min` fields must be non-empty |
+
+Validated both client-side (error in form message area) and server-side (422 response).
 
 ---
 
