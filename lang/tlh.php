@@ -16,7 +16,7 @@ return [
     'tooShort'       => '{label} {min} ngutlh DIp nIS.',
     'tooLong'        => '{label} {max} ngutlh DIp nIS.',
     'emailMismatch' => '{label} Daq rap Hutlh.',
-    'dateMin'       => '{label} {min} pagh law' nIS.',
+    'dateMin'       => '{label} {min} pagh law\' nIS.',
     'dateMax'       => '{label} {max} pagh puS nIS.',
     'invalidFormat'  => '{label} nab mughato\'.',
 ];

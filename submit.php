@@ -970,7 +970,10 @@ function sendEmail(string $to, string $subject, string $body, array $mailConfig)
         foreach ($headers as $k => $v) {
             $headerStr .= "$k: $v\r\n";
         }
-        @mail($to, $mailSubject, $body, $headerStr);
+        $sent = @mail($to, $mailSubject, $body, $headerStr);
+        if (!$sent) {
+            error_log("BareBonesForms: mail() failed for recipient $to");
+        }
     }
 }
 

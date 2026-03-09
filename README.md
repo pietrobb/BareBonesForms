@@ -51,7 +51,7 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 
 ## Live Demos
 
-Seven demos, each building on the previous. From "hello world" to business logic:
+Eight demos, each building on the previous. From "hello world" to business logic:
 
 | # | Demo | What it shows |
 |---|------|---------------|
@@ -344,7 +344,7 @@ When `bbf.js` renders a form, it produces this DOM structure. These are the clas
 
 ## Language Support
 
-BareBonesForms ships with **28 language packs** — both client-side (validation messages, button labels, status text) and server-side (validation error messages returned by the API).
+BareBonesForms ships with **32 language packs** — both client-side (validation messages, button labels, status text) and server-side (validation error messages returned by the API).
 
 ### Included Languages
 
