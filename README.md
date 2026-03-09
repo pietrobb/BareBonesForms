@@ -185,9 +185,12 @@ Every form uses `schema_version: 1`. The included `form.schema.json` provides ID
 | `max`             | number  | Maximum value (number/date)                          |
 | `pattern`         | string  | Regex validation pattern                             |
 | `pattern_message` | string  | Custom error for pattern mismatch                    |
-| `options`         | array   | Options for select/radio/checkbox                    |
+| `options`         | array   | Options for select/radio/checkbox. Object form: `{value, label, checked?}` |
 | `rows`            | integer | Textarea rows (default: 4)                           |
-| `value`           | string  | Default/preset value                                 |
+| `value`           | string/array | Default value. String for radio, array for checkbox (`["a","b"]`) |
+| `label_position`  | string  | `"left"` puts label beside input instead of above    |
+| `prefix`          | string  | Text before input (e.g. `"€"`)                       |
+| `suffix`          | string  | Text after input (e.g. `"kg"`, `"ks"`)               |
 | `size`            | string  | Field width: `"small"`, `"medium"`, `"large"`        |
 | `css_class`       | string  | Custom CSS class on field wrapper                    |
 | `columns`         | int/str | Radio/checkbox layout: `2`, `3`, or `"inline"`       |
@@ -581,6 +584,22 @@ Templates live in `templates/` and use `{{field_name}}` placeholders. All values
 | `{{_id}}`      | Submission ID            |
 | `{{_time}}`    | Submission timestamp     |
 | `{{_summary}}` | HTML table of all fields |
+
+### Conditional Sections
+
+Show or hide parts of a template based on whether a field has a value:
+
+```
+{{#quantity}}Ordered: {{quantity}} ks{{/quantity}}     ← shown only if quantity is non-empty
+{{^gift_note}}No gift note provided.{{/gift_note}}    ← shown only if gift_note IS empty
+```
+
+| Syntax | Meaning |
+|--------|---------|
+| `{{#var}}...{{/var}}` | Show block if `var` is truthy (non-empty) |
+| `{{^var}}...{{/var}}` | Show block if `var` is falsy (empty) |
+
+Unreplaced `{{tags}}` are automatically removed from the output.
 
 ---
 

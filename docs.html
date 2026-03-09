@@ -350,9 +350,12 @@ details summary:hover { text-decoration: underline; }
     <tr><td><code>max</code></td><td>number</td><td>Maximum value (number/date types)</td></tr>
     <tr><td><code>pattern</code></td><td>string</td><td>Regex validation pattern</td></tr>
     <tr><td><code>pattern_message</code></td><td>string</td><td>Custom error for pattern mismatch</td></tr>
-    <tr><td><code>options</code></td><td>array</td><td>Options for select / radio / checkbox</td></tr>
+    <tr><td><code>options</code></td><td>array</td><td>Options for select / radio / checkbox. Object form: <code>{value, label, checked?}</code></td></tr>
     <tr><td><code>rows</code></td><td>integer</td><td>Textarea rows (default: 4)</td></tr>
-    <tr><td><code>value</code></td><td>string</td><td>Default / preset value</td></tr>
+    <tr><td><code>value</code></td><td>string/array</td><td>Default value. String for radio, array for checkbox (<code>["a","b"]</code>)</td></tr>
+    <tr><td><code>label_position</code></td><td>string</td><td><code>"left"</code> puts label beside input instead of above (field-level override)</td></tr>
+    <tr><td><code>prefix</code><sup>*</sup></td><td>string</td><td>Text before input (e.g. <code>"€"</code>). <sup>*</sup>Not to be confused with group template prefix.</td></tr>
+    <tr><td><code>suffix</code></td><td>string</td><td>Text after input (e.g. <code>"kg"</code>, <code>"ks"</code>)</td></tr>
     <tr><td><code>size</code></td><td>string</td><td>Field width: <code>"small"</code>, <code>"medium"</code>, <code>"large"</code></td></tr>
     <tr><td><code>css_class</code></td><td>string</td><td>Custom CSS class on field wrapper</td></tr>
     <tr><td><code>columns</code></td><td>int/str</td><td>Radio/checkbox layout: <code>2</code>, <code>3</code>, or <code>"inline"</code></td></tr>
@@ -372,19 +375,42 @@ details summary:hover { text-decoration: underline; }
 <h2 id="advanced-features">Advanced Features</h2>
 
 <h3>Label Position</h3>
-<p>By default, labels sit above their fields. Set <code>label_position</code> at the form level to place them alongside:</p>
+<p>By default, labels sit above their fields. Set <code>label_position</code> at the form level to apply to all fields, or on individual fields for selective layout:</p>
 
-<div class="code-block"><span class="lang">json</span><pre>{
-    "label_position": "left",
-    "fields": [ ... ]
-}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<div class="code-block"><span class="lang">json</span><pre>// Form-level — all fields
+{ "label_position": "left", "fields": [ ... ] }
+
+// Field-level — single field
+{ "name": "qty", "type": "number", "label": "Quantity", "label_position": "left" }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <table>
     <tr><th>Value</th><th>Effect</th></tr>
     <tr><td><code>"top"</code></td><td>Default &mdash; labels above inputs</td></tr>
     <tr><td><code>"left"</code></td><td>Labels to the left, inputs to the right</td></tr>
-    <tr><td><code>"right"</code></td><td>Labels to the right of inputs</td></tr>
 </table>
+
+<h3>Input Prefix &amp; Suffix</h3>
+<p>Attach text or unit labels to inputs:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{ "name": "price", "type": "number", "label": "Price", "suffix": "€" }
+{ "name": "weight", "type": "number", "label": "Weight", "prefix": "~", "suffix": "kg" }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Renders as an input group with <code>.bbf-input-prefix</code> / <code>.bbf-input-suffix</code> spans. Can be combined with <code>label_position</code> and <code>size</code>.</p>
+
+<h3>Default Checked State</h3>
+<p>Pre-select radio or checkbox options using <code>value</code> on the field or <code>checked</code> on individual options:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>// Radio — select by field value
+{ "name": "shipping", "type": "radio", "value": "post",
+  "options": [{"value": "post", "label": "Post"}, {"value": "pickup", "label": "Pickup"}] }
+
+// Checkbox — option-level checked
+{ "name": "extras", "type": "checkbox",
+  "options": [{"value": "newsletter", "label": "Newsletter", "checked": true}] }
+
+// Checkbox — select multiple by field value array
+{ "name": "colors", "type": "checkbox", "value": ["red", "blue"],
+  "options": ["red", "green", "blue"] }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <h3>Field Sizes</h3>
 <p>Control how wide a field renders. Useful when you don't need a full-width input for a ZIP code or age:</p>
@@ -985,6 +1011,22 @@ GET submissions.php?form=kontakt&amp;format=csv&amp;token=YOUR_TOKEN&amp;last=50
     <tr><td><code>{{_summary}}</code></td><td>HTML table of all fields</td></tr>
     <tr><td><code>{{field_name}}</code></td><td>Any form field value</td></tr>
 </table>
+
+<h3>Conditional Sections</h3>
+
+<p>Show or hide parts of a template based on whether a field has a value:</p>
+
+<div class="code-block"><span class="lang">html</span><pre>{{#quantity}}Ordered: {{quantity}} ks{{/quantity}}
+
+{{^gift_note}}No gift note provided.{{/gift_note}}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Syntax</th><th>Meaning</th></tr>
+    <tr><td><code>{{#var}}...{{/var}}</code></td><td>Show block only if <code>var</code> is truthy (non-empty)</td></tr>
+    <tr><td><code>{{^var}}...{{/var}}</code></td><td>Show block only if <code>var</code> is falsy (empty)</td></tr>
+</table>
+
+<p>Unreplaced <code>{{tags}}</code> are automatically removed from the output.</p>
 
 <div class="callout tip">
     <strong>UTF-8 support</strong>
