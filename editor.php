@@ -18,18 +18,20 @@ if (!file_exists(__DIR__ . '/config.php')) {
 }
 $config = require __DIR__ . '/config.php';
 
-// ─── Access control (same as sandbox.php) ───────────────────────
+// ─── Access control (session persists after first token auth) ────
+session_start();
 $isLocal = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true);
 if (!$isLocal) {
     $apiToken = $config['api_token'] ?? '';
     $provided = $_GET['token'] ?? ($_SERVER['HTTP_X_BBF_TOKEN'] ?? '');
-    if ($apiToken === '' || !hash_equals($apiToken, $provided)) {
+    if ($apiToken !== '' && $provided !== '' && hash_equals($apiToken, $provided)) {
+        $_SESSION['bbf_editor_auth'] = true;
+    }
+    if (empty($_SESSION['bbf_editor_auth'])) {
         http_response_code(403);
         die('<!DOCTYPE html><html><body style="font-family:system-ui;padding:40px;text-align:center"><h1>Access denied</h1><p>Editor requires api_token on remote servers:<br><code>editor.php?token=YOUR_API_TOKEN</code></p></body></html>');
     }
 }
-
-session_start();
 if (empty($_SESSION['bbf_editor_token'])) {
     $_SESSION['bbf_editor_token'] = bin2hex(random_bytes(32));
 }
