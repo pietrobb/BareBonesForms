@@ -237,6 +237,107 @@ Add the origin to `allowed_origins` in `config.php`. Fail to do so, and CORS wil
 
 ---
 
+## Generated HTML & CSS Classes
+
+When `bbf.js` renders a form, it produces this DOM structure. These are the classes you target for styling:
+
+```html
+<div class="bbf-form-container">                   <!-- outer wrapper (the div you placed) -->
+  <form class="bbf-form bbf-labels-top">            <!-- form element; labels-top/left/right -->
+    <h2 class="bbf-title">Form Title</h2>           <!-- if data-show-title="true" -->
+    <p class="bbf-description">Description</p>
+
+    <!-- ── Text / email / number / date / textarea / select ── -->
+    <div class="bbf-field bbf-field-text">           <!-- bbf-field-{type} for each type -->
+      <label class="bbf-label">Name <span class="bbf-required">*</span></label>
+      <p class="bbf-field-desc">Help text</p>
+      <input class="bbf-input">                      <!-- or <textarea>, <select> -->
+      <div class="bbf-field-error"></div>             <!-- error message (empty until invalid) -->
+    </div>
+
+    <!-- ── Radio / checkbox ── -->
+    <fieldset class="bbf-fieldset bbf-field bbf-field-radio">
+      <legend class="bbf-label">Choose one</legend>
+      <div class="bbf-options bbf-columns-2">        <!-- columns-2 / columns-3 / columns-inline -->
+        <label class="bbf-option"><input type="radio"> Option A</label>
+        <label class="bbf-option"><input type="radio"> Option B</label>
+        <label class="bbf-option bbf-option-other"><input type="radio"> Other
+          <input class="bbf-input bbf-other-input">
+        </label>
+      </div>
+      <div class="bbf-field-error"></div>
+    </fieldset>
+
+    <!-- ── Rating ── -->
+    <div class="bbf-field bbf-field-rating">
+      <div class="bbf-rating-stars">
+        <span class="bbf-star bbf-star-active">★</span>  <!-- bbf-star-hover on mouseover -->
+      </div>
+    </div>
+
+    <!-- ── Section divider ── -->
+    <div class="bbf-field bbf-section">
+      <h3 class="bbf-section-title">Section</h3>
+      <p class="bbf-section-desc">Description</p>
+    </div>
+
+    <!-- ── Group (field container with show_if) ── -->
+    <div class="bbf-field bbf-group">
+      <h4 class="bbf-group-title">Group Title</h4>
+      <!-- child fields rendered here -->
+    </div>
+
+    <!-- ── Multi-page navigation ── -->
+    <div class="bbf-page"><!-- page content --></div>
+    <div class="bbf-field bbf-page-nav">
+      <button class="bbf-prev">Previous</button>
+      <span class="bbf-page-indicator">Page 1 of 3</span>
+      <button class="bbf-next">Next</button>
+      <button class="bbf-submit">Submit</button>
+    </div>
+
+    <!-- ── Single-page submit ── -->
+    <div class="bbf-field bbf-submit-wrap">
+      <button class="bbf-submit">Submit</button>
+    </div>
+
+    <div class="bbf-message bbf-success">Thank you!</div>  <!-- or bbf-error -->
+  </form>
+</div>
+```
+
+### Size and state modifiers
+
+| Class | Applied to | Meaning |
+|-------|-----------|---------|
+| `bbf-size-small` | `.bbf-field` | Field width ~33% |
+| `bbf-size-medium` | `.bbf-field` | Field width ~50% |
+| `bbf-has-error` | `.bbf-field` | Validation failed — added/removed dynamically |
+| `bbf-readonly` | `.bbf-input` | Read-only field |
+| `bbf-labels-top` | `.bbf-form` | Labels above fields (default) |
+| `bbf-labels-left` | `.bbf-form` | Labels left of fields |
+
+### Quick styling examples
+
+```css
+/* Change submit button */
+.bbf-submit { background: #2563eb; border-radius: 8px; }
+
+/* Error state */
+.bbf-has-error .bbf-input { border-color: #ef4444; }
+
+/* Section titles */
+.bbf-section-title { font-size: 1.25rem; color: #1a1a1a; }
+
+/* Star rating colors */
+.bbf-star-active { color: #f59e0b; }
+```
+
+> **Full CSS class reference with 21 entries** → see [docs.html](docs.html) § Styling & CSS Classes.
+> **Working examples** → open any [demo page](demo1.html) and inspect the generated HTML.
+
+---
+
 ## Language Support
 
 BareBonesForms ships with **28 language packs** — both client-side (validation messages, button labels, status text) and server-side (validation error messages returned by the API).
@@ -424,7 +525,7 @@ barebonesforms/
 ├── check.php           ← Installation diagnostics
 ├── docs.html           ← Full documentation (standalone)
 ├── bbf.js              ← Form renderer (zero dependencies)
-├── bbf.css             ← Default styles (optional)
+├── bbf.css             ← Default styles (auto-loaded by bbf.js)
 ├── .htaccess           ← Protects sensitive dirs (Apache)
 ├── lang/               ← Language packs (32 languages)
 │   ├── en.js / en.php  ← English (reference)
@@ -450,6 +551,21 @@ The schema is simple enough that any AI can produce a valid form:
 > "Create a BareBonesForms JSON (schema_version 1) for a job application form with name, email, phone, position dropdown, portfolio URL (optional), cover letter (textarea, min 50 chars), and GDPR consent checkbox."
 
 Copy the JSON, save as `forms/job-application.json`, embed. The `form.schema.json` schema file gives AI and your IDE the exact format spec.
+
+### Note for AI assistants
+
+If you're an AI helping a user build, embed, or style a BareBonesForms form, read these files — in this order — before writing code:
+
+1. **This README** — you're here. Gives you the concept, JSON structure, field types, and `on_submit` pipeline.
+2. **[docs.html](docs.html)** — the full reference. Contains CSS class table (21 entries), `show_if` operators, `config.php` options, storage backends, per-form overrides, and everything not covered here.
+3. **At least one demo** (`demo1.html`–`demo8.html`) — see real embedding in context. Demo 1 is the simplest; Demo 4 is the feature showcase; Demo 8 shows reusable templates.
+4. **[form.schema.json](forms/form.schema.json)** — the machine-readable schema. Use it to validate JSON you generate.
+
+**Common pitfalls to avoid:**
+- Do not add a `<link>` tag for `bbf.css` — it is auto-loaded by `bbf.js`.
+- The generated HTML uses `bbf-` prefixed classes (see "Generated HTML & CSS Classes" above). Do not guess class names — they are listed in this README and in docs.html.
+- All validation is enforced server-side. Client-side validation is a convenience, not a guarantee.
+- `on_submit.store` defaults to `true`. Email and webhooks require SMTP/webhook configuration in `config.php`.
 
 ---
 
