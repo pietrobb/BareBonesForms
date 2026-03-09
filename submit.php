@@ -460,7 +460,12 @@ if (!empty($onSubmit['confirm_email'])) {
     $subject = interpolate($ce['subject'] ?? 'Thank you', $data);
     $body = renderTemplate(
         $config['templates_dir'] . '/' . ($ce['template'] ?? 'confirm.html'),
-        array_merge($data, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId])
+        array_merge($data, [
+            '_form'    => $form['name'] ?? $formId,
+            '_id'      => $submissionId,
+            '_time'    => $timestamp,
+            '_summary' => buildSummary($form['fields'], $data),
+        ])
     );
     sendEmail($to, $subject, $body, $config['mail']);
 }
