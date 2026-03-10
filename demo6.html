@@ -59,6 +59,7 @@
     <h4>What works &amp; what needs setup</h4>
     <div class="setup-item"><span class="ok">&#10003;</span> Fully functional out of the box. No configuration needed.</div>
     <div class="setup-item"><span class="ok">&#128193;</span> Submissions are saved as JSON files in <code>submissions/demo-order/</code>.</div>
+    <div class="setup-item"><span class="ok">&#9993;</span> Email confirmations require SMTP config in <code>config.php</code>.</div>
 </div>
 
 <div class="page-grid">
@@ -94,9 +95,13 @@
                 <li>variant-based price multipliers</li>
                 <li>volume discounts (5%&ndash;20%)</li>
                 <li>conditional delivery speed</li>
+                <li>conditional shipping address</li>
+                <li>payment method with COD fee</li>
                 <li>live sidebar price engine</li>
+                <li>hidden field (order total)</li>
+                <li>email confirmations</li>
                 <li>multi-page (2 pages)</li>
-                <li>server stores the order</li>
+                <li>GDPR consent</li>
             </ul>
         </div>
 
@@ -252,6 +257,10 @@
             }
         }
 
+        var codFee = 0;
+        var paymentMethod = getFormValue(form, 'payment_method');
+        if (paymentMethod === 'cod') codFee = 2;
+
         return {
             product: product,
             productName: PRODUCTS[product].name,
@@ -265,7 +274,9 @@
             afterDiscount: afterDiscount,
             deliveryLabel: deliveryLabel,
             deliveryCost: deliveryCost,
-            total: afterDiscount + deliveryCost
+            codFee: codFee,
+            paymentMethod: paymentMethod,
+            total: afterDiscount + deliveryCost + codFee
         };
     }
 
@@ -299,6 +310,10 @@
             h += '<div class="price-line"><span>' + p.deliveryLabel + '</span><span>' + (p.deliveryCost > 0 ? '&euro;' + fmt(p.deliveryCost) : 'Free') + '</span></div>';
         }
 
+        if (p.codFee > 0) {
+            h += '<div class="price-line"><span>Cash on Delivery fee</span><span>&euro;' + fmt(p.codFee) + '</span></div>';
+        }
+
         h += '<div class="price-sep thick"></div>';
         h += '<div class="price-total"><span>Total</span><span>&euro;' + fmt(p.total) + '</span></div>';
 
@@ -307,6 +322,10 @@
         }
 
         el.innerHTML = h;
+
+        // Fill hidden order_total field
+        var hiddenTotal = form.querySelector('input[name="order_total"]');
+        if (hiddenTotal) hiddenTotal.value = p ? fmt(p.total) : '';
     }
 
     // ─── Hook into form ─────────────────────────────────────────

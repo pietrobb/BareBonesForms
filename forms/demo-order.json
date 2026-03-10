@@ -225,12 +225,17 @@
             ]
         },
 
+        {
+            "name": "order_total",
+            "type": "hidden"
+        },
+
         { "name": "page2", "type": "page_break" },
 
         {
             "name": "section_delivery",
             "type": "section",
-            "title": "Delivery"
+            "title": "Delivery & Payment"
         },
         {
             "name": "delivery_country",
@@ -254,6 +259,52 @@
             "options": [
                 { "value": "standard", "label": "Standard (5\u20137 business days)" },
                 { "value": "express", "label": "Express (2\u20133 business days)" }
+            ]
+        },
+
+        {
+            "name": "section_address",
+            "type": "section",
+            "title": "Shipping Address",
+            "show_if": { "field": "delivery_country", "value": "pickup", "op": "not" }
+        },
+        {
+            "name": "address",
+            "type": "text",
+            "label": "Street Address",
+            "required": true,
+            "show_if": { "field": "delivery_country", "value": "pickup", "op": "not" },
+            "autocomplete": "street-address"
+        },
+        {
+            "name": "city",
+            "type": "text",
+            "label": "City",
+            "required": true,
+            "size": "medium",
+            "show_if": { "field": "delivery_country", "value": "pickup", "op": "not" },
+            "autocomplete": "address-level2"
+        },
+        {
+            "name": "postal_code",
+            "type": "text",
+            "label": "Postal Code",
+            "required": true,
+            "size": "small",
+            "show_if": { "field": "delivery_country", "value": "pickup", "op": "not" },
+            "autocomplete": "postal-code"
+        },
+
+        {
+            "name": "payment_method",
+            "type": "radio",
+            "label": "Payment Method",
+            "required": true,
+            "columns": "inline",
+            "options": [
+                { "value": "card", "label": "Credit Card" },
+                { "value": "bank_transfer", "label": "Bank Transfer" },
+                { "value": "cod", "label": "Cash on Delivery (+\u20ac2)" }
             ]
         },
 
@@ -289,10 +340,30 @@
             "placeholder": "Any special instructions, file delivery details, etc.",
             "rows": 3,
             "maxlength": 1000
+        },
+
+        {
+            "name": "gdpr_consent",
+            "type": "checkbox",
+            "label": "I agree to the processing of my personal data for order fulfillment",
+            "required": true,
+            "options": [
+                { "value": "agreed", "label": "I agree" }
+            ]
         }
     ],
 
     "on_submit": {
-        "store": true
+        "store": true,
+        "confirm_email": {
+            "to": "{{email}}",
+            "subject": "Order Confirmation \u2014 Print Shop",
+            "template": "confirm-order.html"
+        },
+        "notify": {
+            "to": "orders@example.com",
+            "subject": "New Print Order: {{product}} from {{customer_name}}",
+            "template": "notify-order.html"
+        }
     }
 }
