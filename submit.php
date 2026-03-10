@@ -198,7 +198,10 @@ if (!file_exists($_bbfCheckFile) || filemtime($_bbfCheckFile) < time() - 86400) 
         $_bbfWarnings[] = 'Sandbox mode is ON. Disable for production: \'sandbox\' => false';
     if (empty($config['api_token']))
         $_bbfWarnings[] = 'api_token is empty — submissions API is unprotected.';
-    if (empty($config['webhook_secret']))
+    if (empty($config['webhook_secret']) && array_filter(glob(($config['forms_dir'] ?? __DIR__ . '/forms') . '/*.json'), function($f) {
+        $d = @json_decode(@file_get_contents($f), true);
+        return !empty($d['on_submit']['webhooks']);
+    }))
         $_bbfWarnings[] = 'webhook_secret is empty — webhook payloads will be unsigned.';
     if (!file_exists(__DIR__ . '/.htaccess'))
         $_bbfWarnings[] = '.htaccess is missing — config.php, submissions/, and logs/ may be web-accessible.';

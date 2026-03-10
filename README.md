@@ -17,7 +17,7 @@ PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 32 Languages · Sh
 <script src="bbf.js"></script>
 ```
 
-That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — no `<link>` tag needed. The form loads from `forms/kontakt.json`, validates, and submits to `submit.php`.
+That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — no `<link>` tag needed. The form definition is fetched via `submit.php`, validated client-side, and submitted back to `submit.php`.
 
 ---
 
@@ -525,7 +525,7 @@ Directory listing:    OFF globally (Options -Indexes)
 - `check.php` still exists on the server
 - Sandbox mode is ON
 - `api_token` is empty
-- `webhook_secret` is empty
+- `webhook_secret` is empty and at least one form uses webhooks
 - `.htaccess` is missing
 - `display_errors` is ON in PHP config
 

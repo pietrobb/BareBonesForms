@@ -95,7 +95,10 @@ if ($config) {
         'submissions.php is blocked until api_token is set.', 'warn');
 
     check('Config', 'webhook_secret configured', !empty($config['webhook_secret']),
-        'Webhooks will not be signed without a secret.', 'warn');
+        empty($config['webhook_secret'])
+            ? 'Not set — only needed if forms use webhooks.'
+            : 'Webhook payloads will be HMAC-signed.',
+        'info');
 
     check('Config', 'CSRF protection enabled', ($config['csrf'] ?? true) === true,
         ($config['csrf'] ?? true) ? 'Enabled.' : 'Disabled — OK only for cross-origin-only setups.', 'warn');
@@ -162,7 +165,10 @@ check('Security', 'config.php blocked via HTTP', $probeBlocked,
 
 // Check that core files exist
 check('Security', 'submit.php exists', file_exists(__DIR__ . '/submit.php'));
-check('Security', 'submissions.php exists', file_exists(__DIR__ . '/submissions.php'));
+check('Security', 'submissions.php exists', file_exists(__DIR__ . '/submissions.php'),
+    file_exists(__DIR__ . '/submissions.php') ? '' : 'Optional — only needed for the submissions API.', 'info');
+check('Security', 'viewer.php exists', file_exists(__DIR__ . '/viewer.php'),
+    file_exists(__DIR__ . '/viewer.php') ? '' : 'Optional — delete or protect in production.', 'info');
 check('Security', 'bbf.js exists', file_exists(__DIR__ . '/bbf.js'));
 
 // Check config.php not accessible via forms dir
@@ -389,6 +395,7 @@ if ($config) {
 // ═════════════════════════════════════════════════════════════
 
 $passCount  = count(array_filter($results, fn($r) => $r['level'] === 'pass'));
+$infoCount  = count(array_filter($results, fn($r) => $r['level'] === 'info'));
 $warnCount  = count(array_filter($results, fn($r) => $r['level'] === 'warn'));
 $errorCount = count(array_filter($results, fn($r) => $r['level'] === 'error'));
 $totalCount = count($results);
@@ -411,12 +418,12 @@ foreach ($results as $r) {
     --bg: #ffffff; --bg2: #f8f9fa; --text: #1a1a2e; --muted: #6b7280;
     --border: #e5e7eb; --pass: #059669; --pass-bg: #ecfdf5;
     --warn: #d97706; --warn-bg: #fffbeb; --fail: #dc2626; --fail-bg: #fef2f2;
-    --accent: #2563eb;
+    --info: #2563eb; --info-bg: #eff6ff; --accent: #2563eb;
 }
 @media (prefers-color-scheme: dark) {
     :root {
         --bg: #1a1a2e; --bg2: #16162a; --text: #e2e8f0; --muted: #94a3b8;
-        --border: #334155; --pass-bg: #064e3b; --warn-bg: #451a03; --fail-bg: #450a0a;
+        --border: #334155; --pass-bg: #064e3b; --info-bg: #1e3a5f; --warn-bg: #451a03; --fail-bg: #450a0a;
     }
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -433,6 +440,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .stat .num { font-size: 1.8rem; font-weight: 700; }
 .stat .lbl { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .stat.pass { background: var(--pass-bg); color: var(--pass); }
+.stat.info { background: var(--info-bg); color: var(--info); }
 .stat.warn { background: var(--warn-bg); color: var(--warn); }
 .stat.fail { background: var(--fail-bg); color: var(--fail); }
 
@@ -447,6 +455,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .check:hover { background: var(--bg2); }
 .icon { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; color: #fff; margin-top: 2px; }
 .icon.pass { background: var(--pass); }
+.icon.info { background: var(--info); }
 .icon.warn { background: var(--warn); }
 .icon.error { background: var(--fail); }
 .check-name { font-weight: 500; font-size: 0.9rem; }
@@ -467,6 +476,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 <div class="summary">
     <div class="stat pass"><div class="num"><?= $passCount ?></div><div class="lbl">Passed</div></div>
+    <?php if ($infoCount): ?><div class="stat info"><div class="num"><?= $infoCount ?></div><div class="lbl">Info</div></div><?php endif; ?>
     <div class="stat warn"><div class="num"><?= $warnCount ?></div><div class="lbl">Warnings</div></div>
     <div class="stat fail"><div class="num"><?= $errorCount ?></div><div class="lbl">Failed</div></div>
 </div>
@@ -482,7 +492,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="group-title"><?= htmlspecialchars($group) ?></div>
     <?php foreach ($checks as $c): ?>
     <div class="check">
-        <div class="icon <?= $c['level'] ?>"><?= $c['level'] === 'pass' ? '&#10003;' : ($c['level'] === 'warn' ? '!' : '&#10007;') ?></div>
+        <div class="icon <?= $c['level'] ?>"><?= match($c['level']) { 'pass' => '&#10003;', 'info' => 'i', 'warn' => '!', default => '&#10007;' } ?></div>
         <div>
             <div class="check-name"><?= htmlspecialchars($c['name']) ?></div>
             <?php if ($c['detail']): ?>

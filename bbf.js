@@ -130,13 +130,9 @@
                 const baseUrl = options.baseUrl || this.baseUrl;
                 const isSameOrigin = new URL(baseUrl, location.href).origin === location.origin;
 
-                // Load form definition
-                let formUrl;
-                if (isSameOrigin) {
-                    formUrl = `${baseUrl}forms/${formId}.json`;
-                } else {
-                    formUrl = `${baseUrl}submit.php?form=${formId}&action=definition`;
-                }
+                // Load form definition (always via submit.php — it strips
+                // server-side config and works with .htaccess protection)
+                const formUrl = `${baseUrl}submit.php?form=${formId}&action=definition`;
                 const resp = await fetch(formUrl);
                 if (!resp.ok) throw new Error(this._t('formNotFound', { id: formId, status: resp.status }, langCode));
                 const form = await resp.json();
