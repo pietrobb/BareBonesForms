@@ -416,7 +416,7 @@ if ($isSandbox) {
     if (!empty($onSubmit['notify'])) {
         $n = $onSubmit['notify'];
         $preview['notify'] = [
-            'to'      => interpolate($n['to'], $data),
+            'to'      => is_array($n['to']) ? implode(', ', array_map(fn($t) => interpolate($t, $data), $n['to'])) : interpolate($n['to'], $data),
             'subject' => interpolate($n['subject'] ?? "New submission: $formId", $data),
             'template' => $n['template'] ?? 'notify.html',
             'body_preview' => renderTemplate(
@@ -567,7 +567,13 @@ if (!empty($onSubmit['confirm_email'])) {
 // ─── Notification email to owner ────────────────────────────────
 if (!empty($onSubmit['notify'])) {
     $n = $onSubmit['notify'];
-    $to = interpolate($n['to'], $data);
+    $toRaw = $n['to'];
+    if (is_array($toRaw)) {
+        $toRaw = implode(', ', array_map(fn($t) => interpolate($t, $data), $toRaw));
+    } else {
+        $toRaw = interpolate($toRaw, $data);
+    }
+    $to = $toRaw;
     $subject = interpolate($n['subject'] ?? "New submission: $formId", $data);
 
     $body = renderTemplate(
@@ -1022,7 +1028,12 @@ function sendEmail(string $to, string $subject, string $body, array $mailConfig)
     // Sanitize headers to prevent injection
     $to = str_replace(["\r", "\n", "\0"], '', $to);
     $subject = str_replace(["\r", "\n", "\0"], '', $subject);
-    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return;
+
+    // Validate all addresses (supports comma-separated list)
+    $addresses = array_map('trim', explode(',', $to));
+    $addresses = array_filter($addresses, fn($a) => filter_var($a, FILTER_VALIDATE_EMAIL));
+    if (empty($addresses)) return;
+    $to = implode(', ', $addresses);
 
     $from = $mailConfig['from_name'] . ' <' . $mailConfig['from_email'] . '>';
     $headers = [
