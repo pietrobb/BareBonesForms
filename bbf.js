@@ -1,5 +1,5 @@
 /**
- * BareBonesForms — Renderer
+ * BareBonesForms — Renderer  v1.0.1
  *
  * Zero dependencies. Fetches form JSON, renders HTML form, validates, submits.
  *

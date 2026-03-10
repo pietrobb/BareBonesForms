@@ -1,4 +1,4 @@
-# BareBonesForms
+# BareBonesForms  v1.0.1
 
 **Zero-build PHP forms for shared hosting.**
 

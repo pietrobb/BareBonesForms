@@ -1,6 +1,6 @@
 <?php
 /**
- * BareBonesForms — Submission Handler
+ * BareBonesForms — Submission Handler  v1.0.1
  *
  * Receives POST data, validates, stores, emails, webhooks.
  * That's it. Nothing else.

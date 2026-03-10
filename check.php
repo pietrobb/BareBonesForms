@@ -1,6 +1,6 @@
 <?php
 /**
- * BareBonesForms — Installation Check
+ * BareBonesForms — Installation Check  v1.0.1
  *
  * Open this file in your browser to verify your installation.
  * DELETE THIS FILE after verification — it exposes server details.
