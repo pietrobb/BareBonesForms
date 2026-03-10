@@ -1099,8 +1099,10 @@ function sendSmtp(string $to, string $subject, string $body, array $headers, arr
     $sender = $c['from_email'] ?? $c['smtp_user'];
     $write("MAIL FROM:<$sender>");
     $read();
-    $write("RCPT TO:<$to>");
-    $read();
+    foreach (array_map('trim', explode(',', $to)) as $rcpt) {
+        $write("RCPT TO:<$rcpt>");
+        $read();
+    }
     $write("DATA");
     $read();
 
