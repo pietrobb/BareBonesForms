@@ -62,6 +62,12 @@ return [
     // Generate: php -r "echo bin2hex(random_bytes(32));"
     'webhook_secret' => '',
 
+    // ─── Error notifications ─────────────────────────────────────
+    // Email address to notify when form processing fails
+    // (storage, email, or webhook errors). Max one email per 24 hours.
+    // Leave empty to disable.
+    'error_notify' => '',
+
     // ─── API ────────────────────────────────────────────────────
     // Token for submissions.php access (REQUIRED)
     // submissions.php is blocked until you set a token here.

@@ -136,6 +136,7 @@ details summary:hover { text-decoration: underline; }
     <a href="#privacy">Privacy</a>
     <a href="#webhooks">Webhooks</a>
     <a href="#sandbox">Sandbox Mode</a>
+    <a href="#error-notify">Error Notifications</a>
     <a href="#production">Production Checklist</a>
 
     <div class="group">Live Demos</div>
@@ -1299,6 +1300,17 @@ if (!hash_equals($expected, $received)) {
 </div>
 
 <!-- ============================================================ -->
+<h2 id="error-notify">Error Notifications</h2>
+
+<p>When form processing fails &mdash; storage, email, or webhook errors &mdash; the admin can be notified by email. Set <code>error_notify</code> in <code>config.php</code>:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'error_notify' => 'admin@example.com',</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Notifications are throttled to <strong>at most one email per 24 hours</strong> to prevent inbox flooding. The notification includes the form ID, error type, and a timestamp. Leave empty (the default) to disable.</p>
+
+<p>The notification is sent via PHP <code>mail()</code> directly (not SMTP), so it works even when SMTP itself is the cause of the failure. Errors are always logged to PHP <code>error_log</code> regardless of this setting.</p>
+
+<!-- ============================================================ -->
 <h2 id="production">Production Checklist</h2>
 
 <p>Before you open the doors to the public, attend to every item on this list. Skip one, and you'll regret it. I've seen it happen.</p>
@@ -1315,6 +1327,7 @@ if (!hash_equals($expected, $received)) {
     <li>Verify <code>submissions/</code> and <code>logs/</code> are not web-accessible</li>
     <li>Set <code>allowed_origins</code> if embedding cross-domain</li>
     <li>Review privacy settings: <code>store_ip</code> / <code>store_user_agent</code></li>
+    <li>Set <code>error_notify</code> to receive alerts when form processing fails</li>
     <li>Disable sandbox mode: <code>'sandbox' => false</code></li>
     <li>Run <code>check.php</code> to verify installation (remote access requires <code>?token=&lt;api_token&gt;</code>)</li>
     <li><strong>Delete <code>check.php</code> after verification</strong> &mdash; it exposes PHP version, extensions, directory paths, and configuration details</li>

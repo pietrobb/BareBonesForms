@@ -556,6 +556,14 @@ Access control: localhost = unrestricted. Remote = requires `?token=<api_token>`
 'store_user_agent' => false,
 ```
 
+### Error notifications
+
+```php
+'error_notify' => 'admin@example.com',
+```
+
+When form processing fails (storage, email, or webhook errors), the admin receives an email — at most once per 24 hours. Sent via `mail()` directly, so it works even when SMTP is the problem. Errors are always logged to `error_log` regardless.
+
 ---
 
 ## Custom Actions
@@ -731,6 +739,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] `rate_limit` set for your traffic
 - [ ] `submissions/` and `logs/` not web-accessible
 - [ ] `allowed_origins` set if embedding cross-domain
+- [ ] `error_notify` set for admin error alerts (max 1/day)
 - [ ] `'sandbox' => false` for production
 - [ ] `check.php` run, all checks passed *(remote access requires `?token=<api_token>`)*
 - [ ] **`check.php` deleted after verification** — it exposes PHP version, extensions, paths, and config details

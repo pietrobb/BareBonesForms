@@ -507,8 +507,9 @@ $submission = [
     'meta'      => $meta,
 ];
 
-// ─── Store ──────────────────────────────────────────────────────
+// ─── Process on_submit (store, email, webhooks, actions) ────────
 $onSubmit = $form['on_submit'] ?? [];
+$GLOBALS['_bbf_errors'] = [];  // collect non-fatal errors for admin notification
 
 if (($onSubmit['store'] ?? true) !== false) {
     $storeConfig = $config;
@@ -516,6 +517,7 @@ if (($onSubmit['store'] ?? true) !== false) {
         $storeConfig['storage'] = $form['storage'];
     }
     if (!store($submission, $storeConfig, $form['fields'])) {
+        bbfNotifyError($formId, 'Storage failed', $storeConfig['storage'] . ' backend returned false', $config);
         respond(500, 'Submission could not be saved. Please try again later.');
     }
 }
@@ -605,6 +607,11 @@ if (!empty($onSubmit['actions'])) {
             // Action file receives: $action, $submission, $config
         }
     }
+}
+
+// ─── Notify admin of processing errors (max once per day) ───────
+if (!empty($GLOBALS['_bbf_errors'])) {
+    bbfNotifyError($formId, 'Processing errors', implode('; ', $GLOBALS['_bbf_errors']), $config);
 }
 
 // ─── Success ────────────────────────────────────────────────────
@@ -1057,6 +1064,7 @@ function sendEmail(string $to, string $subject, string $body, array $mailConfig)
         $sent = @mail($to, $mailSubject, $body, $headerStr);
         if (!$sent) {
             error_log("BareBonesForms: mail() failed for recipient $to");
+            $GLOBALS['_bbf_errors'][] = "mail() failed for $to";
         }
     }
 }
@@ -1070,6 +1078,7 @@ function sendSmtp(string $to, string $subject, string $body, array $headers, arr
     );
     if (!$socket) {
         error_log("BareBonesForms SMTP connect failed: $errstr");
+        $GLOBALS['_bbf_errors'][] = "SMTP connect failed: $errstr";
         return;
     }
 
@@ -1138,6 +1147,7 @@ function fireWebhook(string $url, array $data, string $secret = ''): void {
     $ip = gethostbyname($host);
     if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
         error_log("BareBonesForms: Webhook blocked — target resolves to private/reserved IP: $host → $ip");
+        $GLOBALS['_bbf_errors'][] = "Webhook blocked — private/reserved IP: $host → $ip";
         return;
     }
     $json = json_encode($data, JSON_UNESCAPED_UNICODE);
@@ -1158,6 +1168,7 @@ function fireWebhook(string $url, array $data, string $secret = ''): void {
     $result = @file_get_contents($url, false, stream_context_create($opts));
     if ($result === false) {
         error_log("BareBonesForms: Webhook failed for $url");
+        $GLOBALS['_bbf_errors'][] = "Webhook failed for $url";
     }
 }
 
@@ -1267,4 +1278,45 @@ function checkRateLimit(string $ip, int $maxPerMinute, string $logsDir): bool {
     flock($fp, LOCK_UN);
     fclose($fp);
     return true;
+}
+
+/**
+ * Notify admin about a processing error (max once per 24 h).
+ *
+ * Uses mail() directly (not sendEmail/sendSmtp) to avoid recursion
+ * when the SMTP connection itself is the cause of the error.
+ */
+function bbfNotifyError(string $formId, string $context, string $detail, array $config): void {
+    $to = $config['error_notify'] ?? '';
+    if ($to === '') return;
+
+    $logsDir = $config['logs_dir'] ?? __DIR__ . '/logs';
+    $throttleFile = $logsDir . '/.error_notify';
+
+    // Throttle: max one notification per 24 hours
+    if (file_exists($throttleFile) && filemtime($throttleFile) > time() - 86400) {
+        return;
+    }
+
+    // Touch throttle file before sending (prevents retries if mail is slow)
+    if (!is_dir($logsDir)) @mkdir($logsDir, 0755, true);
+    @file_put_contents($throttleFile, date('c'));
+
+    $from = $config['mail']['from_email'] ?? 'noreply@example.com';
+    $fromName = $config['mail']['from_name'] ?? 'BareBonesForms';
+    $subject = "BareBonesForms error: $context ($formId)";
+
+    $body = "A processing error occurred on your BareBonesForms installation.\n\n"
+          . "Form:    $formId\n"
+          . "Error:   $context\n"
+          . "Detail:  $detail\n"
+          . "Time:    " . date('Y-m-d H:i:s T') . "\n"
+          . "Server:  " . ($_SERVER['SERVER_NAME'] ?? gethostname()) . "\n\n"
+          . "This notification is sent at most once per 24 hours.\n"
+          . "Check your PHP error_log for the full history.";
+
+    $headers = "From: $fromName <$from>\r\n"
+             . "Content-Type: text/plain; charset=UTF-8\r\n";
+
+    @mail($to, $subject, $body, $headers);
 }
