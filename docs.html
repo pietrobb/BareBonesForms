@@ -135,6 +135,7 @@ details summary:hover { text-decoration: underline; }
     <a href="#security">Security Model</a>
     <a href="#privacy">Privacy</a>
     <a href="#webhooks">Webhooks</a>
+    <a href="#payments">Payments (Stripe)</a>
     <a href="#sandbox">Sandbox Mode</a>
     <a href="#error-notify">Error Notifications</a>
     <a href="#production">Production Checklist</a>
@@ -224,6 +225,8 @@ details summary:hover { text-decoration: underline; }
 <div class="file-tree">barebonesforms/
 ├── config.example.php  <span class="comment">&larr; Copy to config.php. Edit once. Then forget about it.</span>
 ├── submit.php          <span class="comment">&larr; POST handler. Don't touch unless you know what you're doing.</span>
+├── payment.php         <span class="comment">&larr; Stripe webhook handler (payment confirmation)</span>
+├── bbf_functions.php   <span class="comment">&larr; Shared functions (internal, blocked by .htaccess)</span>
 ├── submissions.php     <span class="comment">&larr; API: list/export submissions</span>
 ├── sandbox.php         <span class="comment">&larr; Test forms without consequences</span>
 ├── viewer.php         <span class="comment">&larr; Submissions dashboard. Beautiful. Optional. Delete if unused.</span>
@@ -1300,6 +1303,90 @@ if (!hash_equals($expected, $received)) {
 </div>
 
 <!-- ============================================================ -->
+<h2 id="payments">Payments (Stripe)</h2>
+
+<p>BareBonesForms can collect payments via <strong>Stripe Checkout</strong> &mdash; no SDK, no npm, no build step. One HTTPS POST to the Stripe API. Your server never touches card data.</p>
+
+<h3>How it works</h3>
+<ol>
+    <li>User submits the form &rarr; data is validated and stored with <code>payment_status: pending</code></li>
+    <li>BareBonesForms creates a Stripe Checkout Session &rarr; user is redirected to Stripe's payment page</li>
+    <li>User pays on Stripe's hosted page (PCI compliance handled by Stripe)</li>
+    <li>Stripe calls <code>payment.php</code> webhook &rarr; submission is updated to <code>paid</code></li>
+    <li>Confirmation and notification emails are sent <strong>after</strong> payment &mdash; not on initial submit</li>
+</ol>
+
+<h3>Setup</h3>
+
+<p><strong>1.</strong> Add Stripe keys to <code>config.php</code>:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'stripe' => [
+    'secret_key'     => 'sk_test_...',  // from Stripe Dashboard → API keys
+    'webhook_secret' => 'whsec_...',    // from Stripe Dashboard → Webhooks
+],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>2.</strong> Add <code>payment</code> to your form's <code>on_submit</code>:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>"on_submit": {
+    "payment": {
+        "provider": "stripe",
+        "amount_field": "order_total",
+        "currency": "eur",
+        "product_name": "Order from {{customer_name}}",
+        "success_url": "/thank-you.html",
+        "cancel_url": "/order.html"
+    },
+    "confirm_email": { ... },
+    "notify": { ... }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>3.</strong> Register the webhook in <a href="https://dashboard.stripe.com/webhooks" target="_blank">Stripe Dashboard</a>:</p>
+<ul>
+    <li>URL: <code>https://yoursite.com/path/payment.php</code></li>
+    <li>Events: <code>checkout.session.completed</code></li>
+    <li>Copy the signing secret to <code>stripe.webhook_secret</code> in config</li>
+</ul>
+
+<h3>Payment config reference</h3>
+
+<table>
+    <thead><tr><th>Property</th><th>Required</th><th>Description</th></tr></thead>
+    <tbody>
+        <tr><td><code>provider</code></td><td>Yes</td><td>Payment provider. Currently: <code>"stripe"</code></td></tr>
+        <tr><td><code>amount_field</code></td><td>*</td><td>Form field containing the total (e.g. <code>"order_total"</code>). Value in main currency unit (25.00 = &euro;25).</td></tr>
+        <tr><td><code>amount</code></td><td>*</td><td>Fixed amount if not using a field (e.g. <code>25.00</code>). One of <code>amount_field</code> or <code>amount</code> is required.</td></tr>
+        <tr><td><code>currency</code></td><td>No</td><td>ISO 4217 currency code. Default: <code>"eur"</code></td></tr>
+        <tr><td><code>product_name</code></td><td>No</td><td>Product name on Stripe page. Supports <code>{{field}}</code> interpolation. Default: form name.</td></tr>
+        <tr><td><code>email_field</code></td><td>No</td><td>Field with customer email (pre-fills Stripe). Default: <code>"email"</code></td></tr>
+        <tr><td><code>success_url</code></td><td>No</td><td>Redirect after payment. Default: referring page.</td></tr>
+        <tr><td><code>cancel_url</code></td><td>No</td><td>Redirect on cancel. Default: referring page.</td></tr>
+    </tbody>
+</table>
+
+<h3>Submission metadata</h3>
+
+<p>After payment confirmation, the submission's <code>meta</code> is updated with:</p>
+<ul>
+    <li><code>payment_status</code> &mdash; <code>"pending"</code> &rarr; <code>"paid"</code></li>
+    <li><code>payment_id</code> &mdash; Stripe Payment Intent ID</li>
+    <li><code>payment_amount</code> &mdash; amount paid (in main unit)</li>
+    <li><code>payment_currency</code> &mdash; currency code</li>
+    <li><code>payment_time</code> &mdash; ISO 8601 timestamp</li>
+</ul>
+
+<h3>Template variables</h3>
+
+<p>In email templates (sent after payment), these extra variables are available:</p>
+<ul>
+    <li><code>{{_payment_status}}</code>, <code>{{_payment_id}}</code>, <code>{{_payment_amount}}</code>, <code>{{_payment_currency}}</code></li>
+</ul>
+
+<div class="callout warn">
+    <strong>CSV storage not supported for payments.</strong>
+    CSV is append-only &mdash; payment status cannot be updated. Use <code>file</code>, <code>sqlite</code>, or <code>mysql</code> storage with payment forms.
+</div>
+
+<!-- ============================================================ -->
 <h2 id="error-notify">Error Notifications</h2>
 
 <p>When form processing fails &mdash; storage, email, or webhook errors &mdash; the admin can be notified by email. Set <code>error_notify</code> in <code>config.php</code>:</p>
@@ -1328,6 +1415,7 @@ if (!hash_equals($expected, $received)) {
     <li>Set <code>allowed_origins</code> if embedding cross-domain</li>
     <li>Review privacy settings: <code>store_ip</code> / <code>store_user_agent</code></li>
     <li>Set <code>error_notify</code> to receive alerts when form processing fails</li>
+    <li>Set <code>stripe</code> keys if using payment forms</li>
     <li>Disable sandbox mode: <code>'sandbox' => false</code></li>
     <li>Run <code>check.php</code> to verify installation (remote access requires <code>?token=&lt;api_token&gt;</code>)</li>
     <li><strong>Delete <code>check.php</code> after verification</strong> &mdash; it exposes PHP version, extensions, directory paths, and configuration details</li>

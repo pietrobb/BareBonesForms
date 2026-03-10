@@ -30,160 +30,7 @@ if (!empty($missing)) {
     exit;
 }
 
-// Safe string length (mbstring optional, falls back to strlen)
-function safeStrlen(string $s): int {
-    return function_exists('mb_strlen') ? mb_strlen($s) : strlen($s);
-}
-
-// Resolve template references ("use" + "prefix" on group fields).
-// Clones template fields, prefixes their names, and adjusts internal show_if references.
-function resolveTemplates(array $fields, array $templates): array {
-    $result = [];
-    foreach ($fields as $field) {
-        $type = $field['type'] ?? 'text';
-        if ($type === 'group' && !empty($field['use']) && isset($templates[$field['use']])) {
-            $prefix = $field['prefix'] ?? '';
-            $tplFields = json_decode(json_encode($templates[$field['use']]), true);
-            $tplNames = [];
-            foreach ($tplFields as $tf) { $tplNames[$tf['name']] = true; }
-            $field['fields'] = prefixFields($tplFields, $prefix, $tplNames);
-            unset($field['use'], $field['prefix']);
-        } elseif ($type === 'group' && !empty($field['fields'])) {
-            $field['fields'] = resolveTemplates($field['fields'], $templates);
-        }
-        $result[] = $field;
-    }
-    return $result;
-}
-
-function prefixFields(array $fields, string $prefix, array $tplNames): array {
-    $result = [];
-    foreach ($fields as $field) {
-        $field['name'] = $prefix . $field['name'];
-        if (!empty($field['show_if'])) {
-            $field['show_if'] = prefixCondition($field['show_if'], $prefix, $tplNames);
-        }
-        if (($field['type'] ?? '') === 'group' && !empty($field['fields'])) {
-            $field['fields'] = prefixFields($field['fields'], $prefix, $tplNames);
-        }
-        $result[] = $field;
-    }
-    return $result;
-}
-
-function prefixCondition(array $cond, string $prefix, array $tplNames): array {
-    if (!empty($cond['all'])) {
-        $cond['all'] = array_map(fn($c) => prefixCondition($c, $prefix, $tplNames), $cond['all']);
-        return $cond;
-    }
-    if (!empty($cond['any'])) {
-        $cond['any'] = array_map(fn($c) => prefixCondition($c, $prefix, $tplNames), $cond['any']);
-        return $cond;
-    }
-    if (!empty($cond['field']) && isset($tplNames[$cond['field']])) {
-        $cond['field'] = $prefix . $cond['field'];
-    }
-    return $cond;
-}
-
-// Flatten nested group fields into a single array.
-// Propagates the group's show_if to children so the server knows to skip them when hidden.
-function flattenFields(array $fields, ?array $parentShowIf = null): array {
-    $result = [];
-    foreach ($fields as $f) {
-        // Inherit parent group's show_if if child doesn't have its own
-        if ($parentShowIf && empty($f['show_if'])) {
-            $f['show_if'] = $parentShowIf;
-        }
-        $result[] = $f;
-        if (($f['type'] ?? '') === 'group' && !empty($f['fields'])) {
-            $groupShowIf = $f['show_if'] ?? $parentShowIf;
-            foreach (flattenFields($f['fields'], $groupShowIf) as $child) {
-                $result[] = $child;
-            }
-        }
-    }
-    return $result;
-}
-
-// Evaluate a show_if condition against submitted data.
-// Mirrors the client-side _evalCondition / _compareValues logic.
-function evalCondition(array $cond, array $input): bool {
-    if (!empty($cond['all'])) {
-        foreach ($cond['all'] as $c) {
-            if (!evalCondition($c, $input)) return false;
-        }
-        return true;
-    }
-    if (!empty($cond['any'])) {
-        foreach ($cond['any'] as $c) {
-            if (evalCondition($c, $input)) return true;
-        }
-        return false;
-    }
-    if (!empty($cond['field'])) {
-        $val = $input[$cond['field']] ?? '';
-        return compareValues($val, $cond['value'] ?? null, $cond['op'] ?? '');
-    }
-    return true;
-}
-
-function compareValues($currentVal, $targetVal, string $op): bool {
-    if ($op === 'empty') {
-        return is_array($currentVal) ? count($currentVal) === 0 : ($currentVal === '' || $currentVal === null);
-    }
-    if ($op === 'not_empty') {
-        return is_array($currentVal) ? count($currentVal) > 0 : ($currentVal !== '' && $currentVal !== null);
-    }
-
-    $targets = is_array($targetVal) ? array_map('strval', $targetVal) : ($targetVal !== null ? [(string)$targetVal] : []);
-
-    if ($op === 'contains') {
-        if (is_array($currentVal)) {
-            foreach ($targets as $t) {
-                foreach ($currentVal as $v) {
-                    if (str_contains((string)$v, $t)) return true;
-                }
-            }
-            return false;
-        }
-        foreach ($targets as $t) {
-            if (str_contains((string)$currentVal, $t)) return true;
-        }
-        return false;
-    }
-
-    if (in_array($op, ['gt', 'gte', 'lt', 'lte'], true)) {
-        $num = is_numeric($currentVal) ? (float)$currentVal : null;
-        $tgt = !empty($targets) && is_numeric($targets[0]) ? (float)$targets[0] : null;
-        if ($num === null || $tgt === null) return false;
-        return match($op) {
-            'gt'  => $num > $tgt,
-            'gte' => $num >= $tgt,
-            'lt'  => $num < $tgt,
-            'lte' => $num <= $tgt,
-        };
-    }
-
-    if ($op === 'not') {
-        if (is_array($currentVal)) {
-            foreach ($currentVal as $v) {
-                if (in_array((string)$v, $targets, true)) return false;
-            }
-            return true;
-        }
-        return !in_array((string)$currentVal, $targets, true);
-    }
-
-    // Default: equals
-    if (is_array($currentVal)) {
-        foreach ($currentVal as $v) {
-            if (in_array((string)$v, $targets, true)) return true;
-        }
-        return false;
-    }
-    return in_array((string)$currentVal, $targets, true);
-}
+require_once __DIR__ . '/bbf_functions.php';
 
 $config = require __DIR__ . '/config.php';
 
@@ -500,6 +347,11 @@ if ($config['store_user_agent'] ?? true) {
     $meta['user_agent'] = $_SERVER['HTTP_USER_AGENT'] ?? '';
 }
 
+// Mark payment_status if payment is configured
+if (!empty($form['on_submit']['payment'])) {
+    $meta['payment_status'] = 'pending';
+}
+
 $submission = [
     'id'        => $submissionId,
     'form'      => $formId,
@@ -520,6 +372,66 @@ if (($onSubmit['store'] ?? true) !== false) {
         bbfNotifyError($formId, 'Storage failed', $storeConfig['storage'] . ' backend returned false', $config);
         respond(500, 'Submission could not be saved. Please try again later.');
     }
+}
+
+// ─── Payment (Stripe Checkout) ───────────────────────────────────
+if (!empty($onSubmit['payment'])) {
+    $payment = $onSubmit['payment'];
+    $provider = $payment['provider'] ?? 'stripe';
+
+    if ($provider === 'stripe') {
+        $stripeKey = $config['stripe']['secret_key'] ?? '';
+        if ($stripeKey === '') {
+            bbfNotifyError($formId, 'Payment config error', 'stripe.secret_key is not set in config.php', $config);
+            respond(500, 'Payment is not configured. Please contact the site administrator.');
+        }
+
+        // Resolve amount from field or fixed value
+        $amount = 0;
+        if (!empty($payment['amount_field']) && isset($data[$payment['amount_field']])) {
+            $amount = (int)round(floatval($data[$payment['amount_field']]) * 100);
+        } elseif (!empty($payment['amount'])) {
+            $amount = (int)round(floatval($payment['amount']) * 100);
+        }
+        if ($amount <= 0) {
+            respond(422, 'Invalid payment amount.');
+        }
+
+        $currency = strtolower($payment['currency'] ?? 'eur');
+        $productName = interpolate($payment['product_name'] ?? ($form['name'] ?? $formId), $data);
+
+        // Build success/cancel URLs
+        $baseHost = ($_SERVER['REQUEST_SCHEME'] ?? 'https') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        $referer = $_SERVER['HTTP_REFERER'] ?? $baseHost;
+        $successUrl = $payment['success_url'] ?? $referer;
+        $cancelUrl  = $payment['cancel_url'] ?? $referer;
+        // Relative URLs → absolute
+        if (!str_starts_with($successUrl, 'http')) $successUrl = rtrim($baseHost, '/') . '/' . ltrim($successUrl, '/');
+        if (!str_starts_with($cancelUrl, 'http'))  $cancelUrl  = rtrim($baseHost, '/') . '/' . ltrim($cancelUrl, '/');
+
+        $checkoutUrl = createStripeCheckout($stripeKey, [
+            'amount'       => $amount,
+            'currency'     => $currency,
+            'product_name' => $productName,
+            'success_url'  => $successUrl,
+            'cancel_url'   => $cancelUrl,
+            'metadata'     => [
+                'bbf_submission_id' => $submissionId,
+                'bbf_form_id'       => $formId,
+            ],
+            'customer_email' => $data[$payment['email_field'] ?? 'email'] ?? null,
+        ]);
+
+        if (!$checkoutUrl) {
+            bbfNotifyError($formId, 'Stripe error', 'Checkout session creation failed', $config);
+            respond(500, 'Payment session could not be created. Please try again later.');
+        }
+
+        // Payment forms: emails/webhooks are deferred until payment confirmation (via payment.php webhook)
+        respond(200, 'OK', ['submission_id' => $submissionId, 'redirect' => $checkoutUrl]);
+    }
+
+    respond(500, "Unsupported payment provider: $provider");
 }
 
 // ─── Resolve option labels for templates ────────────────────────
@@ -1029,222 +941,9 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
     return true;
 }
 
-function sendEmail(string $to, string $subject, string $body, array $mailConfig): void {
-    if (empty($to)) return;
-
-    // Sanitize headers to prevent injection
-    $to = str_replace(["\r", "\n", "\0"], '', $to);
-    $subject = str_replace(["\r", "\n", "\0"], '', $subject);
-
-    // Validate all addresses (supports comma-separated list)
-    $addresses = array_map('trim', explode(',', $to));
-    $addresses = array_filter($addresses, fn($a) => filter_var($a, FILTER_VALIDATE_EMAIL));
-    if (empty($addresses)) return;
-    $to = implode(', ', $addresses);
-
-    $from = $mailConfig['from_name'] . ' <' . $mailConfig['from_email'] . '>';
-    $headers = [
-        'From'         => $from,
-        'Reply-To'     => $mailConfig['from_email'],
-        'MIME-Version' => '1.0',
-        'Content-Type' => 'text/html; charset=UTF-8',
-    ];
-
-    if ($mailConfig['method'] === 'smtp') {
-        sendSmtp($to, $subject, $body, $headers, $mailConfig);
-    } else {
-        // RFC 2047 encode subject if it contains non-ASCII
-        $mailSubject = (preg_match('/[^\x20-\x7E]/', $subject))
-            ? '=?UTF-8?B?' . base64_encode($subject) . '?='
-            : $subject;
-        $headerStr = '';
-        foreach ($headers as $k => $v) {
-            $headerStr .= "$k: $v\r\n";
-        }
-        $sent = @mail($to, $mailSubject, $body, $headerStr);
-        if (!$sent) {
-            error_log("BareBonesForms: mail() failed for recipient $to");
-            $GLOBALS['_bbf_errors'][] = "mail() failed for $to";
-        }
-    }
-}
-
-function sendSmtp(string $to, string $subject, string $body, array $headers, array $c): void {
-    // Minimal SMTP client — no dependencies needed
-    $socket = @fsockopen(
-        ($c['smtp_enc'] === 'ssl' ? 'ssl://' : '') . $c['smtp_host'],
-        $c['smtp_port'],
-        $errno, $errstr, 10
-    );
-    if (!$socket) {
-        error_log("BareBonesForms SMTP connect failed: $errstr");
-        $GLOBALS['_bbf_errors'][] = "SMTP connect failed: $errstr";
-        return;
-    }
-
-    $read = function() use ($socket) { return fgets($socket, 512); };
-    $write = function(string $cmd) use ($socket) { fwrite($socket, $cmd . "\r\n"); };
-
-    $read(); // greeting
-    $write("EHLO " . gethostname());
-    while ($line = $read()) { if (substr($line, 3, 1) === ' ') break; }
-
-    if ($c['smtp_enc'] === 'tls') {
-        $write("STARTTLS");
-        $read();
-        stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
-        $write("EHLO " . gethostname());
-        while ($line = $read()) { if (substr($line, 3, 1) === ' ') break; }
-    }
-
-    $write("AUTH LOGIN");
-    $read();
-    $write(base64_encode($c['smtp_user']));
-    $read();
-    $write(base64_encode($c['smtp_pass']));
-    $read();
-
-    // Use from_email for envelope sender (not smtp_user)
-    $sender = $c['from_email'] ?? $c['smtp_user'];
-    $write("MAIL FROM:<$sender>");
-    $read();
-    foreach (array_map('trim', explode(',', $to)) as $rcpt) {
-        $write("RCPT TO:<$rcpt>");
-        $read();
-    }
-    $write("DATA");
-    $read();
-
-    // RFC 2047 encode subject if it contains non-ASCII
-    $encodedSubject = (preg_match('/[^\x20-\x7E]/', $subject))
-        ? '=?UTF-8?B?' . base64_encode($subject) . '?='
-        : $subject;
-
-    $headerStr = "To: $to\r\nSubject: $encodedSubject\r\n";
-    foreach ($headers as $k => $v) {
-        // RFC 2047 encode From header if it contains non-ASCII
-        if ($k === 'From' && preg_match('/[^\x20-\x7E]/', $v)) {
-            // Encode only the display name part
-            if (preg_match('/^(.+?)(\s*<.+>)$/', $v, $m)) {
-                $v = '=?UTF-8?B?' . base64_encode($m[1]) . '?=' . $m[2];
-            }
-        }
-        $headerStr .= "$k: $v\r\n";
-    }
-    $write($headerStr . "\r\n" . $body . "\r\n.");
-    $read();
-    $write("QUIT");
-    fclose($socket);
-}
-
-function fireWebhook(string $url, array $data, string $secret = ''): void {
-    // SSRF protection: block internal/private network targets
-    $parsed = parse_url($url);
-    $scheme = strtolower($parsed['scheme'] ?? '');
-    if (!in_array($scheme, ['http', 'https'], true)) return;
-    $host = $parsed['host'] ?? '';
-    if ($host === '') return;
-    $ip = gethostbyname($host);
-    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-        error_log("BareBonesForms: Webhook blocked — target resolves to private/reserved IP: $host → $ip");
-        $GLOBALS['_bbf_errors'][] = "Webhook blocked — private/reserved IP: $host → $ip";
-        return;
-    }
-    $json = json_encode($data, JSON_UNESCAPED_UNICODE);
-    $headers = "Content-Type: application/json\r\nContent-Length: " . strlen($json) . "\r\n";
-    if ($secret !== '') {
-        $signature = hash_hmac('sha256', $json, $secret);
-        $headers .= "X-BBF-Signature: sha256=$signature\r\n";
-    }
-    $opts = [
-        'http' => [
-            'method'  => 'POST',
-            'header'  => $headers,
-            'content' => $json,
-            'timeout' => 5,
-            'ignore_errors' => true,
-        ],
-    ];
-    $result = @file_get_contents($url, false, stream_context_create($opts));
-    if ($result === false) {
-        error_log("BareBonesForms: Webhook failed for $url");
-        $GLOBALS['_bbf_errors'][] = "Webhook failed for $url";
-    }
-}
-
-function renderTemplate(string $templateFile, array $vars): string {
-    if (!file_exists($templateFile)) {
-        // Fallback: simple text
-        $out = "<h2>Form submission</h2>";
-        foreach ($vars as $k => $v) {
-            if (str_starts_with($k, '_')) continue;
-            $out .= "<p><strong>" . htmlspecialchars($k) . ":</strong> " . htmlspecialchars($v) . "</p>";
-        }
-        return $out;
-    }
-    $template = file_get_contents($templateFile);
-
-    // Conditional sections: {{#var}}...{{/var}} — shown only if var is truthy/non-empty
-    $template = preg_replace_callback('/\{\{#(\w+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
-        $val = $vars[$m[1]] ?? '';
-        return ($val !== '' && $val !== '0' && $val !== null) ? $m[2] : '';
-    }, $template);
-
-    // Inverted sections: {{^var}}...{{/var}} — shown only if var is falsy/empty
-    $template = preg_replace_callback('/\{\{\^(\w+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
-        $val = $vars[$m[1]] ?? '';
-        return ($val === '' || $val === '0' || $val === null) ? $m[2] : '';
-    }, $template);
-
-    // Variable substitution
-    foreach ($vars as $key => $value) {
-        if (is_string($value) || is_numeric($value)) {
-            // Internal variables (_summary, _time, etc.) contain trusted HTML — don't escape
-            $safe = str_starts_with($key, '_') ? (string)$value : htmlspecialchars((string)$value);
-            $template = str_replace('{{' . $key . '}}', $safe, $template);
-        }
-    }
-
-    // Clean up any remaining unreplaced tags
-    $template = preg_replace('/\{\{[a-zA-Z_]\w*\}\}/', '', $template);
-
-    return $template;
-}
-
-function interpolate(string $text, array $data): string {
-    foreach ($data as $key => $value) {
-        if (is_string($value) || is_numeric($value)) {
-            $text = str_replace('{{' . $key . '}}', (string)$value, $text);
-        }
-    }
-    return $text;
-}
-
-function buildSummary(array $fields, array $data): string {
-    return "<table style='border-collapse:collapse'>" . buildSummaryRows($fields, $data) . "</table>";
-}
-
-function buildSummaryRows(array $fields, array $data): string {
-    $lines = [];
-    foreach ($fields as $field) {
-        $type = $field['type'] ?? 'text';
-        // Skip non-data fields
-        if (in_array($type, ['section', 'page_break', 'hidden'])) continue;
-        // Recurse into groups — show children, not the group itself
-        if ($type === 'group' && !empty($field['fields'])) {
-            $lines[] = buildSummaryRows($field['fields'], $data);
-            continue;
-        }
-        $label = $field['label'] ?? $field['name'];
-        $value = $data[$field['name']] ?? '';
-        if (is_array($value)) $value = implode(', ', $value);
-        if ($value === '') continue; // skip empty optional fields
-        $lines[] = "<tr><td style='padding:4px 12px 4px 0;font-weight:bold;vertical-align:top'>"
-            . htmlspecialchars($label) . "</td><td style='padding:4px 0'>"
-            . htmlspecialchars($value) . "</td></tr>";
-    }
-    return implode('', $lines);
-}
+// sendEmail, sendSmtp, fireWebhook, renderTemplate, interpolate,
+// buildSummary, buildSummaryRows, createStripeCheckout, updateSubmissionPayment,
+// bbfNotifyError → moved to bbf_functions.php
 
 function checkRateLimit(string $ip, int $maxPerMinute, string $logsDir): bool {
     if (!is_dir($logsDir)) mkdir($logsDir, 0755, true);
@@ -1280,43 +979,3 @@ function checkRateLimit(string $ip, int $maxPerMinute, string $logsDir): bool {
     return true;
 }
 
-/**
- * Notify admin about a processing error (max once per 24 h).
- *
- * Uses mail() directly (not sendEmail/sendSmtp) to avoid recursion
- * when the SMTP connection itself is the cause of the error.
- */
-function bbfNotifyError(string $formId, string $context, string $detail, array $config): void {
-    $to = $config['error_notify'] ?? '';
-    if ($to === '') return;
-
-    $logsDir = $config['logs_dir'] ?? __DIR__ . '/logs';
-    $throttleFile = $logsDir . '/.error_notify';
-
-    // Throttle: max one notification per 24 hours
-    if (file_exists($throttleFile) && filemtime($throttleFile) > time() - 86400) {
-        return;
-    }
-
-    // Touch throttle file before sending (prevents retries if mail is slow)
-    if (!is_dir($logsDir)) @mkdir($logsDir, 0755, true);
-    @file_put_contents($throttleFile, date('c'));
-
-    $from = $config['mail']['from_email'] ?? 'noreply@example.com';
-    $fromName = $config['mail']['from_name'] ?? 'BareBonesForms';
-    $subject = "BareBonesForms error: $context ($formId)";
-
-    $body = "A processing error occurred on your BareBonesForms installation.\n\n"
-          . "Form:    $formId\n"
-          . "Error:   $context\n"
-          . "Detail:  $detail\n"
-          . "Time:    " . date('Y-m-d H:i:s T') . "\n"
-          . "Server:  " . ($_SERVER['SERVER_NAME'] ?? gethostname()) . "\n\n"
-          . "This notification is sent at most once per 24 hours.\n"
-          . "Check your PHP error_log for the full history.";
-
-    $headers = "From: $fromName <$from>\r\n"
-             . "Content-Type: text/plain; charset=UTF-8\r\n";
-
-    @mail($to, $subject, $body, $headers);
-}

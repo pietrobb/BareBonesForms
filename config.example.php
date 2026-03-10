@@ -62,6 +62,14 @@ return [
     // Generate: php -r "echo bin2hex(random_bytes(32));"
     'webhook_secret' => '',
 
+    // ─── Stripe (payments) ──────────────────────────────────────
+    // Required only if you use on_submit.payment in any form.
+    // Get keys from https://dashboard.stripe.com/apikeys
+    'stripe' => [
+        'secret_key'     => '',  // sk_test_... or sk_live_...
+        'webhook_secret' => '',  // whsec_... (from Stripe → Webhooks → Signing secret)
+    ],
+
     // ─── Error notifications ─────────────────────────────────────
     // Email address to notify when form processing fails
     // (storage, email, or webhook errors). Max one email per 24 hours.

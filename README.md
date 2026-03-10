@@ -566,6 +566,33 @@ When form processing fails (storage, email, or webhook errors), the admin receiv
 
 ---
 
+## Payments (Stripe)
+
+Collect payments via Stripe Checkout — no SDK, no build step. Card data never touches your server.
+
+```json
+"on_submit": {
+    "payment": {
+        "provider": "stripe",
+        "amount_field": "order_total",
+        "currency": "eur",
+        "product_name": "Order from {{customer_name}}",
+        "success_url": "/thank-you.html",
+        "cancel_url": "/order.html"
+    }
+}
+```
+
+**Setup:** Add `stripe.secret_key` and `stripe.webhook_secret` to `config.php`. Register `payment.php` as a webhook endpoint in [Stripe Dashboard](https://dashboard.stripe.com/webhooks) (event: `checkout.session.completed`).
+
+**Flow:** Form submit → store with `pending` → redirect to Stripe → user pays → Stripe webhook → status updated to `paid` → emails/webhooks fire.
+
+Emails and webhooks are **deferred until payment is confirmed** — the customer and admin are notified only after successful payment.
+
+**Note:** Requires `file`, `sqlite`, or `mysql` storage (not CSV — it's append-only and can't update payment status).
+
+---
+
 ## Custom Actions
 
 ```json
@@ -677,6 +704,8 @@ Validated both client-side (error in form message area) and server-side (422 res
 barebonesforms/
 ├── config.example.php  ← Copy to config.php, edit once
 ├── submit.php          ← POST handler
+├── payment.php         ← Stripe webhook handler
+├── bbf_functions.php   ← Shared functions (internal)
 ├── submissions.php     ← API: list/export submissions
 ├── sandbox.php         ← Test forms without side effects
 ├── viewer.php          ← Submissions dashboard (optional, delete if unused)
@@ -740,6 +769,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] `submissions/` and `logs/` not web-accessible
 - [ ] `allowed_origins` set if embedding cross-domain
 - [ ] `error_notify` set for admin error alerts (max 1/day)
+- [ ] `stripe` keys set if using payments
 - [ ] `'sandbox' => false` for production
 - [ ] `check.php` run, all checks passed *(remote access requires `?token=<api_token>`)*
 - [ ] **`check.php` deleted after verification** — it exposes PHP version, extensions, paths, and config details

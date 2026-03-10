@@ -2,7 +2,7 @@
 # These rules work on Apache with mod_rewrite and AllowOverride All.
 #
 # ─── Nginx equivalent (add to your server block) ──────────────
-# location ~ ^/config        { deny all; return 403; }
+# location ~ ^/(config|bbf_functions\.php) { deny all; return 403; }
 # location ~ ^/(submissions|logs|templates|actions|backups|tests|lang)/ { deny all; return 403; }
 # location ~ /forms/.*\.json$ { deny all; return 403; }
 # location ~ /\.(git|env|htaccess|htpasswd) { deny all; return 403; }
@@ -12,9 +12,8 @@
 # Disable directory listing globally
 Options -Indexes
 
-# Block all config files — config.php, config.example.php,
-# and editor backups: config.php~, config.php.bak, .config.php.swp, etc.
-<FilesMatch "^config">
+# Block config files and internal function library
+<FilesMatch "^config|^bbf_functions\.php$">
     Require all denied
 </FilesMatch>
 
