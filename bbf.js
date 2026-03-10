@@ -1378,7 +1378,7 @@
             formEl.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
             formEl.querySelectorAll('.bbf-field-error').forEach(el => el.textContent = '');
             const msgEl = formEl.querySelector('.bbf-message');
-            if (msgEl) { msgEl.textContent = ''; msgEl.style.display = 'none'; msgEl.className = 'bbf-message'; }
+            if (msgEl && !msgEl.classList.contains('bbf-success')) { msgEl.textContent = ''; msgEl.style.display = 'none'; msgEl.className = 'bbf-message'; }
         }
     };
 
