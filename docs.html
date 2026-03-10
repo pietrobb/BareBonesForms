@@ -280,7 +280,7 @@ details summary:hover { text-decoration: underline; }
             "template": "confirm.html"
         },
         "notify": {
-            "to": "admin@example.com",
+            "to": ["admin@example.com", "backup@example.com"],
             "subject": "New contact: {{name}}",
             "template": "notify.html"
         },
@@ -737,7 +737,7 @@ details summary:hover { text-decoration: underline; }
     <tr><th>Property</th><th>Type</th><th>Description</th></tr>
     <tr><td><code>store</code></td><td>boolean</td><td>Store submission (default: <code>true</code>)</td></tr>
     <tr><td><code>confirm_email</code></td><td>object</td><td>Send email to respondent (<code>to</code>, <code>subject</code>, <code>template</code>)</td></tr>
-    <tr><td><code>notify</code></td><td>object</td><td>Send email to admin (<code>to</code>, <code>subject</code>, <code>template</code>)</td></tr>
+    <tr><td><code>notify</code></td><td>object</td><td>Send email to admin (<code>to</code> &mdash; string or array of strings, <code>subject</code>, <code>template</code>)</td></tr>
     <tr><td><code>webhooks</code></td><td>array</td><td>URLs to POST submission data to</td></tr>
     <tr><td><code>redirect</code></td><td>string</td><td>URL to redirect after submission</td></tr>
     <tr><td><code>actions</code></td><td>array</td><td>Custom server-side actions</td></tr>

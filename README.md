@@ -138,7 +138,7 @@ Every form uses `schema_version: 1`. The included `form.schema.json` provides ID
             "template": "confirm.html"
         },
         "notify": {
-            "to": "admin@example.com",
+            "to": ["admin@example.com", "backup@example.com"],
             "subject": "New contact: {{name}}",
             "template": "notify.html"
         },

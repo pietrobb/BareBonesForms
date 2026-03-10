@@ -305,8 +305,11 @@
                     "required": ["to"],
                     "properties": {
                         "to": {
-                            "type": "string",
-                            "description": "Admin email address."
+                            "oneOf": [
+                                { "type": "string", "description": "Single admin email address." },
+                                { "type": "array", "items": { "type": "string" }, "description": "Multiple admin email addresses." }
+                            ],
+                            "description": "Admin email address(es). String or array of strings."
                         },
                         "subject": {
                             "type": "string",
