@@ -176,6 +176,39 @@ foreach ($formFiles as $file) {
         }
     }
 
+    // Check payment configuration
+    if (!empty($onSubmit['payment'])) {
+        $pay = $onSubmit['payment'];
+        if (empty($pay['provider'])) {
+            fail("$name.json: payment missing 'provider'");
+        } elseif ($pay['provider'] !== 'stripe') {
+            fail("$name.json: unsupported payment provider '{$pay['provider']}'");
+        } else {
+            pass("$name.json: payment provider = stripe");
+        }
+
+        if (empty($pay['amount_field']) && empty($pay['amount'])) {
+            fail("$name.json: payment needs 'amount_field' or 'amount'");
+        } else {
+            $amtSrc = !empty($pay['amount_field']) ? "field '{$pay['amount_field']}'" : "fixed {$pay['amount']}";
+            pass("$name.json: payment amount from $amtSrc");
+        }
+
+        if (!empty($pay['currency'])) {
+            if (strlen($pay['currency']) !== 3) {
+                fail("$name.json: payment currency should be 3-letter ISO code, got '{$pay['currency']}'");
+            } else {
+                pass("$name.json: payment currency = {$pay['currency']}");
+            }
+        }
+
+        // Check storage compatibility
+        $formStorage = $form['storage'] ?? null;
+        if ($formStorage === 'csv') {
+            fail("$name.json: payment requires file/sqlite/mysql storage, not csv");
+        }
+    }
+
     $forms[$name] = $form;
 }
 
@@ -502,6 +535,29 @@ foreach ($forms as $name => $form) {
                 pass("valid submit: notify template rendered");
             } else {
                 warn("valid submit: notify template empty");
+            }
+        }
+
+        // Payment-specific checks
+        $onSubmit = $form['on_submit'] ?? [];
+        if (!empty($onSubmit['payment'])) {
+            $meta = $json['meta'] ?? [];
+            if (($meta['payment_status'] ?? '') === 'pending') {
+                pass("valid submit: payment_status = pending");
+            } else {
+                fail("valid submit: payment form missing payment_status in meta");
+            }
+
+            $payPreview = $preview['payment'] ?? [];
+            if (!empty($payPreview['provider'])) {
+                pass("valid submit: payment preview shows provider = {$payPreview['provider']}");
+                if (($payPreview['amount'] ?? 0) > 0) {
+                    pass("valid submit: payment amount = {$payPreview['amount']} {$payPreview['currency']}");
+                } else {
+                    warn("valid submit: payment amount is 0 (may need hidden field value)");
+                }
+            } else {
+                fail("valid submit: payment preview missing");
             }
         }
     } elseif ($validResult['code'] === 422) {

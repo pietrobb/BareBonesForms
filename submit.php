@@ -293,6 +293,23 @@ if ($isSandbox) {
         $preview['redirect'] = interpolate($onSubmit['redirect'], $data);
     }
 
+    if (!empty($onSubmit['payment'])) {
+        $pay = $onSubmit['payment'];
+        $amount = 0;
+        if (!empty($pay['amount_field']) && isset($data[$pay['amount_field']])) {
+            $amount = floatval($data[$pay['amount_field']]);
+        } elseif (!empty($pay['amount'])) {
+            $amount = floatval($pay['amount']);
+        }
+        $preview['payment'] = [
+            'provider' => $pay['provider'] ?? 'stripe',
+            'amount'   => $amount,
+            'currency' => strtoupper($pay['currency'] ?? 'EUR'),
+            'product_name' => interpolate($pay['product_name'] ?? ($form['name'] ?? $formId), $data),
+        ];
+        $sandboxResult['meta'] = ['payment_status' => 'pending'];
+    }
+
     $sandboxResult['on_submit_preview'] = $preview;
 
     http_response_code(empty($errors) ? 200 : 422);
