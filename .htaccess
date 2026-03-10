@@ -3,7 +3,7 @@
 #
 # ─── Nginx equivalent (add to your server block) ──────────────
 # location ~ ^/config        { deny all; return 403; }
-# location ~ ^/(submissions|logs|templates|actions|backups|lang)/ { deny all; return 403; }
+# location ~ ^/(submissions|logs|templates|actions|backups|tests|lang)/ { deny all; return 403; }
 # location ~ /forms/.*\.json$ { deny all; return 403; }
 # location ~ /\.(git|env|htaccess|htpasswd) { deny all; return 403; }
 # autoindex off;
@@ -35,6 +35,7 @@ RewriteRule ^logs/ - [F,L]
 RewriteRule ^templates/ - [F,L]
 RewriteRule ^actions/ - [F,L]
 RewriteRule ^backups/ - [F,L]
+RewriteRule ^tests/ - [F,L]
 
 # Block direct access to form JSON definitions and lang PHP files
 # (forms are served via submit.php?action=definition, lang via include)

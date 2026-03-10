@@ -198,7 +198,7 @@ $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 
     . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost')
     . rtrim(dirname($_SERVER['REQUEST_URI'] ?? '/'), '/');
 $probeCtx = stream_context_create(['http' => ['timeout' => 3, 'ignore_errors' => true]]);
-foreach (['submissions', 'logs', 'templates', 'actions', 'forms'] as $probeDir) {
+foreach (['submissions', 'logs', 'templates', 'actions', 'forms', 'tests'] as $probeDir) {
     $http_response_header = null;
     $probeResult = @file_get_contents("$baseUrl/$probeDir/", false, $probeCtx);
     $dirBlocked = ($probeResult === false || (isset($http_response_header[0]) && preg_match('/\b(403|404)\b/', $http_response_header[0])));
