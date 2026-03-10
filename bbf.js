@@ -529,13 +529,14 @@
                 el.appendChild(btnWrap);
             }
 
-            // Message area
+            // Message area (before submit button so errors are visible)
             const msg = document.createElement('div');
             msg.className = 'bbf-message';
             msg.setAttribute('role', 'status');
             msg.setAttribute('aria-live', 'polite');
             msg.style.display = 'none';
-            el.appendChild(msg);
+            const submitWrap = el.querySelector('.bbf-submit-wrap, .bbf-page-nav');
+            if (submitWrap) el.insertBefore(msg, submitWrap); else el.appendChild(msg);
 
             // Submit handler
             el.addEventListener('submit', async (e) => {
@@ -1364,6 +1365,11 @@
             if (firstInput) {
                 firstInput.focus();
                 firstInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                const msgEl = formEl.querySelector('.bbf-message');
+                if (msgEl && msgEl.style.display !== 'none') {
+                    msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
             }
         },
 
