@@ -218,7 +218,7 @@ $flatFields = flattenFields($form['fields']);
 $errors = validate($flatFields, $input);
 
 // ─── Sandbox mode ───────────────────────────────────────────────
-$isSandbox = !empty($_GET['sandbox']) && ($config['sandbox'] ?? false);
+$isSandbox = isset($_GET['sandbox']) && ($config['sandbox'] ?? false);
 if ($isSandbox) {
     $data = collectData($flatFields, $input);
     $submissionId = 'bbf_test_' . bin2hex(random_bytes(4));

@@ -584,7 +584,8 @@
                         body: JSON.stringify(body),
                     };
                     if (isSameOrigin) fetchOpts.credentials = 'same-origin';
-                    const resp = await fetch(`${baseUrl}submit.php?form=${formId}`, fetchOpts);
+                    const sandboxParam = new URLSearchParams(window.location.search).has('sandbox') ? '&sandbox' : '';
+                    const resp = await fetch(`${baseUrl}submit.php?form=${formId}${sandboxParam}`, fetchOpts);
 
                     let result;
                     const contentType = resp.headers.get('content-type') || '';
@@ -595,7 +596,12 @@
                         result = { status: 'error', message: resp.ok ? text : this._t('serverError', { status: resp.status }, langCode) };
                     }
 
-                    if (result.status === 'ok') {
+                    if (result.status === 'ok' && result.sandbox) {
+                        msg.className = 'bbf-message bbf-success';
+                        msg.innerHTML = this._renderSandboxPreview(result);
+                        msg.style.display = 'block';
+                        this._clearErrors(el);
+                    } else if (result.status === 'ok') {
                         if (result.redirect) {
                             window.location.href = result.redirect;
                             return;
@@ -1371,6 +1377,71 @@
                     msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
             }
+        },
+
+        _renderSandboxPreview: function(result) {
+            var h = '<div style="text-align:left">';
+            h += '<strong style="font-size:1.05em">Sandbox Preview</strong>';
+            h += '<div style="font-size:0.85em;opacity:0.8;margin:2px 0 10px">Nothing was saved or sent. This is what <em>would</em> happen:</div>';
+
+            var p = result.on_submit_preview || {};
+
+            // Validation
+            var v = result.validation || {};
+            h += '<div style="margin-bottom:8px">';
+            h += v.passed
+                ? '<span style="color:#4ade80">&#10003; Validation passed</span>'
+                : '<span style="color:#f87171">&#10007; Validation failed</span>';
+            h += '</div>';
+
+            // Store
+            if (p.store) {
+                h += '<div style="margin-bottom:6px"><strong>Storage:</strong> ' + p.store.backend + (p.store.enabled ? '' : ' (disabled)') + '</div>';
+            }
+
+            // Payment
+            if (p.payment) {
+                h += '<div style="margin-bottom:6px"><strong>Payment:</strong> '
+                    + p.payment.provider + ' &mdash; '
+                    + p.payment.amount.toFixed(2) + ' ' + p.payment.currency
+                    + ' &mdash; &ldquo;' + this._esc(p.payment.product_name) + '&rdquo;</div>';
+            }
+
+            // Emails
+            if (p.confirm_email) {
+                h += '<details style="margin-bottom:6px"><summary style="cursor:pointer"><strong>Confirmation email</strong> &rarr; ' + this._esc(p.confirm_email.to) + ' <span style="opacity:0.5;font-size:0.85em">(click to expand)</span></summary>';
+                h += '<div style="margin:6px 0;padding:8px;background:rgba(0,0,0,0.15);border-radius:4px;font-size:0.82em">';
+                h += '<div style="margin-bottom:4px"><strong>Subject:</strong> ' + this._esc(p.confirm_email.subject) + '</div>';
+                if (p.confirm_email.body_preview) h += '<div style="white-space:pre-wrap;max-height:200px;overflow:auto">' + this._esc(p.confirm_email.body_preview) + '</div>';
+                h += '</div></details>';
+            }
+            if (p.notify) {
+                h += '<details style="margin-bottom:6px"><summary style="cursor:pointer"><strong>Notification email</strong> &rarr; ' + this._esc(p.notify.to) + ' <span style="opacity:0.5;font-size:0.85em">(click to expand)</span></summary>';
+                h += '<div style="margin:6px 0;padding:8px;background:rgba(0,0,0,0.15);border-radius:4px;font-size:0.82em">';
+                h += '<div style="margin-bottom:4px"><strong>Subject:</strong> ' + this._esc(p.notify.subject) + '</div>';
+                if (p.notify.body_preview) h += '<div style="white-space:pre-wrap;max-height:200px;overflow:auto">' + this._esc(p.notify.body_preview) + '</div>';
+                h += '</div></details>';
+            }
+
+            // Webhooks
+            if (p.webhooks && p.webhooks.length) {
+                h += '<div style="margin-bottom:6px"><strong>Webhooks:</strong> ' + p.webhooks.length + ' configured</div>';
+            }
+
+            // Meta
+            if (result.meta) {
+                h += '<div style="margin-bottom:6px"><strong>Meta:</strong> payment_status = ' + (result.meta.payment_status || 'n/a') + '</div>';
+            }
+
+            h += '</div>';
+            return h;
+        },
+
+        _esc: function(s) {
+            if (!s) return '';
+            var d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
         },
 
         _clearErrors: function(formEl) {

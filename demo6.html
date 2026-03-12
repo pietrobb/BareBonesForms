@@ -8,23 +8,38 @@
 <link rel="stylesheet" href="demo.css">
 <style>
 /* Price summary card */
-.price-card { background: var(--bg, #f9fafb); border: 2px solid #10b981; border-radius: 10px; padding: 20px; position: sticky; top: 80px; }
+.price-card { background: #1e1e2e; border: 2px solid #10b981; border-radius: 10px; padding: 20px; position: sticky; top: 80px; }
 .price-card h4 { color: #10b981; margin-bottom: 12px; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px; }
-.price-empty { color: #6b7280; font-size: 0.88rem; font-style: italic; }
-.price-line { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.88rem; }
-.price-line.sub { color: #6b7280; font-size: 0.82rem; padding-left: 8px; }
-.price-sep { border-top: 1px solid #e5e7eb; margin: 8px 0; }
+.price-empty { color: #94a3b8; font-size: 0.88rem; font-style: italic; }
+.price-line { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.88rem; color: #cbd5e1; }
+.price-line.sub { color: #94a3b8; font-size: 0.82rem; padding-left: 8px; }
+.price-sep { border-top: 1px solid #334155; margin: 8px 0; }
 .price-sep.thick { border-top: 2px solid #10b981; }
 .price-total { display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 700; color: #10b981; padding: 4px 0; }
-.price-discount { color: #059669; font-weight: 600; }
-.price-note { font-size: 0.78rem; color: #6b7280; margin-top: 10px; line-height: 1.4; }
-@media (prefers-color-scheme: dark) {
-    .price-card { background: #1e1e2e; border-color: #10b981; }
-    .price-sep { border-color: #334155; }
-    .price-line.sub { color: #94a3b8; }
-    .price-note { color: #94a3b8; }
-    .price-empty { color: #94a3b8; }
-}
+.price-discount { color: #34d399; font-weight: 600; }
+.price-note { font-size: 0.78rem; color: #94a3b8; margin-top: 10px; line-height: 1.4; }
+/* Sandbox notice */
+.sandbox-notice { max-width: 640px; margin: 20px auto 0; padding: 16px 20px; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; font-size: 0.85rem; }
+.sandbox-notice.active { border-color: rgba(16, 185, 129, 0.5); background: rgba(16, 185, 129, 0.1); }
+.sandbox-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sandbox-header h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #10b981; margin: 0; }
+.sandbox-notice p { color: #94a3b8; font-size: 0.82rem; margin: 0 0 10px; line-height: 1.5; }
+.sandbox-notice p em { color: #cbd5e1; font-style: normal; font-weight: 600; }
+.sandbox-details { margin: 10px 0; }
+.sandbox-item { padding: 2px 0; font-size: 0.82rem; color: #94a3b8; }
+.sandbox-yes { color: #4ade80; margin-right: 4px; }
+.sandbox-no { color: #f87171; margin-right: 4px; }
+.sandbox-tip { font-size: 0.78rem !important; color: #6b7280 !important; margin-bottom: 0 !important; }
+.sandbox-tip code { background: rgba(16, 185, 129, 0.1); padding: 1px 5px; border-radius: 3px; font-size: 0.75rem; }
+
+/* Toggle switch */
+.sandbox-toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+.sandbox-toggle input { opacity: 0; width: 0; height: 0; }
+.sandbox-slider { position: absolute; cursor: pointer; inset: 0; background: #334155; border-radius: 22px; transition: background 0.2s; }
+.sandbox-slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; bottom: 3px; background: #94a3b8; border-radius: 50%; transition: transform 0.2s, background 0.2s; }
+.sandbox-toggle input:checked + .sandbox-slider { background: #10b981; }
+.sandbox-toggle input:checked + .sandbox-slider::before { transform: translateX(18px); background: #fff; }
+
 </style>
 </head>
 <body>
@@ -53,6 +68,25 @@
 
 <div class="server-notice">
     This form demands a PHP server to function. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo6.html</code>.
+</div>
+
+<div class="sandbox-notice" id="sandbox-notice">
+    <div class="sandbox-header">
+        <h4>Sandbox Mode</h4>
+        <label class="sandbox-toggle">
+            <input type="checkbox" id="sandbox-toggle">
+            <span class="sandbox-slider"></span>
+        </label>
+    </div>
+    <p>A dry run. Submit the form and see exactly what <em>would</em> happen &mdash; without actually doing it. Nothing is saved, no emails are sent, no payments are charged.</p>
+    <div class="sandbox-details">
+        <div class="sandbox-item"><span class="sandbox-yes">&#10003;</span> Full server-side validation runs</div>
+        <div class="sandbox-item"><span class="sandbox-yes">&#10003;</span> Email previews (confirmation + notification) with rendered templates</div>
+        <div class="sandbox-item"><span class="sandbox-yes">&#10003;</span> Payment config preview (provider, amount, currency)</div>
+        <div class="sandbox-item"><span class="sandbox-yes">&#10003;</span> Webhook URLs and custom actions listed</div>
+        <div class="sandbox-item"><span class="sandbox-no">&#10007;</span> No data stored, no emails sent, no webhooks fired, no Stripe calls</div>
+    </div>
+    <p class="sandbox-tip">You can also activate sandbox by adding <code>?sandbox</code> to any page URL.</p>
 </div>
 
 <div class="setup-notice">
@@ -345,6 +379,41 @@
         updatePriceSummary(form);
     });
     formObserver.observe(container, { childList: true, subtree: true });
+})();
+
+// ─── Sandbox toggle ──────────────────────────────────────────
+(function() {
+    var toggle = document.getElementById('sandbox-toggle');
+    var notice = document.getElementById('sandbox-notice');
+    if (!toggle) return;
+
+    // Default to sandbox ON for this demo
+    var params = new URLSearchParams(window.location.search);
+    var isSandbox = params.has('sandbox');
+    var hasNoSandbox = params.has('no-sandbox');
+
+    if (!isSandbox && !hasNoSandbox) {
+        var url = new URL(window.location);
+        url.searchParams.set('sandbox', '');
+        window.location.replace(url.toString());
+        return;
+    }
+
+    // Set initial state
+    toggle.checked = isSandbox;
+    if (isSandbox) notice.classList.add('active');
+
+    toggle.addEventListener('change', function() {
+        var url = new URL(window.location);
+        if (toggle.checked) {
+            url.searchParams.set('sandbox', '');
+            url.searchParams.delete('no-sandbox');
+        } else {
+            url.searchParams.delete('sandbox');
+            url.searchParams.set('no-sandbox', '');
+        }
+        window.location.href = url.toString();
+    });
 })();
 </script>
 </body>

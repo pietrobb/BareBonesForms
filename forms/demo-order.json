@@ -355,6 +355,13 @@
 
     "on_submit": {
         "store": true,
+        "payment": {
+            "provider": "stripe",
+            "amount_field": "order_total",
+            "currency": "eur",
+            "product_name": "Print Shop Order from {{customer_name}}",
+            "email_field": "email"
+        },
         "confirm_email": {
             "to": "{{email}}",
             "subject": "Order Confirmation \u2014 Print Shop",

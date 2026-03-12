@@ -1292,10 +1292,21 @@ if (!hash_equals($expected, $received)) {
     <li>Runs full server-side validation</li>
     <li>Shows detailed validation results per field</li>
     <li>Previews email content (confirmation + notification) with rendered templates</li>
+    <li>Shows payment config preview (provider, amount, currency)</li>
     <li>Lists webhook URLs that would be called</li>
     <li>Shows custom action files and whether they exist</li>
-    <li>Does <strong>NOT</strong> store submissions, send emails, fire webhooks, or run actions</li>
+    <li>Does <strong>NOT</strong> store submissions, send emails, fire webhooks, call Stripe, or run actions</li>
 </ul>
+
+<h3>Inline sandbox (<code>?sandbox</code> parameter)</h3>
+
+<p>You can also test any form inline &mdash; without opening <code>sandbox.php</code> &mdash; by adding <code>?sandbox</code> to the page URL:</p>
+
+<div class="code-block"><span class="lang">url</span><pre>https://yoursite.com/order.html?sandbox</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>When sandbox is active, submitting the form shows a detailed preview panel instead of the success message: validation results, storage backend, payment details, email previews (expandable with rendered templates), webhooks, and metadata. No data is stored or sent.</p>
+
+<p>This is especially useful for testing <strong>payment forms</strong> without Stripe API keys &mdash; you can verify the payment configuration (provider, amount, currency, product name) before setting up a Stripe account.</p>
 
 <div class="callout warn">
     <strong>Disable before going public.</strong>
