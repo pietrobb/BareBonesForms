@@ -822,6 +822,322 @@ foreach ($backends as $backend) {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Test 5: Complex Conditional Logic
+    // ─────────────────────────────────────────────────────────────
+    section("Test 5: Complex Conditional Logic ($backend)");
+
+    // Scenario A — Minimal (no conditionals active)
+    $clA = submitForm('test-complex-logic', [
+        'full_name'        => 'Anna Minimal',
+        'project_type'     => 'Residential',
+        'need_installation' => 'No',
+        'need_delivery'    => 'No',
+        'heard_from'       => ['Social media'],
+        'has_budget'       => 'No',
+        'contact_method'   => 'Email',
+        'contact_email'    => 'anna@test.com',
+        'contact_phone'    => '+421900000001',
+        'priority'         => 'Low',
+        'message'          => 'Basic test',
+    ]);
+    if ($clA['code'] === 200 && ($clA['json']['status'] ?? '') === 'ok') {
+        pass("complex-logic submit A (Minimal): OK");
+    } else {
+        fail("complex-logic submit A (Minimal): HTTP {$clA['code']}", substr($clA['body'], 0, 300));
+    }
+
+    // Scenario B — Chain conditional (Commercial → company_name → company_vat)
+    $clB = submitForm('test-complex-logic', [
+        'full_name'        => 'Boris Chain',
+        'project_type'     => 'Commercial',
+        'company_name'     => 'ACME s.r.o.',
+        'company_vat'      => 'SK2020123456',
+        'need_installation' => 'Yes',
+        'need_delivery'    => 'No',
+        'heard_from'       => ['Advertisement'],
+        'has_budget'       => 'Yes',
+        'budget_amount'    => '50000',
+        'contact_method'   => 'Email',
+        'contact_email'    => 'boris@acme.sk',
+        'contact_phone'    => '+421900000002',
+        'priority'         => 'High',
+        'message'          => 'Chain test',
+    ]);
+    if ($clB['code'] === 200 && ($clB['json']['status'] ?? '') === 'ok') {
+        pass("complex-logic submit B (Chain): OK");
+    } else {
+        fail("complex-logic submit B (Chain): HTTP {$clB['code']}", substr($clB['body'], 0, 300));
+    }
+
+    // Scenario C — AND condition (both Yes → preferred_date)
+    $clC = submitForm('test-complex-logic', [
+        'full_name'        => 'Cyril AndLogic',
+        'project_type'     => 'Residential',
+        'need_installation' => 'Yes',
+        'need_delivery'    => 'Yes',
+        'preferred_date'   => '2026-06-15',
+        'heard_from'       => ['Social media'],
+        'has_budget'       => 'No',
+        'contact_method'   => 'Email',
+        'contact_email'    => 'cyril@test.com',
+        'contact_phone'    => '+421900000003',
+        'priority'         => 'Medium',
+        'message'          => 'AND test',
+    ]);
+    if ($clC['code'] === 200 && ($clC['json']['status'] ?? '') === 'ok') {
+        pass("complex-logic submit C (AND): OK");
+    } else {
+        fail("complex-logic submit C (AND): HTTP {$clC['code']}", substr($clC['body'], 0, 300));
+    }
+
+    // Scenario D — OR condition (Friend checkbox → referral_detail) + Fax
+    $clD = submitForm('test-complex-logic', [
+        'full_name'        => 'Dana OrLogic',
+        'project_type'     => 'Government',
+        'need_installation' => 'No',
+        'need_delivery'    => 'No',
+        'heard_from'       => ['Friend', 'Social media'],
+        'referral_detail'  => 'My colleague Jano',
+        'has_budget'       => 'Yes',
+        'budget_amount'    => '100000',
+        'contact_method'   => 'Fax',
+        'contact_email'    => 'dana@gov.sk',
+        'contact_phone'    => '+421900000004',
+        'contact_fax'      => '+421200000001',
+        'priority'         => 'High',
+        'message'          => 'OR + fax test',
+    ]);
+    if ($clD['code'] === 200 && ($clD['json']['status'] ?? '') === 'ok') {
+        pass("complex-logic submit D (OR + Fax): OK");
+    } else {
+        fail("complex-logic submit D (OR + Fax): HTTP {$clD['code']}", substr($clD['body'], 0, 300));
+    }
+
+    // Scenario E — Negation (has_budget NOT "No" → budget_amount)
+    $clE = submitForm('test-complex-logic', [
+        'full_name'        => 'Emil Negation',
+        'project_type'     => 'Residential',
+        'need_installation' => 'No',
+        'need_delivery'    => 'Yes',
+        'heard_from'       => ['Other'],
+        'referral_detail'  => 'Google search',
+        'has_budget'       => 'Yes',
+        'budget_amount'    => '25000',
+        'contact_method'   => 'Email',
+        'contact_email'    => 'emil@test.com',
+        'contact_phone'    => '+421900000005',
+        'priority'         => 'Low',
+        'message'          => 'Negation test',
+    ]);
+    if ($clE['code'] === 200 && ($clE['json']['status'] ?? '') === 'ok') {
+        pass("complex-logic submit E (Negation): OK");
+    } else {
+        fail("complex-logic submit E (Negation): HTTP {$clE['code']}", substr($clE['body'], 0, 300));
+    }
+
+    // Read back all 5 submissions
+    usleep(300000);
+    $clSubs = getSubmissions('test-complex-logic');
+
+    if ($clSubs === null) {
+        fail("complex-logic: cannot read submissions via API");
+    } else {
+        assertEqual(5, count($clSubs), "complex-logic: 5 submissions returned");
+
+        // Find each submission by full_name
+        $anna = $boris = $cyril = $dana = $emil = null;
+        foreach ($clSubs as $sub) {
+            $fn = $sub['data']['full_name'] ?? '';
+            if ($fn === 'Anna Minimal') $anna = $sub;
+            if ($fn === 'Boris Chain') $boris = $sub;
+            if ($fn === 'Cyril AndLogic') $cyril = $sub;
+            if ($fn === 'Dana OrLogic') $dana = $sub;
+            if ($fn === 'Emil Negation') $emil = $sub;
+        }
+
+        // ── Scenario A assertions: Minimal (no conditionals active) ──
+        if ($anna) {
+            assertEqual('Anna Minimal', $anna['data']['full_name'] ?? '', "Anna: full_name correct");
+            assertEqual('Low', $anna['data']['priority'] ?? '', "Anna: priority correct");
+            assertEqual('Basic test', $anna['data']['message'] ?? '', "Anna: message correct");
+            assertEqual('', $anna['data']['company_name'] ?? '', "Anna: company_name empty (Residential)");
+            assertEqual('', $anna['data']['company_vat'] ?? '', "Anna: company_vat empty (no chain)");
+            assertEqual('', $anna['data']['preferred_date'] ?? '', "Anna: preferred_date empty (AND not met)");
+            assertEqual('', $anna['data']['referral_detail'] ?? '', "Anna: referral_detail empty (no Friend/Other)");
+            assertEqual('', $anna['data']['budget_amount'] ?? '', "Anna: budget_amount empty (has_budget=No)");
+            assertEqual('', $anna['data']['contact_fax'] ?? '', "Anna: contact_fax empty (method=Email)");
+        } else {
+            fail("complex-logic: Anna submission not found");
+        }
+
+        // ── Scenario B assertions: Chain conditional ──
+        if ($boris) {
+            assertEqual('Boris Chain', $boris['data']['full_name'] ?? '', "Boris: full_name correct");
+            assertEqual('High', $boris['data']['priority'] ?? '', "Boris: priority correct");
+            assertEqual('Chain test', $boris['data']['message'] ?? '', "Boris: message correct");
+            assertEqual('ACME s.r.o.', $boris['data']['company_name'] ?? '', "Boris: company_name = ACME s.r.o.");
+            assertEqual('SK2020123456', $boris['data']['company_vat'] ?? '', "Boris: company_vat = SK2020123456 (chain)");
+            assertEqual('50000', $boris['data']['budget_amount'] ?? '', "Boris: budget_amount = 50000 (negation active)");
+        } else {
+            fail("complex-logic: Boris submission not found");
+        }
+
+        // ── Scenario C assertions: AND condition ──
+        if ($cyril) {
+            assertEqual('Cyril AndLogic', $cyril['data']['full_name'] ?? '', "Cyril: full_name correct");
+            assertEqual('Medium', $cyril['data']['priority'] ?? '', "Cyril: priority correct");
+            assertEqual('AND test', $cyril['data']['message'] ?? '', "Cyril: message correct");
+            assertEqual('2026-06-15', $cyril['data']['preferred_date'] ?? '', "Cyril: preferred_date = 2026-06-15 (AND met)");
+        } else {
+            fail("complex-logic: Cyril submission not found");
+        }
+
+        // ── Scenario D assertions: OR condition + Fax ──
+        if ($dana) {
+            assertEqual('Dana OrLogic', $dana['data']['full_name'] ?? '', "Dana: full_name correct");
+            assertEqual('High', $dana['data']['priority'] ?? '', "Dana: priority correct");
+            assertEqual('OR + fax test', $dana['data']['message'] ?? '', "Dana: message correct");
+            assertEqual('My colleague Jano', $dana['data']['referral_detail'] ?? '', "Dana: referral_detail = My colleague Jano (OR met)");
+            assertEqual('+421200000001', $dana['data']['contact_fax'] ?? '', "Dana: contact_fax = +421200000001 (Fax method)");
+            assertEqual('100000', $dana['data']['budget_amount'] ?? '', "Dana: budget_amount = 100000 (negation active)");
+        } else {
+            fail("complex-logic: Dana submission not found");
+        }
+
+        // ── Scenario E assertions: Negation ──
+        if ($emil) {
+            assertEqual('Emil Negation', $emil['data']['full_name'] ?? '', "Emil: full_name correct");
+            assertEqual('Low', $emil['data']['priority'] ?? '', "Emil: priority correct");
+            assertEqual('Negation test', $emil['data']['message'] ?? '', "Emil: message correct");
+            assertEqual('25000', $emil['data']['budget_amount'] ?? '', "Emil: budget_amount = 25000 (NOT No)");
+            assertEqual('Google search', $emil['data']['referral_detail'] ?? '', "Emil: referral_detail = Google search (OR met via Other)");
+        } else {
+            fail("complex-logic: Emil submission not found");
+        }
+
+        // ── Critical alignment test across ALL 5 submissions ──
+        $expectedEntries = [
+            'Anna Minimal'  => ['priority' => 'Low',    'message' => 'Basic test'],
+            'Boris Chain'   => ['priority' => 'High',   'message' => 'Chain test'],
+            'Cyril AndLogic' => ['priority' => 'Medium', 'message' => 'AND test'],
+            'Dana OrLogic'  => ['priority' => 'High',   'message' => 'OR + fax test'],
+            'Emil Negation' => ['priority' => 'Low',    'message' => 'Negation test'],
+        ];
+        $alignAllOk = true;
+        foreach ($clSubs as $sub) {
+            $data = $sub['data'] ?? [];
+            $fn = $data['full_name'] ?? '';
+            $pr = $data['priority'] ?? '';
+            $msg = $data['message'] ?? '';
+            $sid = $sub['id'] ?? '?';
+
+            if (empty($fn)) {
+                fail("ALIGNMENT(complex): full_name is empty for submission $sid");
+                $alignAllOk = false;
+                continue;
+            }
+            if (!isset($expectedEntries[$fn])) {
+                fail("ALIGNMENT(complex): unexpected full_name '$fn' in submission $sid");
+                $alignAllOk = false;
+                continue;
+            }
+            $exp = $expectedEntries[$fn];
+            if ($pr !== $exp['priority']) {
+                fail("ALIGNMENT(complex): $fn priority expected '{$exp['priority']}', got '$pr' (column shift?)");
+                $alignAllOk = false;
+            }
+            if ($msg !== $exp['message']) {
+                fail("ALIGNMENT(complex): $fn message expected '{$exp['message']}', got '$msg' (column shift?)");
+                $alignAllOk = false;
+            }
+            // Ensure full_name is not a leaked conditional value
+            if (in_array($fn, ['ACME s.r.o.', 'SK2020123456', '50000', '100000', '25000', 'Email', 'Fax', '+421200000001'], true)) {
+                fail("ALIGNMENT(complex): full_name column contains wrong value '$fn' (column shift detected!)");
+                $alignAllOk = false;
+            }
+            if (!in_array($pr, ['Low', 'Medium', 'High'], true)) {
+                fail("ALIGNMENT(complex): priority column contains wrong value '$pr' (column shift detected!)");
+                $alignAllOk = false;
+            }
+        }
+        if ($alignAllOk) {
+            pass("ALIGNMENT(complex): full_name, priority, message correctly aligned across all 5 conditional variants");
+        }
+
+        // Verify group container key is absent
+        foreach ($clSubs as $sub) {
+            $data = $sub['data'] ?? [];
+            $sid = $sub['id'] ?? '?';
+            assertKeyMissing($data, 'contact_row', "[$sid] no 'contact_row' key in stored data");
+        }
+    }
+
+    // CSV-specific: check column alignment in raw CSV
+    if ($backend === 'csv') {
+        $csvFile = $testSubmissionsDir . '/test-complex-logic.csv';
+        if (file_exists($csvFile)) {
+            $fp = fopen($csvFile, 'r');
+            $headers = fgetcsv($fp, 0, ',', '"', '\\');
+            $rows = [];
+            while (($row = fgetcsv($fp, 0, ',', '"', '\\')) !== false) {
+                $rows[] = $row;
+            }
+            fclose($fp);
+
+            if (is_array($headers)) {
+                // All rows must have same number of columns as header
+                $headerCount = count($headers);
+                $columnMismatch = false;
+                foreach ($rows as $i => $row) {
+                    if (count($row) !== $headerCount) {
+                        fail("CSV complex-logic row " . ($i + 1) . " has " . count($row) . " columns, header has $headerCount");
+                        $columnMismatch = true;
+                    }
+                }
+                if (!$columnMismatch) {
+                    pass("CSV complex-logic: all " . count($rows) . " data rows match header column count ($headerCount)");
+                }
+
+                // Check that full_name column has name values in every row
+                $fnIdx = array_search('full_name', $headers, true);
+                $prIdx = array_search('priority', $headers, true);
+                $msgIdx = array_search('message', $headers, true);
+                if ($fnIdx !== false && $prIdx !== false && $msgIdx !== false) {
+                    $csvAligned = true;
+                    $expectedNames = ['Anna Minimal', 'Boris Chain', 'Cyril AndLogic', 'Dana OrLogic', 'Emil Negation'];
+                    foreach ($rows as $i => $row) {
+                        $csvFn = $row[$fnIdx] ?? '';
+                        $csvPr = $row[$prIdx] ?? '';
+                        $csvMsg = $row[$msgIdx] ?? '';
+                        if (!in_array($csvFn, $expectedNames, true)) {
+                            fail("CSV complex-logic row " . ($i + 1) . ": full_name column has '$csvFn' (expected one of: " . implode(', ', $expectedNames) . ")");
+                            $csvAligned = false;
+                        }
+                        if (!in_array($csvPr, ['Low', 'Medium', 'High'], true)) {
+                            fail("CSV complex-logic row " . ($i + 1) . ": priority column has '$csvPr' (expected Low/Medium/High)");
+                            $csvAligned = false;
+                        }
+                    }
+                    if ($csvAligned) {
+                        pass("CSV complex-logic raw: full_name, priority, message columns correctly aligned in all rows");
+                    }
+                } else {
+                    fail("CSV complex-logic: 'full_name', 'priority', or 'message' column not found in headers", implode(', ', $headers));
+                }
+
+                // Verify group container name is NOT in CSV headers
+                if (!in_array('contact_row', $headers, true)) {
+                    pass("CSV complex-logic headers: no group container name (contact_row)");
+                } else {
+                    fail("CSV complex-logic headers contain group container name 'contact_row'", implode(', ', $headers));
+                }
+            }
+        } else {
+            fail("CSV file not created: $csvFile");
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Backend summary
     // ─────────────────────────────────────────────────────────────
     $backendPassed = $passed - $prevPassed;
