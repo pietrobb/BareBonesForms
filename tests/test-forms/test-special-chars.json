@@ -1,0 +1,35 @@
+{
+    "$schema": "../forms/form.schema.json",
+    "schema_version": 1,
+    "id": "test-special-chars",
+    "name": "Special Characters Test",
+    "description": "Tests that special characters, unicode, and CSV-dangerous values are stored and retrieved correctly.",
+    "submit_label": "Submit",
+    "fields": [
+        {
+            "name": "title",
+            "type": "text",
+            "label": "Title",
+            "required": true
+        },
+        {
+            "name": "description",
+            "type": "textarea",
+            "label": "Description",
+            "rows": 4
+        },
+        {
+            "name": "category",
+            "type": "select",
+            "label": "Category",
+            "options": [
+                { "value": "a&b", "label": "A & B" },
+                { "value": "c<d", "label": "C < D" },
+                { "value": "e\"f", "label": "E \"quoted\" F" }
+            ]
+        }
+    ],
+    "on_submit": {
+        "store": true
+    }
+}

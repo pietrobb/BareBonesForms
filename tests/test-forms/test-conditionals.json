@@ -1,0 +1,66 @@
+{
+    "$schema": "../forms/form.schema.json",
+    "schema_version": 1,
+    "id": "test-conditionals",
+    "name": "Conditional Fields Test",
+    "description": "Tests that conditional fields do not cause column misalignment across submissions.",
+    "submit_label": "Submit",
+    "fields": [
+        {
+            "name": "contact_method",
+            "type": "radio",
+            "label": "Preferred Contact Method",
+            "required": true,
+            "options": [
+                { "value": "Email", "label": "Email" },
+                { "value": "Phone", "label": "Phone" },
+                { "value": "Post", "label": "Post" }
+            ]
+        },
+        {
+            "name": "email_address",
+            "type": "text",
+            "label": "Email Address",
+            "show_if": { "field": "contact_method", "value": "Email" }
+        },
+        {
+            "name": "phone_number",
+            "type": "text",
+            "label": "Phone Number",
+            "show_if": { "field": "contact_method", "value": "Phone" }
+        },
+        {
+            "name": "postal_address",
+            "type": "textarea",
+            "label": "Postal Address",
+            "rows": 3,
+            "show_if": { "field": "contact_method", "value": "Post" }
+        },
+        {
+            "name": "name",
+            "type": "text",
+            "label": "Full Name",
+            "required": true
+        },
+        {
+            "name": "priority",
+            "type": "radio",
+            "label": "Priority",
+            "required": true,
+            "options": [
+                { "value": "Low", "label": "Low" },
+                { "value": "Medium", "label": "Medium" },
+                { "value": "High", "label": "High" }
+            ]
+        },
+        {
+            "name": "notes",
+            "type": "textarea",
+            "label": "Notes",
+            "rows": 3
+        }
+    ],
+    "on_submit": {
+        "store": true
+    }
+}

@@ -924,13 +924,20 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
 
     $file = $dir . '/' . $submission['form'] . '.csv';
 
-    // Build field list: exclude group/section/page_break containers (they have no data)
+    // Build field list: flatten groups, exclude containers (they have no data)
     $fieldNames = [];
-    foreach ($formFields as $f) {
-        $type = $f['type'] ?? 'text';
-        if (in_array($type, ['group', 'section', 'page_break'], true)) continue;
-        if (!empty($f['name'])) $fieldNames[] = $f['name'];
-    }
+    $extractNames = function(array $fields) use (&$extractNames, &$fieldNames) {
+        foreach ($fields as $f) {
+            $type = $f['type'] ?? 'text';
+            if ($type === 'group' && !empty($f['fields'])) {
+                $extractNames($f['fields']);
+                continue;
+            }
+            if (in_array($type, ['section', 'page_break'], true)) continue;
+            if (!empty($f['name'])) $fieldNames[] = $f['name'];
+        }
+    };
+    $extractNames($formFields);
 
     $fp = fopen($file, 'c+');
     if (!$fp || !flock($fp, LOCK_EX)) {

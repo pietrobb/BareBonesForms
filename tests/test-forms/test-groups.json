@@ -1,0 +1,66 @@
+{
+    "$schema": "../forms/form.schema.json",
+    "schema_version": 1,
+    "id": "test-groups",
+    "name": "Group Fields Test",
+    "description": "Tests that group containers are flattened and only child fields are stored.",
+    "submit_label": "Submit",
+    "fields": [
+        {
+            "name": "name_row",
+            "type": "group",
+            "title": "Name",
+            "fields": [
+                {
+                    "name": "first_name",
+                    "type": "text",
+                    "label": "First Name",
+                    "required": true
+                },
+                {
+                    "name": "last_name",
+                    "type": "text",
+                    "label": "Last Name",
+                    "required": true
+                }
+            ]
+        },
+        {
+            "name": "address_row",
+            "type": "group",
+            "title": "Address",
+            "fields": [
+                {
+                    "name": "street",
+                    "type": "text",
+                    "label": "Street"
+                },
+                {
+                    "name": "city",
+                    "type": "text",
+                    "label": "City"
+                }
+            ]
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "required": true
+        },
+        {
+            "name": "phone",
+            "type": "tel",
+            "label": "Phone"
+        },
+        {
+            "name": "message",
+            "type": "textarea",
+            "label": "Message",
+            "rows": 4
+        }
+    ],
+    "on_submit": {
+        "store": true
+    }
+}

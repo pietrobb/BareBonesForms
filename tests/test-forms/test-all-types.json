@@ -1,0 +1,95 @@
+{
+    "$schema": "../forms/form.schema.json",
+    "schema_version": 1,
+    "id": "test-all-types",
+    "name": "All Field Types Test",
+    "description": "Tests that every supported field type is stored and retrieved correctly.",
+    "submit_label": "Submit",
+    "fields": [
+        {
+            "name": "text_field",
+            "type": "text",
+            "label": "Text",
+            "required": true
+        },
+        {
+            "name": "email_field",
+            "type": "email",
+            "label": "Email",
+            "required": true
+        },
+        {
+            "name": "tel_field",
+            "type": "tel",
+            "label": "Phone"
+        },
+        {
+            "name": "url_field",
+            "type": "url",
+            "label": "Website"
+        },
+        {
+            "name": "number_field",
+            "type": "number",
+            "label": "Number",
+            "min": 0,
+            "max": 1000
+        },
+        {
+            "name": "date_field",
+            "type": "date",
+            "label": "Date"
+        },
+        {
+            "name": "textarea_field",
+            "type": "textarea",
+            "label": "Textarea",
+            "rows": 3
+        },
+        {
+            "name": "select_field",
+            "type": "select",
+            "label": "Select",
+            "options": [
+                { "value": "opt_a", "label": "Option A" },
+                { "value": "opt_b", "label": "Option B" },
+                { "value": "opt_c", "label": "Option C" }
+            ]
+        },
+        {
+            "name": "radio_field",
+            "type": "radio",
+            "label": "Radio",
+            "options": [
+                { "value": "yes", "label": "Yes" },
+                { "value": "no", "label": "No" },
+                { "value": "maybe", "label": "Maybe" }
+            ]
+        },
+        {
+            "name": "checkbox_field",
+            "type": "checkbox",
+            "label": "Checkboxes",
+            "options": [
+                { "value": "red", "label": "Red" },
+                { "value": "green", "label": "Green" },
+                { "value": "blue", "label": "Blue" }
+            ]
+        },
+        {
+            "name": "rating_field",
+            "type": "rating",
+            "label": "Rating",
+            "min": 1,
+            "max": 5
+        },
+        {
+            "name": "hidden_field",
+            "type": "hidden",
+            "value": "secret-42"
+        }
+    ],
+    "on_submit": {
+        "store": true
+    }
+}

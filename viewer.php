@@ -1078,9 +1078,13 @@ function buildLabelMap(formDef) {
 
 function getPreviewKeys(formDef, data) {
     const dataKeys = Object.keys(data);
+    // Explicit preview_fields in form definition takes priority
+    if (formDef?.preview_fields && Array.isArray(formDef.preview_fields)) {
+        return formDef.preview_fields.filter(k => data[k] !== undefined && data[k] !== null);
+    }
     if (!formDef?.fields) {
-        // No form def: filter out group-like keys, take first 3 with values
-        return dataKeys.filter(k => data[k] !== '' && data[k] !== null && !k.endsWith('_row')).slice(0, 3);
+        // No form def: filter out group-like keys
+        return dataKeys.filter(k => data[k] !== '' && data[k] !== null && !k.endsWith('_row')).slice(0, 5);
     }
     // Collect all visible fields from form def
     const allFields = [];
@@ -1094,12 +1098,12 @@ function getPreviewKeys(formDef, data) {
         }
     }
     walk(formDef.fields);
-    // Prefer name-like, email, tel fields first
+    // Prefer name-like, email, tel, company fields first
     const namePattern = /^(first_name|last_name|name|full_name|company|email|phone|tel)$/i;
     const preferred = allFields.filter(f => namePattern.test(f.name) || f.type === 'email' || f.type === 'tel');
     const rest = allFields.filter(f => !preferred.includes(f));
     const ordered = [...preferred, ...rest];
-    return ordered.slice(0, 3).map(f => f.name);
+    return ordered.slice(0, 5).map(f => f.name);
 }
 
 function statCard(cls, value, label) {
