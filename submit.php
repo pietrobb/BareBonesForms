@@ -923,7 +923,14 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
     }
 
     $file = $dir . '/' . $submission['form'] . '.csv';
-    $fieldNames = array_column($formFields, 'name');
+
+    // Build field list: exclude group/section/page_break containers (they have no data)
+    $fieldNames = [];
+    foreach ($formFields as $f) {
+        $type = $f['type'] ?? 'text';
+        if (in_array($type, ['group', 'section', 'page_break'], true)) continue;
+        if (!empty($f['name'])) $fieldNames[] = $f['name'];
+    }
 
     $fp = fopen($file, 'c+');
     if (!$fp || !flock($fp, LOCK_EX)) {
@@ -932,20 +939,30 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
         return false;
     }
 
-    // Write headers if file is empty
+    // Read existing header or write new one
     fseek($fp, 0, SEEK_END);
-    if (ftell($fp) === 0) {
-        $headers = array_merge(['_id', '_submitted', '_ip', '_user_agent'], $fieldNames);
-        fputcsv($fp, $headers);
+    $isEmpty = ftell($fp) === 0;
+    $metaCols = ['_id', '_submitted', '_ip', '_user_agent'];
+
+    if ($isEmpty) {
+        $csvFieldNames = $fieldNames;
+        fputcsv($fp, array_merge($metaCols, $csvFieldNames));
+    } else {
+        // Use existing header's column order to prevent misalignment
+        fseek($fp, 0);
+        $existingHeaders = fgetcsv($fp);
+        $csvFieldNames = array_values(array_diff($existingHeaders ?: [], $metaCols));
+        fseek($fp, 0, SEEK_END);
     }
 
+    // Build row using CSV header's column order (not form def order)
     $row = [
         $submission['id'],
         $submission['meta']['submitted'] ?? '',
         $submission['meta']['ip'] ?? '',
         csvSanitize($submission['meta']['user_agent'] ?? ''),
     ];
-    foreach ($fieldNames as $name) {
+    foreach ($csvFieldNames as $name) {
         $val = $submission['data'][$name] ?? '';
         $val = is_array($val) ? implode('; ', $val) : $val;
         $row[] = csvSanitize($val);

@@ -100,6 +100,13 @@ return [
     // Client-side language is set per form via data-lang attribute.
     'lang' => 'en',
 
+    // ─── Viewer branding ────────────────────────────────────────
+    // Customize the viewer header with your own branding
+    'viewer' => [
+        'site_name' => 'BareBonesForms',  // Shown in viewer header
+        'logo_url'  => '',                // URL to logo image (optional)
+    ],
+
     // ─── Paths ──────────────────────────────────────────────────
     'forms_dir'       => __DIR__ . '/forms',
     'submissions_dir' => __DIR__ . '/submissions',
