@@ -177,7 +177,7 @@ function loadPageCsv(string $formId, string $dir, int $limit, int $offset, ?stri
     $dataCols = array_values(array_diff($headers, $metaCols));
     $results = [];
     while (($row = fgetcsv($fp)) !== false) {
-        $mapped = @array_combine($headers, array_pad($row, count($headers), ''));
+        $mapped = @array_combine($headers, array_slice(array_pad($row, count($headers), ''), 0, count($headers)));
         if ($mapped === false) continue;
         $submitted = $mapped['_submitted'] ?? '';
         if ($from && $submitted < $from) continue;

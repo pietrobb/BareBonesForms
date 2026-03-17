@@ -306,7 +306,7 @@ function loadFromCsv(string $formId, ?string $id, string $dir, int $limit, int $
     while (($row = fgetcsv($fp)) !== false) {
         if (count($row) < count($metaCols)) continue;
 
-        $mapped = @array_combine($headers, array_pad($row, count($headers), ''));
+        $mapped = @array_combine($headers, array_slice(array_pad($row, count($headers), ''), 0, count($headers)));
         if ($mapped === false) continue;
 
         $subId = $mapped['_id'] ?? '';
