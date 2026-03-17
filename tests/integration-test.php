@@ -241,7 +241,15 @@ function startServer(): bool {
         $conn = @fsockopen($host, $port, $errno, $errstr, 1);
         if ($conn) {
             fclose($conn);
-            return true;
+            // HTTP warm-up: make sure server actually processes requests
+            usleep(300000);
+            for ($w = 0; $w < 5; $w++) {
+                $r = @file_get_contents("http://$host:$port/submit.php?form=_ping&action=definition", false,
+                    stream_context_create(['http' => ['timeout' => 3, 'ignore_errors' => true]]));
+                if ($r !== false) return true;
+                usleep(500000);
+            }
+            return true; // socket open, assume OK even if warm-up failed
         }
     }
     return false;
@@ -249,7 +257,7 @@ function startServer(): bool {
 
 function restartServer(): bool {
     killServer();
-    usleep(500000); // wait for port to free
+    usleep(2000000); // wait for port to free (Windows needs more time)
     return startServer();
 }
 
@@ -367,7 +375,7 @@ foreach ($backends as $backend) {
         'first_name' => 'Peter',
         'last_name'  => 'Novák',
         'email'      => 'peter@test.sk',
-        'phone'      => '0903111222',
+        'phone'      => '+421903111222',
         'message'    => 'Ahoj',
     ]);
 
@@ -382,7 +390,7 @@ foreach ($backends as $backend) {
         'first_name' => 'Jana',
         'last_name'  => 'Kováčová',
         'email'      => 'jana@test.sk',
-        'phone'      => '0903222333',
+        'phone'      => '+421903222333',
         'message'    => 'Dobrý deň',
     ]);
 
@@ -422,7 +430,7 @@ foreach ($backends as $backend) {
             assertEqual('Peter', $peter['data']['first_name'] ?? '', "Peter: first_name correct");
             assertEqual('Novák', $peter['data']['last_name'] ?? '', "Peter: last_name correct (unicode)");
             assertEqual('peter@test.sk', $peter['data']['email'] ?? '', "Peter: email correct");
-            assertEqual('0903111222', $peter['data']['phone'] ?? '', "Peter: phone correct");
+            assertEqual('+421903111222', $peter['data']['phone'] ?? '', "Peter: phone correct");
             assertEqual('Ahoj', $peter['data']['message'] ?? '', "Peter: message correct");
         } else {
             fail("group form: Peter submission not found in results");
@@ -488,7 +496,7 @@ foreach ($backends as $backend) {
     // Submit 2: Phone contact method
     $cond2 = submitForm('test-conditionals', [
         'contact_method' => 'Phone',
-        'phone_number'   => '123456',
+        'phone_number'   => '+421123456789',
         'name'           => 'Bob',
         'priority'       => 'Low',
         'notes'          => '',
@@ -545,7 +553,7 @@ foreach ($backends as $backend) {
         // Bob: Phone method
         if ($bob) {
             assertEqual('Phone', $bob['data']['contact_method'] ?? '', "Bob: contact_method = Phone");
-            assertEqual('123456', $bob['data']['phone_number'] ?? '', "Bob: phone_number correct");
+            assertEqual('+421123456789', $bob['data']['phone_number'] ?? '', "Bob: phone_number correct");
             assertEqual('Bob', $bob['data']['name'] ?? '', "Bob: name correct");
             assertEqual('Low', $bob['data']['priority'] ?? '', "Bob: priority = Low");
             // Bob's email_address should be empty (not shown)

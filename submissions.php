@@ -295,7 +295,7 @@ function loadFromCsv(string $formId, ?string $id, string $dir, int $limit, int $
     $fp = fopen($file, 'r');
     if (!$fp) return [];
 
-    $headers = fgetcsv($fp);
+    $headers = fgetcsv($fp, 0, ',', '"', '');
     if (!$headers) { fclose($fp); return []; }
 
     // Meta columns (prefixed with _)
@@ -303,7 +303,7 @@ function loadFromCsv(string $formId, ?string $id, string $dir, int $limit, int $
     $dataCols = array_values(array_diff($headers, $metaCols));
 
     $results = [];
-    while (($row = fgetcsv($fp)) !== false) {
+    while (($row = fgetcsv($fp, 0, ',', '"', '')) !== false) {
         if (count($row) < count($metaCols)) continue;
 
         $mapped = @array_combine($headers, array_slice(array_pad($row, count($headers), ''), 0, count($headers)));
@@ -318,7 +318,12 @@ function loadFromCsv(string $formId, ?string $id, string $dir, int $limit, int $
 
         $data = [];
         foreach ($dataCols as $col) {
-            $data[$col] = $mapped[$col] ?? '';
+            $val = $mapped[$col] ?? '';
+            // Strip CSV formula injection prefix added by csvSanitize()
+            if ($val !== '' && $val[0] === "'" && isset($val[1]) && in_array($val[1], ['=', '+', '-', '@'], true)) {
+                $val = substr($val, 1);
+            }
+            $data[$col] = $val;
         }
 
         $results[] = [

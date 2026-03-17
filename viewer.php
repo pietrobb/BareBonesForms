@@ -140,17 +140,17 @@ function countSubsCsv(string $formId, string $dir, ?string $since): int {
     if (!file_exists($file)) return 0;
     $fp = fopen($file, 'r');
     if (!$fp) return 0;
-    $headers = fgetcsv($fp);
+    $headers = fgetcsv($fp, 0, ',', '"', '');
     if (!$headers) { fclose($fp); return 0; }
     if (!$since) {
         $n = 0;
-        while (fgetcsv($fp) !== false) $n++;
+        while (fgetcsv($fp, 0, ',', '"', '') !== false) $n++;
         fclose($fp);
         return $n;
     }
     $si = array_search('_submitted', $headers);
     $n = 0;
-    while (($row = fgetcsv($fp)) !== false) {
+    while (($row = fgetcsv($fp, 0, ',', '"', '')) !== false) {
         if ($si !== false && ($row[$si] ?? '') >= $since) $n++;
     }
     fclose($fp);
@@ -200,19 +200,23 @@ function loadPageCsv(string $formId, string $dir, int $limit, int $offset, ?stri
     if (!file_exists($file)) { $total = 0; return []; }
     $fp = fopen($file, 'r');
     if (!$fp) { $total = 0; return []; }
-    $headers = fgetcsv($fp);
+    $headers = fgetcsv($fp, 0, ',', '"', '');
     if (!$headers) { fclose($fp); $total = 0; return []; }
     $metaCols = ['_id', '_submitted', '_ip', '_user_agent'];
     $dataCols = array_values(array_diff($headers, $metaCols));
     $results = [];
-    while (($row = fgetcsv($fp)) !== false) {
+    while (($row = fgetcsv($fp, 0, ',', '"', '')) !== false) {
         $mapped = @array_combine($headers, array_slice(array_pad($row, count($headers), ''), 0, count($headers)));
         if ($mapped === false) continue;
         $submitted = $mapped['_submitted'] ?? '';
         if ($from && $submitted < $from) continue;
         if ($to && $submitted > $to . 'T23:59:59') continue;
         $data = [];
-        foreach ($dataCols as $col) $data[$col] = $mapped[$col] ?? '';
+        foreach ($dataCols as $col) {
+            $val = $mapped[$col] ?? '';
+            if ($val !== '' && $val[0] === "'" && isset($val[1]) && in_array($val[1], ['=', '+', '-', '@'], true)) $val = substr($val, 1);
+            $data[$col] = $val;
+        }
         $sub = [
             'id'   => $mapped['_id'] ?? '',
             'form' => $formId,

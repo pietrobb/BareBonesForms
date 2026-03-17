@@ -957,7 +957,7 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
     } else {
         // Use existing header's column order to prevent misalignment
         fseek($fp, 0);
-        $existingHeaders = fgetcsv($fp);
+        $existingHeaders = fgetcsv($fp, 0, ',', '"', '');
         $csvFieldNames = array_values(array_diff($existingHeaders ?: [], $metaCols));
         fseek($fp, 0, SEEK_END);
     }
