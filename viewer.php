@@ -964,7 +964,7 @@ function buildDetailSections(data, fields, dataKeys) {
             }
             if (f.type === 'hidden') continue;
             const val = data[f.name];
-            if (val === undefined || val === null) return;
+            if (val === undefined || val === null) continue;
             rendered.add(f.name);
             current.fields.push({
                 label: f.label || f.name,
