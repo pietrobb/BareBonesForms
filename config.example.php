@@ -82,6 +82,12 @@ return [
     // Generate: php -r "echo bin2hex(random_bytes(16));"
     'api_token' => '',
 
+    // ─── Smoke Test ──────────────────────────────────────────────
+    // Token for smoketest.php — validates all forms with generated test data.
+    // No emails sent, nothing stored. GET smoketest.php?token=YOUR_TOKEN
+    // Leave empty to disable. Generate: php -r "echo bin2hex(random_bytes(16));"
+    'smoke_token' => '',
+
     // ─── Privacy ────────────────────────────────────────────────
     // What metadata to store with each submission (GDPR consideration)
     'store_ip'         => true,   // set false to stop storing IP addresses

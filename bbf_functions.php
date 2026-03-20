@@ -525,6 +525,220 @@ function updateSubmissionPayment(string $submissionId, string $formId, string $s
  * Uses mail() directly (not sendEmail/sendSmtp) to avoid recursion
  * when the SMTP connection itself is the cause of the error.
  */
+// ─── Validation ─────────────────────────────────────────────────
+
+function validateFormDefinition(array $form): array {
+    $errors = [];
+
+    if (isset($form['schema_version']) && $form['schema_version'] !== 1) {
+        $errors[] = "Unsupported schema_version: {$form['schema_version']}. Expected: 1.";
+    }
+
+    if (empty($form['id'])) {
+        $errors[] = 'Missing required property: id.';
+    } elseif (!preg_match('/^[a-zA-Z0-9_-]+$/', $form['id'])) {
+        $errors[] = 'Invalid id format. Use only a-z, 0-9, hyphens, underscores.';
+    }
+
+    if (empty($form['fields']) || !is_array($form['fields'])) {
+        $errors[] = 'Missing or empty required property: fields.';
+        return $errors;
+    }
+
+    // Resolve templates before validating field list
+    $fieldsToValidate = $form['fields'];
+    if (!empty($form['templates'])) {
+        $fieldsToValidate = resolveTemplates($fieldsToValidate, $form['templates']);
+    }
+
+    $fieldNames = [];
+    validateFieldList($fieldsToValidate, 'fields', $errors, $fieldNames);
+
+    if (isset($form['on_submit'])) {
+        $os = $form['on_submit'];
+        if (isset($os['confirm_email']) && empty($os['confirm_email']['to'])) {
+            $errors[] = 'on_submit.confirm_email: Missing required property: to.';
+        }
+        if (isset($os['notify']) && empty($os['notify']['to'])) {
+            $errors[] = 'on_submit.notify: Missing required property: to.';
+        }
+        if (isset($os['actions']) && is_array($os['actions'])) {
+            foreach ($os['actions'] as $j => $action) {
+                if (empty($action['type'])) {
+                    $errors[] = "on_submit.actions[$j]: Missing required property: type.";
+                }
+            }
+        }
+    }
+
+    return $errors;
+}
+
+function validateFieldList(array $fields, string $path, array &$errors, array &$fieldNames): void {
+    $validTypes = ['text', 'email', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkbox', 'hidden', 'password', 'section', 'page_break', 'rating', 'group'];
+
+    foreach ($fields as $i => $field) {
+        $prefix = "{$path}[{$i}]";
+
+        if (empty($field['name'])) {
+            $errors[] = "$prefix: Missing required property: name.";
+            continue;
+        }
+
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $field['name'])) {
+            $errors[] = "$prefix: Invalid name format: {$field['name']}.";
+        }
+
+        if (in_array($field['name'], $fieldNames, true)) {
+            $errors[] = "$prefix: Duplicate field name: {$field['name']}.";
+        }
+        $fieldNames[] = $field['name'];
+
+        $type = $field['type'] ?? 'text';
+        if (!in_array($type, $validTypes, true)) {
+            $errors[] = "$prefix: Invalid type: $type.";
+        }
+
+        // Layout-only types — skip further validation
+        if (in_array($type, ['section', 'page_break'], true)) continue;
+
+        // Group — recurse into children
+        if ($type === 'group') {
+            if (!empty($field['fields']) && is_array($field['fields'])) {
+                validateFieldList($field['fields'], "$prefix.fields", $errors, $fieldNames);
+            }
+            continue;
+        }
+
+        if (in_array($type, ['select', 'radio', 'checkbox'], true) && empty($field['options'])) {
+            $errors[] = "$prefix: Type '$type' requires options.";
+        }
+
+        // Validate regex patterns
+        if (!empty($field['pattern'])) {
+            if (@preg_match('/' . $field['pattern'] . '/', '') === false) {
+                $errors[] = "$prefix: Invalid regex pattern: {$field['pattern']}";
+            }
+        }
+    }
+}
+
+function validate(array $fields, array $input): array {
+    $errors = [];
+    foreach ($fields as $field) {
+        $type = $field['type'] ?? 'text';
+
+        // Skip non-data field types
+        if (in_array($type, ['section', 'page_break', 'group'], true)) continue;
+
+        $name  = $field['name'];
+
+        // Skip conditionally hidden fields — evaluate the condition server-side
+        if (!empty($field['show_if']) && !evalCondition($field['show_if'], $input)) {
+            continue;
+        }
+
+        $raw   = $input[$name] ?? '';
+        $value = is_array($raw) ? $raw : trim((string)$raw);
+        $label = $field['label'] ?? $name;
+
+        // Required
+        if (!empty($field['required'])) {
+            if ((is_array($value) && count($value) === 0) || (!is_array($value) && $value === '')) {
+                $errors[$name] = msg('required', ['label' => $label]);
+                continue;
+            }
+        }
+
+        // Optional and empty — skip further checks
+        if (!is_array($value) && $value === '') continue;
+        if (is_array($value) && count($value) === 0) continue;
+
+        // Type-based validation (only for scalar values)
+        if (!is_array($value)) {
+            switch ($type) {
+                case 'email':
+                    if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                        $errors[$name] = msg('invalidEmail', ['label' => $label]);
+                    }
+                    // Email confirmation
+                    if (!empty($field['confirm'])) {
+                        $confirmVal = trim((string)($input[$name . '_confirm'] ?? ''));
+                        if ($value !== $confirmVal) {
+                            $errors[$name] = msg('emailMismatch', ['label' => $label]);
+                        }
+                    }
+                    break;
+                case 'url':
+                    if (!filter_var($value, FILTER_VALIDATE_URL)) {
+                        $errors[$name] = msg('invalidUrl', ['label' => $label]);
+                    }
+                    break;
+                case 'number':
+                case 'rating':
+                    if (!is_numeric($value)) {
+                        $errors[$name] = msg('invalidNumber', ['label' => $label]);
+                    }
+                    if (isset($field['min']) && $value < $field['min']) {
+                        $errors[$name] = msg('numberMin', ['label' => $label, 'min' => $field['min']]);
+                    }
+                    if (isset($field['max']) && $value > $field['max']) {
+                        $errors[$name] = msg('numberMax', ['label' => $label, 'max' => $field['max']]);
+                    }
+                    break;
+                case 'tel':
+                    if (!preg_match('/^[+]?[0-9\s\-().]{6,20}$/', $value)) {
+                        $errors[$name] = msg('invalidTel', ['label' => $label]);
+                    }
+                    break;
+                case 'date':
+                    if (!empty($field['min']) && $value < $field['min']) {
+                        $errors[$name] = msg('dateMin', ['label' => $label, 'min' => $field['min']]);
+                    }
+                    if (!empty($field['max']) && $value > $field['max']) {
+                        $errors[$name] = msg('dateMax', ['label' => $label, 'max' => $field['max']]);
+                    }
+                    break;
+            }
+
+            // Pattern (regex)
+            if (!empty($field['pattern']) && !preg_match('/' . $field['pattern'] . '/', $value)) {
+                $errors[$name] = $field['pattern_message'] ?? msg('invalidFormat', ['label' => $label]);
+            }
+
+            // Min/max length
+            if (isset($field['minlength']) && safeStrlen($value) < $field['minlength']) {
+                $errors[$name] = msg('tooShort', ['label' => $label, 'min' => $field['minlength']]);
+            }
+            if (isset($field['maxlength']) && safeStrlen($value) > $field['maxlength']) {
+                $errors[$name] = msg('tooLong', ['label' => $label, 'max' => $field['maxlength']]);
+            }
+        }
+
+        // Options (select, radio, checkbox)
+        if (!empty($field['options'])) {
+            // Support both string options ["A","B"] and object options [{value:"a",label:"A"}]
+            $validOptions = [];
+            foreach ($field['options'] as $opt) {
+                $validOptions[] = is_array($opt) ? (string)($opt['value'] ?? '') : (string)$opt;
+            }
+            // Allow __other__ sentinel when field has "other": true
+            if (!empty($field['other'])) {
+                $validOptions[] = '__other__';
+            }
+            $selected = is_array($value) ? $value : [$value];
+            foreach ($selected as $sel) {
+                if (!in_array((string)$sel, $validOptions, true)) {
+                    $errors[$name] = msg('invalidOption', ['label' => $label]);
+                }
+            }
+        }
+    }
+    return $errors;
+}
+
+// ─── Error Notifications ────────────────────────────────────────
+
 function bbfNotifyError(string $formId, string $context, string $detail, array $config): void {
     $to = $config['error_notify'] ?? '';
     if ($to === '') return;
