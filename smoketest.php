@@ -2,15 +2,20 @@
 /**
  * BareBonesForms — Smoke Test Endpoint
  *
- * Loads all form definitions, generates valid test data, and runs
- * server-side validation in-process. No emails, no storage, no webhooks.
+ * Loads all form definitions, generates valid test data, and validates them.
+ *
+ * Modes:
+ *   Dry run (default): in-process validation only — no emails, no storage.
+ *   Live (?live=1):    POSTs to submit.php for real — stores, sends emails.
+ *                      All email fields are overridden with smoke_email from config.
  *
  * Usage:
- *   Browser: smoketest.php?token=YOUR_SMOKE_TOKEN
- *   Curl:    curl "https://example.com/smoketest.php?token=YOUR_SMOKE_TOKEN"
- *   CLI:     php smoketest.php [form_id]
+ *   Dry:   smoketest.php?token=TOKEN
+ *   Live:  smoketest.php?token=TOKEN&live=1
+ *   One:   smoketest.php?token=TOKEN&form=kontakt&live=1
+ *   CLI:   php smoketest.php [form_id]
  *
- * Security: requires smoke_token set in config.php. CLI skips token check.
+ * Security: requires smoke_token in config.php. CLI skips token check.
  */
 
 define('BBF_LOADED', true);
@@ -50,6 +55,7 @@ $smokeToken = $config['smoke_token'] ?? '';
 
 if ($isCli) {
     $filterForm = $argv[1] ?? null;
+    $isLive     = in_array('--live', $argv ?? [], true);
 } else {
     if (empty($smokeToken)) {
         http_response_code(403);
@@ -65,8 +71,31 @@ if ($isCli) {
         exit;
     }
     $filterForm = $_GET['form'] ?? null;
+    $isLive     = !empty($_GET['live']);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
+}
+
+// ─── Live mode: require smoke_email ─────────────────────────────
+$smokeEmail = $config['smoke_email'] ?? '';
+if ($isLive && empty($smokeEmail)) {
+    $msg = 'Live mode requires smoke_email in config.php (your email for receiving test emails).';
+    if ($isCli) { echo "\n  \033[31m$msg\033[0m\n\n"; exit(1); }
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => $msg]);
+    exit;
+}
+
+// ─── Live mode: need base URL for HTTP posts to submit.php ──────
+if ($isLive) {
+    if (!$isCli) {
+        $scheme  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host    = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $path    = dirname($_SERVER['SCRIPT_NAME']);
+        $baseUrl = rtrim("$scheme://$host$path", '/');
+    } else {
+        $baseUrl = 'http://127.0.0.1:' . ($argv[2] ?? '8000');
+    }
 }
 
 // ─── Discover forms ─────────────────────────────────────────────
@@ -80,10 +109,41 @@ if ($filterForm) {
 }
 $formFiles = array_values($formFiles);
 
+// ─── HTTP POST helper (for live mode) ───────────────────────────
+function smokePost(string $url, array $data, string $token): array {
+    $postData = http_build_query($data);
+    $headers  = "Content-Type: application/x-www-form-urlencoded\r\n"
+              . "Content-Length: " . strlen($postData) . "\r\n"
+              . "X-BBF-Smoke-Token: $token\r\n"
+              . "Connection: close\r\n";
+    $ctx = stream_context_create([
+        'http' => [
+            'method'        => 'POST',
+            'header'        => $headers,
+            'content'       => $postData,
+            'timeout'       => 15,
+            'ignore_errors' => true,
+        ],
+    ]);
+    $http_response_header = null;
+    $body = @file_get_contents($url, false, $ctx);
+    $code = 0;
+    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+        $code = (int)$m[1];
+    }
+    return [
+        'code'  => $code,
+        'body'  => $body ?: '',
+        'json'  => @json_decode($body ?: '', true),
+        'error' => $body === false ? 'HTTP request failed' : '',
+    ];
+}
+
 // ─── Test data generator ────────────────────────────────────────
-function generateSmokeData(array $form): array {
+function generateSmokeData(array $form, string $emailOverride = ''): array {
     $data   = [];
     $fields = smokeFlat($form['fields'] ?? []);
+    $email  = $emailOverride ?: 'smoketest@example.com';
 
     foreach ($fields as $field) {
         $type = $field['type'] ?? 'text';
@@ -99,7 +159,7 @@ function generateSmokeData(array $form): array {
                     $val = 'REF-A1B2C3';
                 $data[$name] = $val;
                 break;
-            case 'email':    $data[$name] = 'smoketest@example.com'; break;
+            case 'email':    $data[$name] = $email; break;
             case 'tel':      $data[$name] = '+421900123456'; break;
             case 'url':      $data[$name] = 'https://example.com'; break;
             case 'number':
@@ -188,7 +248,13 @@ foreach ($formFiles as $file) {
     $formId  = basename($file, '.json');
     $content = file_get_contents($file);
     $form    = json_decode($content, true);
-    $result  = ['form' => $formId, 'status' => 'ok', 'errors' => [], 'fields_tested' => 0];
+    $result  = [
+        'form'          => $formId,
+        'status'        => 'ok',
+        'mode'          => $isLive ? 'live' : 'dry',
+        'errors'        => [],
+        'fields_tested' => 0,
+    ];
 
     // 1. JSON parse check
     if ($form === null) {
@@ -215,52 +281,74 @@ foreach ($formFiles as $file) {
     }
     $flatFields = flattenFields($form['fields']);
 
-    // 4. Generate valid test data
-    $testData = generateSmokeData($form);
+    // 4. Generate valid test data (in live mode, email fields → smoke_email)
+    $testData = generateSmokeData($form, $isLive ? $smokeEmail : '');
     $result['fields_tested'] = count($testData);
 
-    // 5. Run server-side validation (same function as submit.php)
-    $errors = validate($flatFields, $testData);
+    if ($isLive) {
+        // ── Live mode: POST to submit.php (full pipeline) ───────
+        $submitUrl = "$baseUrl/submit.php?form=$formId&smoke_token=" . urlencode($smokeToken);
+        $response  = smokePost($submitUrl, $testData, $smokeToken);
 
-    if (!empty($errors)) {
-        // Separate conditional vs unconditional errors
-        $hardErrors = [];
-        $conditionalWarnings = [];
-        foreach ($errors as $fieldName => $msg) {
-            $isConditional = false;
-            foreach ($flatFields as $f) {
-                if (($f['name'] ?? '') === $fieldName && !empty($f['show_if'])) {
-                    $isConditional = true;
-                    break;
-                }
-            }
-            if ($isConditional) {
-                $conditionalWarnings[$fieldName] = $msg;
-            } else {
-                $hardErrors[$fieldName] = $msg;
-            }
-        }
-
-        if (!empty($hardErrors)) {
+        if ($response['error']) {
             $result['status'] = 'fail';
-            $result['errors'] = $hardErrors;
+            $result['errors'][] = 'HTTP request failed — is the server running?';
+            $allPassed = false;
+        } elseif ($response['code'] === 200 && !empty($response['json']['submission_id'])) {
+            $result['submission_id'] = $response['json']['submission_id'];
+            $result['emails_to']     = $smokeEmail;
+        } elseif ($response['code'] === 422) {
+            $result['status'] = 'fail';
+            $result['errors'] = $response['json']['validation']['errors'] ?? $response['json']['errors'] ?? ['Validation failed'];
+            $allPassed = false;
+        } else {
+            $result['status'] = 'fail';
+            $result['errors'][] = "HTTP {$response['code']}: " . substr($response['body'], 0, 200);
             $allPassed = false;
         }
-        if (!empty($conditionalWarnings)) {
-            $result['warnings'] = $conditionalWarnings;
-        }
-    }
+    } else {
+        // ── Dry mode: in-process validation only ────────────────
+        $errors = validate($flatFields, $testData);
 
-    // 6. Check email templates exist
-    $onSubmit     = $form['on_submit'] ?? [];
-    $templatesDir = $config['templates_dir'] ?? __DIR__ . '/templates';
-    foreach (['confirm_email', 'notify'] as $emailType) {
-        if (!empty($onSubmit[$emailType]['template'])) {
-            $tpl = $templatesDir . '/' . $onSubmit[$emailType]['template'];
-            if (!file_exists($tpl)) {
+        if (!empty($errors)) {
+            $hardErrors = [];
+            $conditionalWarnings = [];
+            foreach ($errors as $fieldName => $errMsg) {
+                $isConditional = false;
+                foreach ($flatFields as $f) {
+                    if (($f['name'] ?? '') === $fieldName && !empty($f['show_if'])) {
+                        $isConditional = true;
+                        break;
+                    }
+                }
+                if ($isConditional) {
+                    $conditionalWarnings[$fieldName] = $errMsg;
+                } else {
+                    $hardErrors[$fieldName] = $errMsg;
+                }
+            }
+
+            if (!empty($hardErrors)) {
                 $result['status'] = 'fail';
-                $result['errors'][] = "$emailType template missing: " . $onSubmit[$emailType]['template'];
+                $result['errors'] = $hardErrors;
                 $allPassed = false;
+            }
+            if (!empty($conditionalWarnings)) {
+                $result['warnings'] = $conditionalWarnings;
+            }
+        }
+
+        // Check email templates exist
+        $onSubmit     = $form['on_submit'] ?? [];
+        $templatesDir = $config['templates_dir'] ?? __DIR__ . '/templates';
+        foreach (['confirm_email', 'notify'] as $emailType) {
+            if (!empty($onSubmit[$emailType]['template'])) {
+                $tpl = $templatesDir . '/' . $onSubmit[$emailType]['template'];
+                if (!file_exists($tpl)) {
+                    $result['status'] = 'fail';
+                    $result['errors'][] = "$emailType template missing: " . $onSubmit[$emailType]['template'];
+                    $allPassed = false;
+                }
             }
         }
     }
@@ -271,18 +359,24 @@ foreach ($formFiles as $file) {
 // ─── Output ─────────────────────────────────────────────────────
 $passed = count(array_filter($results, fn($r) => $r['status'] === 'ok'));
 $total  = count($results);
+$mode   = $isLive ? 'LIVE' : 'dry run';
 
 $output = [
     'status'  => $allPassed ? 'ok' : 'fail',
-    'summary' => "$passed/$total forms passed",
+    'mode'    => $isLive ? 'live' : 'dry',
+    'summary' => "$passed/$total forms passed ($mode)",
     'forms'   => $results,
 ];
 
 if ($isCli) {
-    echo "\n\033[1;36m  BareBonesForms — Smoke Test\033[0m\n\n";
+    $modeLabel = $isLive ? "\033[1;33mLIVE\033[0m" : "dry run";
+    echo "\n\033[1;36m  BareBonesForms — Smoke Test\033[0m ($modeLabel)\n\n";
     foreach ($results as $r) {
         $icon = $r['status'] === 'ok' ? "\033[32m✓\033[0m" : "\033[31m✗\033[0m";
-        echo "  $icon {$r['form']} ({$r['fields_tested']} fields)\n";
+        $extra = '';
+        if (!empty($r['submission_id'])) $extra = " → {$r['submission_id']}";
+        if (!empty($r['emails_to']))     $extra .= " → {$r['emails_to']}";
+        echo "  $icon {$r['form']} ({$r['fields_tested']} fields)$extra\n";
         if (is_array($r['errors'])) {
             foreach ($r['errors'] as $k => $v) {
                 $label = is_string($k) ? "$k: $v" : $v;

@@ -84,9 +84,15 @@ return [
 
     // ─── Smoke Test ──────────────────────────────────────────────
     // Token for smoketest.php — validates all forms with generated test data.
-    // No emails sent, nothing stored. GET smoketest.php?token=YOUR_TOKEN
     // Leave empty to disable. Generate: php -r "echo bin2hex(random_bytes(16));"
+    //
+    //   Dry run (default):  smoketest.php?token=TOKEN
+    //   Live (real emails):  smoketest.php?token=TOKEN&live=1
+    //
+    // In live mode, all email fields are overridden with smoke_email so
+    // confirmation emails go to you, not to fake addresses.
     'smoke_token' => '',
+    'smoke_email' => '', // your email for live smoke tests
 
     // ─── Privacy ────────────────────────────────────────────────
     // What metadata to store with each submission (GDPR consideration)
