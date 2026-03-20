@@ -57,19 +57,34 @@ if ($isCli) {
     $filterForm = $argv[1] ?? null;
     $isLive     = in_array('--live', $argv ?? [], true);
 } else {
-    if (empty($smokeToken)) {
-        http_response_code(403);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['status' => 'error', 'message' => 'Smoke testing disabled. Set smoke_token in config.php.']);
+    // Rate-limit auth attempts: max 5 per minute per IP
+    $logsDir = $config['logs_dir'] ?? __DIR__ . '/logs';
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $rlFile  = $logsDir . '/smoke_rl_' . md5($ip) . '.json';
+    $rlNow   = time();
+    if (file_exists($rlFile)) {
+        $rlEntries = json_decode(file_get_contents($rlFile), true) ?? [];
+        $rlEntries = array_filter($rlEntries, fn($t) => $t > $rlNow - 60);
+        if (count($rlEntries) >= 5) {
+            http_response_code(429);
+            echo json_encode(['status' => 'error', 'message' => 'Too many requests.']);
+            exit;
+        }
+    } else {
+        $rlEntries = [];
+    }
+
+    // Uniform 404 for any auth failure — don't reveal endpoint exists
+    if (empty($smokeToken) || empty($_GET['token'] ?? '') || !hash_equals($smokeToken, $_GET['token'] ?? '')) {
+        // Log failed attempt for rate limiting
+        $rlEntries[] = $rlNow;
+        if (!is_dir($logsDir)) @mkdir($logsDir, 0755, true);
+        @file_put_contents($rlFile, json_encode($rlEntries));
+        http_response_code(404);
+        echo '<!DOCTYPE html><title>404</title><h1>Not Found</h1>';
         exit;
     }
-    $providedToken = $_GET['token'] ?? '';
-    if (!hash_equals($smokeToken, $providedToken)) {
-        http_response_code(403);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode(['status' => 'error', 'message' => 'Invalid smoke token.']);
-        exit;
-    }
+
     $filterForm = $_GET['form'] ?? null;
     $isLive     = !empty($_GET['live']);
     header('Content-Type: application/json; charset=utf-8');
