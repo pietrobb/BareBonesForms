@@ -599,9 +599,12 @@ In `config.php`:
 
 ```php
 // Generate: php -r "echo bin2hex(random_bytes(16));"
-'smoke_token' => 'a1b2c3d4e5f6...',   // required — endpoint is dead without it
-'smoke_email' => 'you@example.com',    // required for live mode only
+'smoke_token'  => 'a1b2c3d4e5f6...',      // required — endpoint is dead without it
+'smoke_email'  => 'tester@example.com',    // "submitter" — receives confirmation emails
+'smoke_notify' => 'admin@example.com',     // "admin" — receives notify emails (test Reply-To)
 ```
+
+Use two different addresses to test reply\_to: the notification arrives at `smoke_notify`, you click Reply, and it goes to `smoke_email`. If `smoke_notify` is empty, it falls back to `smoke_email`.
 
 ### Dry Run (default)
 
@@ -635,7 +638,7 @@ Response:
 
 ### Live Mode
 
-Submits forms through the full `submit.php` pipeline — stores submissions, sends real emails, fires webhooks. All email addresses (both `confirm_email` and `notify`) are redirected to `smoke_email` so only you receive the test emails.
+Submits forms through the full `submit.php` pipeline — stores submissions, sends real emails, fires webhooks. Confirmation emails go to `smoke_email` (the test submitter), notification emails go to `smoke_notify` (the test admin). Reply-To on the notification points back to `smoke_email`, so clicking Reply lets you verify the full flow.
 
 ```bash
 curl "https://example.com/smoketest.php?token=YOUR_TOKEN&live=1"
@@ -685,7 +688,7 @@ In live mode, additionally: storage write, email delivery, webhook dispatch.
 
 - **Do not use a weak token.** Generate with `php -r "echo bin2hex(random_bytes(16));"` — that's 32 hex chars, 128 bits of entropy.
 - **Do not put the token in URLs you share.** It's a secret. Use it from your browser, curl, or CI — not in public links.
-- **Do not leave `smoke_email` pointing to someone else's address.** It receives every test email from every form.
+- **Do not leave `smoke_email` or `smoke_notify` pointing to someone else's address.** They receive every test email from every form.
 - **Do not rely on live mode as a monitoring tool.** It creates real submissions — use dry run for regular checks.
 
 ---

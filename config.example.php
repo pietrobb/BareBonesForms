@@ -89,10 +89,13 @@ return [
     //   Dry run (default):  smoketest.php?token=TOKEN
     //   Live (real emails):  smoketest.php?token=TOKEN&live=1
     //
-    // In live mode, all email fields are overridden with smoke_email so
-    // confirmation emails go to you, not to fake addresses.
-    'smoke_token' => '',
-    'smoke_email' => '', // your email for live smoke tests
+    // In live mode, smoke_email acts as the form submitter (fills all email
+    // fields, receives confirmation emails). smoke_notify receives admin
+    // notifications — use a different address to test reply_to properly.
+    // If smoke_notify is empty, it falls back to smoke_email.
+    'smoke_token'  => '',
+    'smoke_email'  => '', // "submitter" — confirm emails go here
+    'smoke_notify' => '', // "admin" — notify emails go here (test Reply-To)
 
     // ─── Privacy ────────────────────────────────────────────────
     // What metadata to store with each submission (GDPR consideration)

@@ -7,7 +7,7 @@
  * Modes:
  *   Dry run (default): in-process validation only — no emails, no storage.
  *   Live (?live=1):    POSTs to submit.php for real — stores, sends emails.
- *                      All email fields are overridden with smoke_email from config.
+ *                      Email fields use smoke_email; notify goes to smoke_notify.
  *
  * Usage:
  *   Dry:   smoketest.php?token=TOKEN
@@ -92,7 +92,8 @@ if ($isCli) {
 }
 
 // ─── Live mode: require smoke_email ─────────────────────────────
-$smokeEmail = $config['smoke_email'] ?? '';
+$smokeEmail  = $config['smoke_email'] ?? '';
+$smokeNotify = $config['smoke_notify'] ?? $smokeEmail;
 if ($isLive && empty($smokeEmail)) {
     $msg = 'Live mode requires smoke_email in config.php (your email for receiving test emails).';
     if ($isCli) { echo "\n  \033[31m$msg\033[0m\n\n"; exit(1); }
@@ -311,7 +312,8 @@ foreach ($formFiles as $file) {
             $allPassed = false;
         } elseif ($response['code'] === 200 && !empty($response['json']['submission_id'])) {
             $result['submission_id'] = $response['json']['submission_id'];
-            $result['emails_to']     = $smokeEmail;
+            $result['confirm_to'] = $smokeEmail;
+            $result['notify_to']  = $smokeNotify;
         } elseif ($response['code'] === 422) {
             $result['status'] = 'fail';
             $result['errors'] = $response['json']['validation']['errors'] ?? $response['json']['errors'] ?? ['Validation failed'];
@@ -390,7 +392,9 @@ if ($isCli) {
         $icon = $r['status'] === 'ok' ? "\033[32m✓\033[0m" : "\033[31m✗\033[0m";
         $extra = '';
         if (!empty($r['submission_id'])) $extra = " → {$r['submission_id']}";
-        if (!empty($r['emails_to']))     $extra .= " → {$r['emails_to']}";
+        if (!empty($r['confirm_to']))    $extra .= " [confirm→{$r['confirm_to']}]";
+        if (!empty($r['notify_to']) && ($r['notify_to'] ?? '') !== ($r['confirm_to'] ?? ''))
+            $extra .= " [notify→{$r['notify_to']}]";
         echo "  $icon {$r['form']} ({$r['fields_tested']} fields)$extra\n";
         if (is_array($r['errors'])) {
             foreach ($r['errors'] as $k => $v) {

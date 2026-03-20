@@ -270,7 +270,7 @@ if ($isSandbox) {
         $n = $onSubmit['notify'];
         $preview['notify'] = [
             'to'      => ($_smokeAuth && !empty($config['smoke_email']))
-                          ? $config['smoke_email']
+                          ? ($config['smoke_notify'] ?? $config['smoke_email'] ?? '')
                           : (is_array($n['to']) ? implode(', ', array_map(fn($t) => interpolate($t, $data), $n['to'])) : interpolate($n['to'], $data)),
             'subject' => interpolate($n['subject'] ?? "New submission: $formId", $data),
             'reply_to' => isset($n['reply_to']) ? interpolate($n['reply_to'], $data) : $config['mail']['from_email'],
@@ -508,10 +508,10 @@ if (!empty($onSubmit['confirm_email'])) {
 // ─── Notification email to owner ────────────────────────────────
 if (!empty($onSubmit['notify'])) {
     $n = $onSubmit['notify'];
-    // Smoke test: redirect notify emails to smoke_email so real admins aren't spammed
-    $smokeEmailOverride = ($_smokeAuth && !empty($config['smoke_email'])) ? $config['smoke_email'] : '';
-    if ($smokeEmailOverride) {
-        $to = $smokeEmailOverride;
+    // Smoke test: redirect notify emails to smoke_notify (or smoke_email) so real admins aren't spammed
+    $smokeNotifyOverride = $_smokeAuth ? ($config['smoke_notify'] ?? $config['smoke_email'] ?? '') : '';
+    if (!empty($smokeNotifyOverride)) {
+        $to = $smokeNotifyOverride;
     } else {
         $toRaw = $n['to'];
         if (is_array($toRaw)) {
