@@ -140,6 +140,7 @@ Every form uses `schema_version: 1`. The included `form.schema.json` provides ID
         "notify": {
             "to": ["admin@example.com", "backup@example.com"],
             "subject": "New contact: {{name}}",
+            "reply_to": "{{email}}",
             "template": "notify.html"
         },
         "webhooks": ["https://n8n.example.com/webhook/kontakt"],
@@ -148,6 +149,27 @@ Every form uses `schema_version: 1`. The included `form.schema.json` provides ID
     }
 }
 ```
+
+### Email Reply-To
+
+Both `confirm_email` and `notify` support an optional `reply_to` property with `{{field}}` interpolation:
+
+```json
+"confirm_email": {
+    "to": "{{email}}",
+    "subject": "We received your message",
+    "reply_to": "support@example.com",
+    "template": "confirm.html"
+},
+"notify": {
+    "to": "admin@example.com",
+    "subject": "New: {{name}}",
+    "reply_to": "{{email}}",
+    "template": "notify.html"
+}
+```
+
+When `reply_to` is set on `notify`, the admin clicks Reply and responds directly to the submitter. When omitted, Reply-To defaults to `mail.from_email` from `config.php`.
 
 ### Field Types
 
@@ -496,6 +518,7 @@ Four backends. One config line:
 | **Signed webhooks**       | HMAC-SHA256 via `X-BBF-Signature`                              |
 | **CORS control**          | Configurable `allowed_origins`                                 |
 | **API authentication**    | Token required for `submissions.php`                           |
+| **Smoke test isolation**  | Token-protected, rate-limited, returns 404 on failure          |
 | **SQL injection**         | PDO prepared statements                                        |
 | **CSV formula injection** | Prefix sanitization for `=`, `+`, `-`, `@`                     |
 | **Directory access**      | `.htaccess` blocks 7 directories + all dotfiles (see below)    |
@@ -563,6 +586,107 @@ Access control: localhost = unrestricted. Remote = requires `?token=<api_token>`
 ```
 
 When form processing fails (storage, email, or webhook errors), the admin receives an email — at most once per 24 hours. Sent via `mail()` directly, so it works even when SMTP is the problem. Errors are always logged to `error_log` regardless.
+
+---
+
+## Smoke Test
+
+`smoketest.php` validates all your forms in one request — generates valid test data for every field type, runs it through the same validation pipeline as `submit.php`, and reports pass/fail per form. Protected by a dedicated token.
+
+### Setup
+
+In `config.php`:
+
+```php
+// Generate: php -r "echo bin2hex(random_bytes(16));"
+'smoke_token' => 'a1b2c3d4e5f6...',   // required — endpoint is dead without it
+'smoke_email' => 'you@example.com',    // required for live mode only
+```
+
+### Dry Run (default)
+
+Validates forms in-process. No emails sent, nothing stored, no side effects.
+
+```bash
+# All forms
+curl "https://example.com/smoketest.php?token=YOUR_TOKEN"
+
+# Single form
+curl "https://example.com/smoketest.php?token=YOUR_TOKEN&form=kontakt"
+
+# CLI (no token needed — you already have server access)
+php smoketest.php
+php smoketest.php kontakt
+```
+
+Response:
+
+```json
+{
+    "status": "ok",
+    "mode": "dry",
+    "summary": "10/10 forms passed (dry run)",
+    "forms": [
+        { "form": "kontakt", "status": "ok", "fields_tested": 6 },
+        { "form": "newsletter", "status": "ok", "fields_tested": 1 }
+    ]
+}
+```
+
+### Live Mode
+
+Submits forms through the full `submit.php` pipeline — stores submissions, sends real emails, fires webhooks. All email addresses (both `confirm_email` and `notify`) are redirected to `smoke_email` so only you receive the test emails.
+
+```bash
+curl "https://example.com/smoketest.php?token=YOUR_TOKEN&live=1"
+curl "https://example.com/smoketest.php?token=YOUR_TOKEN&live=1&form=kontakt"
+
+# CLI
+php smoketest.php --live
+```
+
+Live mode requires `smoke_email` in config — refuses to run without it.
+
+### What gets tested
+
+For each form JSON in `forms/`:
+
+1. **JSON parsing** — valid JSON?
+2. **Schema validation** — required properties, field names, types, options
+3. **Template resolution** — `use` + `prefix` groups expanded correctly
+4. **Data generation** — valid values per field type (email, tel, date, select, etc.)
+5. **Server-side validation** — required, pattern, min/max, options, conditionals
+6. **Email templates** — referenced template files exist on disk
+
+In live mode, additionally: storage write, email delivery, webhook dispatch.
+
+### Security
+
+| Protection | How |
+|---|---|
+| **Token required** | `smoke_token` must be set in config AND provided in the request |
+| **Dead when empty** | `smoke_token => ''` = endpoint returns 404 (not 403 — doesn't reveal it exists) |
+| **Timing-safe** | Token compared via `hash_equals()` — immune to timing attacks |
+| **Rate limited** | 5 failed attempts per minute per IP, then 429 |
+| **No email abuse** | Live mode overrides all recipients with `smoke_email` — can't be used to send mail to arbitrary addresses |
+| **CSRF bypass** | `smoke_token` bypasses CSRF only for sandbox/smoke requests — doesn't weaken normal form submissions |
+
+### When to use what
+
+| Scenario | Mode |
+|---|---|
+| After editing a form JSON | Dry run — instant validation, no side effects |
+| After deploying to production | Dry run — verify all forms load and validate |
+| Testing email delivery / SMTP config | Live — real emails arrive in your inbox |
+| Testing webhook integrations | Live — webhooks fire with test data |
+| Automated CI/CD pipeline | Dry run via CLI — exit code 0 = all passed |
+
+### Do NOT
+
+- **Do not use a weak token.** Generate with `php -r "echo bin2hex(random_bytes(16));"` — that's 32 hex chars, 128 bits of entropy.
+- **Do not put the token in URLs you share.** It's a secret. Use it from your browser, curl, or CI — not in public links.
+- **Do not leave `smoke_email` pointing to someone else's address.** It receives every test email from every form.
+- **Do not rely on live mode as a monitoring tool.** It creates real submissions — use dry run for regular checks.
 
 ---
 
@@ -708,6 +832,7 @@ barebonesforms/
 ├── bbf_functions.php   ← Shared functions (internal)
 ├── submissions.php     ← API: list/export submissions
 ├── sandbox.php         ← Test forms without side effects
+├── smoketest.php       ← Validate all forms in one request (token-protected)
 ├── viewer.php          ← Submissions dashboard (optional, delete if unused)
 ├── editor.php          ← Visual JSON form editor (optional, delete if unused)
 ├── check.php           ← Installation diagnostics
@@ -771,6 +896,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] `error_notify` set for admin error alerts (max 1/day)
 - [ ] `stripe` keys set if using payments
 - [ ] `'sandbox' => false` for production
+- [ ] `smoke_token` set if you want post-deploy smoke testing (leave empty to disable)
 - [ ] `check.php` run, all checks passed *(remote access requires `?token=<api_token>`)*
 - [ ] **`check.php` deleted after verification** — it exposes PHP version, extensions, paths, and config details
 - [ ] `editor.php` deleted or protected — can modify form definitions
