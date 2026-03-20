@@ -293,6 +293,10 @@
                             "type": "string",
                             "description": "Email subject. Supports {{field_name}} interpolation."
                         },
+                        "reply_to": {
+                            "type": "string",
+                            "description": "Reply-To address. Supports {{field_name}} interpolation. Defaults to mail.from_email from config."
+                        },
                         "template": {
                             "type": "string",
                             "description": "Template file name in templates/ directory."
@@ -314,6 +318,10 @@
                         "subject": {
                             "type": "string",
                             "description": "Email subject. Supports {{field_name}} interpolation."
+                        },
+                        "reply_to": {
+                            "type": "string",
+                            "description": "Reply-To address. Supports {{field_name}} interpolation (e.g. {{email}}). Defaults to mail.from_email from config."
                         },
                         "template": {
                             "type": "string",

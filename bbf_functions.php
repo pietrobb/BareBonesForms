@@ -164,7 +164,7 @@ function compareValues($currentVal, $targetVal, string $op): bool {
 
 // ─── Email ───────────────────────────────────────────────────────
 
-function sendEmail(string $to, string $subject, string $body, array $mailConfig): void {
+function sendEmail(string $to, string $subject, string $body, array $mailConfig, string $replyTo = ''): void {
     if (empty($to)) return;
 
     // Sanitize headers to prevent injection
@@ -177,10 +177,16 @@ function sendEmail(string $to, string $subject, string $body, array $mailConfig)
     if (empty($addresses)) return;
     $to = implode(', ', $addresses);
 
+    // Reply-To: use explicit override if valid, otherwise fall back to from_email
+    $replyTo = str_replace(["\r", "\n", "\0"], '', $replyTo);
+    if (empty($replyTo) || !filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
+        $replyTo = $mailConfig['from_email'];
+    }
+
     $from = $mailConfig['from_name'] . ' <' . $mailConfig['from_email'] . '>';
     $headers = [
         'From'         => $from,
-        'Reply-To'     => $mailConfig['from_email'],
+        'Reply-To'     => $replyTo,
         'MIME-Version' => '1.0',
         'Content-Type' => 'text/html; charset=UTF-8',
     ];

@@ -252,6 +252,7 @@ if ($isSandbox) {
         $preview['confirm_email'] = [
             'to'      => interpolate($ce['to'], $data),
             'subject' => interpolate($ce['subject'] ?? 'Thank you', $data),
+            'reply_to' => isset($ce['reply_to']) ? interpolate($ce['reply_to'], $data) : $config['mail']['from_email'],
             'template' => $ce['template'] ?? 'confirm.html',
             'body_preview' => renderTemplate(
                 $config['templates_dir'] . '/' . basename($ce['template'] ?? 'confirm.html'),
@@ -265,6 +266,7 @@ if ($isSandbox) {
         $preview['notify'] = [
             'to'      => is_array($n['to']) ? implode(', ', array_map(fn($t) => interpolate($t, $data), $n['to'])) : interpolate($n['to'], $data),
             'subject' => interpolate($n['subject'] ?? "New submission: $formId", $data),
+            'reply_to' => isset($n['reply_to']) ? interpolate($n['reply_to'], $data) : $config['mail']['from_email'],
             'template' => $n['template'] ?? 'notify.html',
             'body_preview' => renderTemplate(
                 $config['templates_dir'] . '/' . basename($n['template'] ?? 'notify.html'),
@@ -492,7 +494,8 @@ if (!empty($onSubmit['confirm_email'])) {
             '_summary' => buildSummary($form['fields'], $data),
         ])
     );
-    sendEmail($to, $subject, $body, $config['mail']);
+    $replyTo = isset($ce['reply_to']) ? interpolate($ce['reply_to'], $data) : '';
+    sendEmail($to, $subject, $body, $config['mail'], $replyTo);
 }
 
 // ─── Notification email to owner ────────────────────────────────
@@ -516,7 +519,8 @@ if (!empty($onSubmit['notify'])) {
             '_summary'  => buildSummary($form['fields'], $data),
         ])
     );
-    sendEmail($to, $subject, $body, $config['mail']);
+    $replyTo = isset($n['reply_to']) ? interpolate($n['reply_to'], $data) : '';
+    sendEmail($to, $subject, $body, $config['mail'], $replyTo);
 }
 
 // ─── Webhooks (signed) ──────────────────────────────────────────
