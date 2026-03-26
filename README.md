@@ -209,6 +209,7 @@ When `reply_to` is set on `notify`, the admin clicks Reply and responds directly
 | `pattern`         | string  | Regex validation pattern                             |
 | `pattern_message` | string  | Custom error for pattern mismatch                    |
 | `options`         | array   | Options for select/radio/checkbox. Object form: `{value, label, checked?}` |
+| `options_from`    | string  | URL returning options as JSON `[{value, label}, ...]`. Use instead of static `options`. |
 | `rows`            | integer | Textarea rows (default: 4)                           |
 | `value`           | string/array | Default value. String for radio, array for checkbox (`["a","b"]`) |
 | `label_position`  | string  | `"left"` puts label beside input instead of above    |
@@ -248,7 +249,10 @@ When `reply_to` is set on `notify`, the admin clicks Reply and responds directly
 <script>
     BBF.render('kontakt', '#my-form', {
         showTitle: false,
-        hideOnSuccess: true
+        hideOnSuccess: true,
+        lang: 'sk',
+        onSuccess: function(response) { /* handle response */ },
+        onError: function(response) { /* handle error */ }
     });
 </script>
 ```
@@ -720,6 +724,45 @@ Emails and webhooks are **deferred until payment is confirmed** — the customer
 
 ---
 
+## Dynamic Options (`options_from`)
+
+Load select, radio, or checkbox options from an external URL at render time. Use instead of static `options` for dynamic data (product categories, countries, inventory, etc.).
+
+```json
+{
+    "name": "country",
+    "type": "select",
+    "label": "Country",
+    "required": true,
+    "options_from": "/api/countries.php"
+}
+```
+
+The URL must return a JSON array of `{value, label}` objects — the same format as static `options`:
+
+```json
+[
+    {"value": "SK", "label": "Slovakia"},
+    {"value": "CZ", "label": "Czech Republic"},
+    {"value": "DE", "label": "Germany"}
+]
+```
+
+**How it works:**
+- `bbf.js` fetches all `options_from` URLs in parallel before rendering the form
+- Options are populated into the field exactly like static `options`
+- Server-side option validation is skipped for `options_from` fields (the server doesn't know the valid values)
+- If the fetch fails, the field renders with an empty options list and a warning in the console
+- Works with `select`, `radio`, and `checkbox` field types
+- Use `options_from` OR `options`, not both. `options_from` takes precedence.
+
+**Endpoint requirements:**
+- Must return `Content-Type: application/json`
+- Must return an array of `{value, label}` objects
+- Can be any URL (relative or absolute, same-origin or cross-origin with CORS)
+
+---
+
 ## Custom Actions
 
 ```json
@@ -735,6 +778,64 @@ if ($url) {
 ```
 
 Actions are **server-side trusted code** with full PHP access. Only place code you trust in `actions/`.
+
+### Action Response Override
+
+Custom actions can inject fields into the JSON response returned to the client via the `$actionResponse` array:
+
+```php
+// actions/create-order.php
+$orderId = 'ORD-' . strtoupper(substr($submission['id'], 4, 8));
+$actionResponse['order_id'] = $orderId;
+$actionResponse['redirect'] = '/thank-you?order=' . $orderId;
+```
+
+The client receives these fields merged into the standard response:
+
+```json
+{
+    "status": "ok",
+    "message": "OK",
+    "submission_id": "bbf_a1b2c3d4...",
+    "order_id": "ORD-A1B2C3D4",
+    "redirect": "/thank-you?order=ORD-A1B2C3D4"
+}
+```
+
+**Rules:**
+- `$actionResponse` is a plain PHP array available to all action files
+- Custom fields are merged into the response — `submission_id` and `status` are always present
+- If an action sets `$actionResponse['redirect']`, it takes precedence over `on_submit.redirect`
+- Multiple actions can write to `$actionResponse` — later actions overwrite earlier ones
+
+### onSuccess / onError Callbacks
+
+Handle the submission response in JavaScript via `onSuccess` and `onError` callbacks:
+
+```javascript
+BBF.render('order', '#checkout', {
+    onSuccess: function(response) {
+        // response contains all standard + custom action fields
+        console.log('Order ID:', response.order_id);
+        document.getElementById('order-result').textContent = 'Order ' + response.order_id + ' placed!';
+        return false; // return false to skip default success handling (message, redirect, reset)
+    },
+    onError: function(response) {
+        console.error('Submission failed:', response.message);
+        // default error handling still runs after this callback
+    }
+});
+```
+
+**`onSuccess(response)`:**
+- Called when `response.status === 'ok'` (not called for sandbox previews)
+- Receives the full response object including custom action fields
+- Return `false` to skip default handling (success message, redirect, form reset)
+- Return anything else (or nothing) to continue with default handling
+
+**`onError(response)`:**
+- Called when submission fails (validation errors, server errors)
+- Default error handling (showing field errors, error message) always runs after the callback
 
 ---
 
@@ -882,6 +983,12 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - The generated HTML uses `bbf-` prefixed classes (see "Generated HTML & CSS Classes" above). Do not guess class names — they are listed in this README and in docs.html.
 - All validation is enforced server-side. Client-side validation is a convenience, not a guarantee.
 - `on_submit.store` defaults to `true`. Email and webhooks require SMTP/webhook configuration in `config.php`.
+
+**E-shop integration features:**
+- **Dynamic options** (`options_from`): Load select/radio/checkbox options from a URL. Use for product categories, countries, variants, etc. See "Dynamic Options" section.
+- **Action response override** (`$actionResponse`): Custom actions can inject fields (order ID, redirect URL, etc.) into the JSON response. See "Action Response Override" section.
+- **Callbacks** (`onSuccess`, `onError`): Handle submission results in JavaScript. `onSuccess` receives the full response including custom action fields. Return `false` to skip default handling. See "onSuccess / onError Callbacks" section.
+- **Inline embedding**: BBF renders into any existing DOM element — no wrapper needed. Use `BBF.render('form-id', '#your-div')` for checkout forms inside e-shop layouts.
 
 ---
 

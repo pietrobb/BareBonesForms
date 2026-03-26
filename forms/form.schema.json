@@ -198,6 +198,11 @@
                     },
                     "description": "Options for select, radio, or checkbox fields."
                 },
+                "options_from": {
+                    "type": "string",
+                    "format": "uri-reference",
+                    "description": "URL that returns options as JSON array [{value, label}, ...]. Fetched by bbf.js at render time. Use instead of static options for dynamic data (categories, countries, etc.)."
+                },
                 "size": {
                     "type": "string",
                     "enum": ["small", "medium", "large"],
@@ -268,7 +273,11 @@
                         "required": ["type"]
                     },
                     "then": {
-                        "required": ["name", "options"]
+                        "required": ["name"],
+                        "anyOf": [
+                            { "required": ["options"] },
+                            { "required": ["options_from"] }
+                        ]
                     }
                 }
             ]

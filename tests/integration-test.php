@@ -1138,6 +1138,140 @@ foreach ($backends as $backend) {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Test 6: Dynamic Options (options_from)
+    // ─────────────────────────────────────────────────────────────
+    section("Test 6: Dynamic Options — options_from ($backend)");
+
+    // Server may have died under Test 5 load — verify and restart if needed
+    $healthCheck = httpGet("$baseUrl/submit.php?form=test-all-types&action=definition");
+    if ($healthCheck['code'] === 0) {
+        warn("server unresponsive before Test 6, restarting...");
+        restartServer();
+        usleep(500000);
+    }
+
+    // 6a: Form definition should include options_from
+    $defResult = httpGet("$baseUrl/submit.php?form=test-dynamic-options&action=definition");
+    if ($defResult['code'] === 200) {
+        pass("dynamic-options: definition endpoint returns 200");
+        $def = $defResult['json'];
+        $countryField = null;
+        foreach ($def['fields'] ?? [] as $f) {
+            if (($f['name'] ?? '') === 'country') $countryField = $f;
+        }
+        if ($countryField && !empty($countryField['options_from'])) {
+            pass("dynamic-options: country field has options_from in definition");
+        } else {
+            fail("dynamic-options: country field missing options_from", json_encode($countryField));
+        }
+    } else {
+        fail("dynamic-options: definition endpoint HTTP {$defResult['code']}", substr($defResult['body'], 0, 300));
+    }
+
+    // 6b: Test options endpoint returns valid JSON
+    $optResult = httpGet("$baseUrl/tests/test-options-endpoint.php");
+    if ($optResult['code'] === 200 && is_array($optResult['json'])) {
+        $optCount = count($optResult['json']);
+        if ($optCount > 0) {
+            pass("dynamic-options: options endpoint returns $optCount options");
+            $firstOpt = $optResult['json'][0];
+            if (isset($firstOpt['value']) && isset($firstOpt['label'])) {
+                pass("dynamic-options: options have value/label structure");
+            } else {
+                fail("dynamic-options: options missing value/label", json_encode($firstOpt));
+            }
+        } else {
+            fail("dynamic-options: options endpoint returned empty array");
+        }
+    } else {
+        fail("dynamic-options: options endpoint HTTP {$optResult['code']}", substr($optResult['body'], 0, 200));
+    }
+
+    // 6c: Submit with a dynamic option value (server skips option validation for options_from)
+    $dynResult = submitForm('test-dynamic-options', [
+        'name'     => 'Dynamic Test',
+        'country'  => 'SK',
+        'category' => 'electronics',
+    ]);
+    if ($dynResult['code'] === 200 && ($dynResult['json']['status'] ?? '') === 'ok') {
+        pass("dynamic-options: submit with dynamic option value OK (id: {$dynResult['json']['submission_id']})");
+    } else {
+        fail("dynamic-options: submit failed HTTP {$dynResult['code']}", substr($dynResult['body'], 0, 300));
+    }
+
+    // 6d: Verify stored data
+    usleep(300000);
+    $dynSubs = getSubmissions('test-dynamic-options');
+    if ($dynSubs !== null && !empty($dynSubs)) {
+        $dynData = $dynSubs[0]['data'] ?? [];
+        assertEqual('Dynamic Test', $dynData['name'] ?? '', "dynamic-options: name stored correctly");
+        assertEqual('SK', $dynData['country'] ?? '', "dynamic-options: country value stored correctly");
+        assertEqual('electronics', $dynData['category'] ?? '', "dynamic-options: category value stored correctly");
+    } else {
+        fail("dynamic-options: cannot read submissions");
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Test 7: Action Response Override
+    // ─────────────────────────────────────────────────────────────
+    section("Test 7: Action Response Override ($backend)");
+
+    $arResult = submitForm('test-action-response', [
+        'product' => 'Widget Pro',
+        'email'   => 'shop@test.com',
+    ]);
+
+    if ($arResult['code'] === 200 && ($arResult['json']['status'] ?? '') === 'ok') {
+        pass("action-response: submit OK (id: {$arResult['json']['submission_id']})");
+
+        // Check custom fields injected by the action
+        $json = $arResult['json'];
+        if (!empty($json['order_id'])) {
+            pass("action-response: order_id present in response ({$json['order_id']})");
+            // Verify prefix from action config
+            if (str_starts_with($json['order_id'], 'ORD-')) {
+                pass("action-response: order_id has correct prefix (ORD-)");
+            } else {
+                fail("action-response: order_id wrong prefix", $json['order_id']);
+            }
+        } else {
+            fail("action-response: order_id missing from response", json_encode($json));
+        }
+
+        // Check redirect set by action
+        if (!empty($json['redirect'])) {
+            pass("action-response: redirect present in response");
+            if (str_contains($json['redirect'], 'thank-you') && str_contains($json['redirect'], 'order=ORD-')) {
+                pass("action-response: redirect URL contains order ID");
+            } else {
+                fail("action-response: redirect URL wrong", $json['redirect']);
+            }
+        } else {
+            fail("action-response: redirect missing from response", json_encode($json));
+        }
+
+        // submission_id should still be present
+        if (!empty($json['submission_id'])) {
+            pass("action-response: submission_id still present alongside custom fields");
+        } else {
+            fail("action-response: submission_id missing");
+        }
+    } else {
+        fail("action-response: submit failed HTTP {$arResult['code']}", substr($arResult['body'], 0, 300));
+    }
+
+    // 7b: Verify data was stored despite action response override
+    usleep(300000);
+    $arSubs = getSubmissions('test-action-response');
+    if ($arSubs !== null && !empty($arSubs)) {
+        $arData = $arSubs[0]['data'] ?? [];
+        assertEqual('Widget Pro', $arData['product'] ?? '', "action-response: product stored correctly");
+        assertEqual('shop@test.com', $arData['email'] ?? '', "action-response: email stored correctly");
+    } else {
+        fail("action-response: cannot read submissions");
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Backend summary
     // ─────────────────────────────────────────────────────────────
     $backendPassed = $passed - $prevPassed;

@@ -545,12 +545,13 @@ if (!empty($onSubmit['webhooks'])) {
 }
 
 // ─── Custom actions (trusted server-side extensions) ────────────
+$actionResponse = [];  // Actions can add custom fields: $actionResponse['order_id'] = 123;
 if (!empty($onSubmit['actions'])) {
     foreach ($onSubmit['actions'] as $action) {
         $actionFile = __DIR__ . '/actions/' . preg_replace('/[^a-zA-Z0-9_-]/', '', $action['type'] ?? '') . '.php';
         if (file_exists($actionFile)) {
             include $actionFile;
-            // Action file receives: $action, $submission, $config
+            // Action file receives: $action, $submission, $config, $actionResponse
         }
     }
 }
@@ -561,12 +562,12 @@ if (!empty($GLOBALS['_bbf_errors'])) {
 }
 
 // ─── Success ────────────────────────────────────────────────────
-$redirect = $onSubmit['redirect'] ?? null;
-if ($redirect) {
-    respond(200, 'OK', ['submission_id' => $submissionId, 'redirect' => interpolate($redirect, $data)]);
-} else {
-    respond(200, 'OK', ['submission_id' => $submissionId]);
+$extra = array_merge(['submission_id' => $submissionId], $actionResponse);
+// Form-level redirect (action redirect takes precedence if set)
+if (empty($extra['redirect']) && !empty($onSubmit['redirect'])) {
+    $extra['redirect'] = interpolate($onSubmit['redirect'], $data);
 }
+respond(200, 'OK', $extra);
 
 
 // ═════════════════════════════════════════════════════════════════

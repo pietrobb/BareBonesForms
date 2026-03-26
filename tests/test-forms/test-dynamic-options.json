@@ -1,0 +1,30 @@
+{
+    "$schema": "../../forms/form.schema.json",
+    "schema_version": 1,
+    "id": "test-dynamic-options",
+    "name": "Dynamic Options Test",
+    "fields": [
+        {
+            "name": "name",
+            "type": "text",
+            "label": "Name",
+            "required": true
+        },
+        {
+            "name": "country",
+            "type": "select",
+            "label": "Country",
+            "required": true,
+            "options_from": "/tests/test-options-endpoint.php"
+        },
+        {
+            "name": "category",
+            "type": "radio",
+            "label": "Category",
+            "options_from": "/tests/test-options-endpoint.php?type=categories"
+        }
+    ],
+    "on_submit": {
+        "store": true
+    }
+}

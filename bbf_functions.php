@@ -610,8 +610,8 @@ function validateFieldList(array $fields, string $path, array &$errors, array &$
             continue;
         }
 
-        if (in_array($type, ['select', 'radio', 'checkbox'], true) && empty($field['options'])) {
-            $errors[] = "$prefix: Type '$type' requires options.";
+        if (in_array($type, ['select', 'radio', 'checkbox'], true) && empty($field['options']) && empty($field['options_from'])) {
+            $errors[] = "$prefix: Type '$type' requires options or options_from.";
         }
 
         // Validate regex patterns

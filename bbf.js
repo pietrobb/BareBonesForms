@@ -152,6 +152,23 @@
                     } catch (e) { /* CSRF may be disabled */ }
                 }
 
+                // Fetch dynamic options (options_from) before building the form
+                const allFields = this._flattenFields(form.fields || []);
+                const optionsFetches = [];
+                allFields.forEach(field => {
+                    if (field.options_from) {
+                        optionsFetches.push(
+                            fetch(field.options_from)
+                                .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+                                .then(opts => { field.options = opts; })
+                                .catch(err => { console.warn('BBF: Failed to load options for ' + field.name + ':', err); field.options = field.options || []; })
+                        );
+                    }
+                });
+                if (optionsFetches.length > 0) {
+                    await Promise.all(optionsFetches);
+                }
+
                 container.innerHTML = '';
                 container.classList.remove('bbf-loading');
                 container.classList.add('bbf-form-container');
@@ -602,6 +619,12 @@
                         msg.style.display = 'block';
                         this._clearErrors(el);
                     } else if (result.status === 'ok') {
+                        // onSuccess callback — return false to skip default handling
+                        if (options.onSuccess && options.onSuccess(result) === false) {
+                            btn.disabled = false;
+                            btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
+                            return;
+                        }
                         if (result.redirect) {
                             window.location.href = result.redirect;
                             return;
@@ -616,6 +639,7 @@
                             Array.from(el.querySelectorAll('.bbf-field, .bbf-submit-wrap, .bbf-page, .bbf-page-nav')).forEach(f => f.style.display = 'none');
                         }
                     } else {
+                        if (options.onError) options.onError(result);
                         if (result.errors) {
                             this._showErrors(el, result.errors);
                         }
