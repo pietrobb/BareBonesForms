@@ -445,7 +445,8 @@
     position: absolute;
     z-index: 100;
     left: 0;
-    right: 0;
+    min-width: 100%;
+    width: max-content;
     background: #fff;
     border: 1px solid #d0d0d0;
     border-top: none;
