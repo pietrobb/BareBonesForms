@@ -1033,6 +1033,7 @@
                 var acUrl = acConfig.url;
                 var acMinLen = acConfig.min_length || 2;
                 var acDebounce = acConfig.debounce !== undefined ? acConfig.debounce : 300;
+                var acMap = acConfig.map || null;
 
                 var acList = document.createElement('div');
                 acList.className = 'bbf-autocomplete-list';
@@ -1071,6 +1072,24 @@
                                     acList.style.display = 'none';
                                     input.dispatchEvent(new Event('input', { bubbles: true }));
                                     input.dispatchEvent(new Event('change', { bubbles: true }));
+                                    // Map extra fields from response item
+                                    if (acMap && typeof item === 'object') {
+                                        var formEl = input.closest('.bbf-form');
+                                        if (formEl) {
+                                            Object.keys(acMap).forEach(function(formField) {
+                                                var responseKey = acMap[formField];
+                                                var val = responseKey.split('.').reduce(function(obj, k) { return obj && obj[k]; }, item);
+                                                if (val !== undefined && val !== null) {
+                                                    var target = formEl.querySelector('[name="' + formField + '"]');
+                                                    if (target) {
+                                                        target.value = String(val);
+                                                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                                                        target.dispatchEvent(new Event('change', { bubbles: true }));
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
                                 });
                                 acList.appendChild(div);
                             });

@@ -35,6 +35,7 @@ RewriteRule ^templates/ - [F,L]
 RewriteRule ^actions/ - [F,L]
 RewriteRule ^backups/ - [F,L]
 RewriteRule ^tests/ - [F,L]
+RewriteRule ^data/ - [F,L]
 
 # Block direct access to form JSON definitions and lang PHP files
 # (forms are served via submit.php?action=definition, lang via include)

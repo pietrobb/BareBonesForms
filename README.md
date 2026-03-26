@@ -64,8 +64,9 @@ Eight demos, each building on the previous. From "hello world" to business logic
 | **6** | [Print Shop Order](demo6.html) | Conditional product groups, variant price multipliers, volume discounts, live pricing sidebar |
 | **7** | [Spanish Inquisition Quiz](demo7.html) | `shuffle` on options, post-submit results panel, scoring, `data-hide-on-success` |
 | **8** | [Homeopathic Modalities](demo8.html) | **Reusable templates** — define fields once, use with `"use"` + `"prefix"` across multiple groups |
+| **9** | [PSČ Lookup](demo9.html) | **Lookup + autocomplete** — enter PSČ to auto-fill city, or type city for typeahead suggestions that auto-fill PSČ back. 4 094 postal codes, bidirectional. |
 
-Demos 1–3 cover backend configuration. Demo 4 showcases the form engine's core. Demos 5–8 prove it can handle decision flows, business logic, reusable components, and interactive experiences — not just contact forms.
+Demos 1–3 cover backend configuration. Demo 4 showcases the form engine's core. Demos 5–9 prove it can handle decision flows, business logic, reusable components, interactive experiences, and external data integration — not just contact forms.
 
 ---
 
@@ -787,7 +788,7 @@ Show a dropdown of suggestions as the user types, fetched from an external URL.
 }
 ```
 
-Or with options:
+Or with options (including `map` for auto-filling related fields):
 
 ```json
 {
@@ -797,7 +798,10 @@ Or with options:
     "autocomplete_from": {
         "url": "/api/cities.php?q={{value}}",
         "min_length": 2,
-        "debounce": 300
+        "debounce": 300,
+        "map": {
+            "psc": "psc"
+        }
     }
 }
 ```
@@ -806,6 +810,7 @@ Or with options:
 - `url` — API endpoint. `{{value}}` is replaced with current input.
 - `min_length` — Minimum characters before fetching (default: `2`).
 - `debounce` — Delay in ms before fetching after typing stops (default: `300`).
+- `map` — Optional. On selection, maps extra fields from the response item to form fields: `{ "formFieldName": "responseKey" }`. This enables bidirectional lookup — e.g. selecting a city also fills the PSČ field.
 
 **API response format:** Same as `options_from` — array of `{value, label}` objects:
 ```json

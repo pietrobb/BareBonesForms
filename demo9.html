@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo 9: PSČ Lookup — BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+
+<!-- ─── Navigation ────────────────────────────────────────── -->
+
+<nav class="demo-nav">
+    <a href="demo1.html" class="demo-nav-brand">Bare<span>Bones</span>Forms</a>
+    <div class="demo-nav-links">
+        <a href="demo1.html">Demo 1</a>
+        <a href="demo2.html">Demo 2</a>
+        <a href="demo3.html">Demo 3</a>
+        <a href="demo4.html">Demo 4</a>
+        <a href="demo5.html">Demo 5</a>
+        <a href="demo6.html">Demo 6</a>
+        <a href="demo7.html">Demo 7</a>
+        <a href="demo8.html">Demo 8</a>
+        <a href="demo9.html" class="active">Demo 9</a>
+        <span class="nav-sep">|</span>
+        <a href="docs.html">Docs</a>
+    </div>
+</nav>
+
+<!-- ─── Hero ──────────────────────────────────────────────── -->
+
+<div class="hero">
+    <div class="hero-number" style="background: rgba(59,130,246,0.15); color: #3b82f6;">9</div>
+    <h1>PSČ Lookup &amp; City Autocomplete</h1>
+    <p>Two-way address intelligence. Type a postal code — the city fills itself. Start typing a city — a dropdown offers suggestions and fills the postal code back. 4 094 PSČ, 4 043 obcí, one JSON index, zero external APIs.</p>
+</div>
+
+<!-- ─── PHP server notice ─────────────────────────────────── -->
+
+<div class="server-notice">
+    This form demands a PHP server to function. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo9.html</code>.
+</div>
+
+<div class="setup-notice">
+    <h4>New features demonstrated</h4>
+    <div class="setup-item"><span class="ok">&#128269;</span> <strong>lookup</strong> — PSČ field triggers API call after 5 digits, auto-fills city</div>
+    <div class="setup-item"><span class="ok">&#9997;</span> <strong>autocomplete_from</strong> — City field shows typeahead suggestions with keyboard navigation</div>
+    <div class="setup-item"><span class="ok">&#8596;</span> <strong>map</strong> — Selecting a city from autocomplete also fills the PSČ field</div>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════
+     MAIN CONTENT
+     ═════════════════════════════════════════════════════════════ -->
+
+<div class="page-grid">
+
+    <!-- ─── LEFT: Live Form ───────────────────────────────── -->
+
+    <div class="form-column">
+
+        <!-- ════════════════════════════════════════════════════
+             EMBED THIS FORM IN YOUR OWN PAGE
+
+             What you need:
+             1. <script src="bbf.js"></script>
+             2. forms/demo-psc.json
+             3. api-psc.php + data/psc-to-city.json + data/city-to-psc.json
+
+             bbf.css is auto-loaded by bbf.js (no <link> tag needed).
+             ════════════════════════════════════════════════════ -->
+
+        <div data-form="demo-psc" data-show-title="true" data-lang="sk"></div>
+
+        <!-- ════════════════════════════════════════════════════ -->
+
+    </div>
+
+    <!-- ─── RIGHT: Sidebar ────────────────────────────────── -->
+
+    <div class="sidebar-column">
+
+        <div class="info-card">
+            <h4>How it works</h4>
+            <ul class="pipeline">
+                <li><span class="pip">&#128269;</span> <span>Type <strong>5 digits</strong> into PSČ &rarr; <code>lookup</code> fetches <code>api-psc.php?psc=XXXXX</code> &rarr; city field fills automatically</span></li>
+                <li><span class="pip">&#9997;</span> <span>Start typing a <strong>city name</strong> &rarr; <code>autocomplete_from</code> fetches suggestions &rarr; dropdown appears</span></li>
+                <li><span class="pip">&#8596;</span> <span>Select a city &rarr; <code>map</code> fills the PSČ field with the city's postal code</span></li>
+                <li><span class="pip">&#10003;</span> <span>Submit &rarr; all fields validated and stored</span></li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>Try these PSČ codes</h4>
+            <table style="width:100%;font-size:0.9em;border-collapse:collapse;">
+                <tr><td style="padding:3px 8px;"><code>81101</code></td><td>Bratislava 1</td></tr>
+                <tr><td style="padding:3px 8px;"><code>04001</code></td><td>Košice 1</td></tr>
+                <tr><td style="padding:3px 8px;"><code>01001</code></td><td>Žilina 1</td></tr>
+                <tr><td style="padding:3px 8px;"><code>97401</code></td><td>Banská Bystrica 1</td></tr>
+                <tr><td style="padding:3px 8px;"><code>08001</code></td><td>Prešov 1</td></tr>
+                <tr><td style="padding:3px 8px;"><code>94901</code></td><td>Nitra 1</td></tr>
+            </table>
+            <p style="margin-top:8px;font-size:0.85em;color:#888;">Or try typing: <em>Brat</em>, <em>Koš</em>, <em>Zvo</em>, <em>Tren</em></p>
+        </div>
+
+        <div class="info-card">
+            <h4>The lookup config</h4>
+            <div class="json-snippet"><span class="jk">"lookup"</span>: {
+  <span class="jk">"url"</span>: <span class="js">"api-psc.php?psc={{value}}"</span>,
+  <span class="jk">"trigger"</span>: <span class="jn">5</span>,
+  <span class="jk">"map"</span>: { <span class="jk">"city"</span>: <span class="js">"city"</span> }
+}</div>
+            <p>Five digits typed &rarr; one fetch &rarr; one field filled.</p>
+        </div>
+
+        <div class="info-card">
+            <h4>The autocomplete config</h4>
+            <div class="json-snippet"><span class="jk">"autocomplete_from"</span>: {
+  <span class="jk">"url"</span>: <span class="js">"api-psc.php?city={{value}}"</span>,
+  <span class="jk">"min_length"</span>: <span class="jn">2</span>,
+  <span class="jk">"debounce"</span>: <span class="jn">200</span>,
+  <span class="jk">"map"</span>: { <span class="jk">"psc"</span>: <span class="js">"psc"</span> }
+}</div>
+            <p>Type two letters &rarr; dropdown appears &rarr; select fills city + PSČ.</p>
+        </div>
+
+        <div class="info-card">
+            <h4>Data source</h4>
+            <p>4 094 postal codes and 4 043 cities across Slovakia and Czech Republic. Pre-indexed from CSV into two JSON files (~170 KB total). No external API dependencies.</p>
+            <div style="font-size:0.85em;color:#888;margin-top:6px;">
+                <code>data/psc-to-city.json</code> — PSČ &rarr; city<br>
+                <code>data/city-to-psc.json</code> — city &rarr; PSČ(s)
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="bbf.js"></script>
+<script src="lang/sk.js"></script>
+
+</body>
+</html>

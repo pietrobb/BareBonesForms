@@ -1,0 +1,78 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-psc",
+    "name": "Doručovacia adresa",
+    "description": "Zadajte PSČ a mesto sa doplní automaticky. Alebo začnite písať mesto a vyberte z ponuky.",
+    "submit_label": "Odoslať",
+    "success_message": "Ďakujeme! Adresa bola odoslaná.",
+    "animate_conditions": true,
+
+    "fields": [
+        {
+            "name": "name",
+            "type": "text",
+            "label": "Meno a priezvisko",
+            "required": true,
+            "autocomplete": "name"
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "required": true,
+            "autocomplete": "email"
+        },
+        {
+            "name": "street",
+            "type": "text",
+            "label": "Ulica a číslo",
+            "required": true,
+            "placeholder": "Hlavná 1"
+        },
+        {
+            "name": "psc",
+            "type": "text",
+            "label": "PSČ",
+            "required": true,
+            "size": "small",
+            "placeholder": "811 01",
+            "pattern": "^[0-9]{5}$",
+            "pattern_message": "PSČ musí mať 5 číslic",
+            "maxlength": 5,
+            "lookup": {
+                "url": "api-psc.php?psc={{value}}",
+                "trigger": 5,
+                "map": {
+                    "city": "city"
+                }
+            }
+        },
+        {
+            "name": "city",
+            "type": "text",
+            "label": "Mesto / obec",
+            "required": true,
+            "placeholder": "Bratislava",
+            "autocomplete_from": {
+                "url": "api-psc.php?city={{value}}",
+                "min_length": 2,
+                "debounce": 200,
+                "map": {
+                    "psc": "psc"
+                }
+            }
+        },
+        {
+            "name": "note",
+            "type": "textarea",
+            "label": "Poznámka",
+            "rows": 3,
+            "placeholder": "Napr. zvoniť 2x"
+        }
+    ],
+
+    "on_submit": {
+        "store": true
+    }
+}

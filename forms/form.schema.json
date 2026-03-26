@@ -236,7 +236,12 @@
                             "properties": {
                                 "url": { "type": "string", "description": "URL with {{value}} placeholder." },
                                 "min_length": { "type": "integer", "minimum": 1, "default": 2, "description": "Minimum characters before triggering (default: 2)." },
-                                "debounce": { "type": "integer", "minimum": 0, "default": 300, "description": "Debounce in ms (default: 300)." }
+                                "debounce": { "type": "integer", "minimum": 0, "default": 300, "description": "Debounce in ms (default: 300)." },
+                                "map": {
+                                    "type": "object",
+                                    "additionalProperties": { "type": "string" },
+                                    "description": "On select, map extra fields from response item to form fields: { \"formField\": \"responseKey\" }."
+                                }
                             },
                             "required": ["url"],
                             "additionalProperties": false
