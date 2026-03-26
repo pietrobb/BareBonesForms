@@ -2,17 +2,17 @@
     "$schema": "form.schema.json",
     "schema_version": 1,
     "id": "demo-psc",
-    "name": "Doručovacia adresa",
-    "description": "Zadajte PSČ a mesto sa doplní automaticky. Alebo začnite písať mesto a vyberte z ponuky.",
-    "submit_label": "Odoslať",
-    "success_message": "Ďakujeme! Adresa bola odoslaná.",
+    "name": "Shipping Address",
+    "description": "Enter a postal code and the city fills itself. Or start typing a city and pick from the dropdown.",
+    "submit_label": "Submit",
+    "success_message": "Thank you! Your address has been submitted.",
     "animate_conditions": true,
 
     "fields": [
         {
             "name": "name",
             "type": "text",
-            "label": "Meno a priezvisko",
+            "label": "Full Name",
             "required": true,
             "autocomplete": "name"
         },
@@ -26,32 +26,33 @@
         {
             "name": "street",
             "type": "text",
-            "label": "Ulica a číslo",
+            "label": "Street & Number",
             "required": true,
             "placeholder": "Hlavná 1"
         },
         {
             "name": "psc",
             "type": "text",
-            "label": "PSČ",
+            "label": "Postal Code",
             "required": true,
             "size": "small",
             "placeholder": "811 01",
             "pattern": "^[0-9]{5}$",
-            "pattern_message": "PSČ musí mať 5 číslic",
+            "pattern_message": "Postal code must be 5 digits.",
             "maxlength": 5,
             "lookup": {
                 "url": "api-psc.php?psc={{value}}",
                 "trigger": 5,
                 "map": {
-                    "city": "city"
+                    "city": "city",
+                    "country": "country"
                 }
             }
         },
         {
             "name": "city",
             "type": "text",
-            "label": "Mesto / obec",
+            "label": "City",
             "required": true,
             "placeholder": "Bratislava",
             "autocomplete_from": {
@@ -59,16 +60,25 @@
                 "min_length": 2,
                 "debounce": 200,
                 "map": {
-                    "psc": "psc"
+                    "psc": "psc",
+                    "country": "country"
                 }
             }
         },
         {
+            "name": "country",
+            "type": "text",
+            "label": "Country",
+            "required": true,
+            "readonly": true,
+            "placeholder": "Filled automatically"
+        },
+        {
             "name": "note",
             "type": "textarea",
-            "label": "Poznámka",
+            "label": "Note",
             "rows": 3,
-            "placeholder": "Napr. zvoniť 2x"
+            "placeholder": "e.g. ring bell twice"
         }
     ],
 

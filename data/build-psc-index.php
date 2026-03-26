@@ -9,11 +9,12 @@ $fp = fopen($csv, 'r');
 // Skip header
 fgetcsv($fp, 0, ';', '"', '\\');
 
-$pscToCity = [];  // PSČ → city name
-$cityToPsc = [];  // city name → [PSČs]
+$pscToCity = [];  // PSČ → {city, country}
+$cityToPsc = [];  // city name → {name, country, pscs[]}
 
 while (($row = fgetcsv($fp, 0, ';', '"', '\\')) !== false) {
     if (count($row) < 3) continue;
+    $code = trim($row[0]);
     $psc = trim($row[1]);
     $city = trim($row[2]);
     if ($psc === '' || $city === '') continue;
@@ -21,15 +22,18 @@ while (($row = fgetcsv($fp, 0, ';', '"', '\\')) !== false) {
     // Normalize PSČ: ensure 5 digits with leading zero
     $psc = str_pad($psc, 5, '0', STR_PAD_LEFT);
 
+    // Detect country: CZ codes start with 920, SK codes are 6-digit
+    $country = str_starts_with($code, '920') ? 'CZ' : 'SK';
+
     // PSČ → city (one PSČ = one city)
     if (!isset($pscToCity[$psc])) {
-        $pscToCity[$psc] = $city;
+        $pscToCity[$psc] = ['city' => $city, 'country' => $country];
     }
 
     // City → PSČ (one city can have multiple PSČs)
-    $cityKey = mb_strtolower($city);
+    $cityKey = mb_strtolower($city) . '_' . $country;
     if (!isset($cityToPsc[$cityKey])) {
-        $cityToPsc[$cityKey] = ['name' => $city, 'pscs' => []];
+        $cityToPsc[$cityKey] = ['name' => $city, 'country' => $country, 'pscs' => []];
     }
     if (!in_array($psc, $cityToPsc[$cityKey]['pscs'], true)) {
         $cityToPsc[$cityKey]['pscs'][] = $psc;

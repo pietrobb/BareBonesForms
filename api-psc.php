@@ -1,14 +1,15 @@
 <?php
 /**
- * PSČ / City lookup API for BareBonesForms demo.
+ * Postal code / City lookup API for BareBonesForms demo.
  *
  * Endpoints:
- *   ?psc=81101         → {"city": "Bratislava 1"}
- *   ?city=brat&limit=5 → [{value, label}, ...] (autocomplete)
+ *   ?psc=81101         → {"city": "Bratislava 1", "country": "SK"}
+ *   ?city=brat&limit=5 → [{value, label, psc, country}, ...] (autocomplete)
  */
 header('Content-Type: application/json; charset=utf-8');
 
 $dataDir = __DIR__ . '/data';
+$countryNames = ['SK' => 'Slovakia', 'CZ' => 'Czech Republic'];
 
 // ─── PSČ → City lookup ─────────────────────────────────────────
 if (!empty($_GET['psc'])) {
@@ -17,10 +18,14 @@ if (!empty($_GET['psc'])) {
 
     $index = json_decode(file_get_contents($dataDir . '/psc-to-city.json'), true);
     if (isset($index[$psc])) {
-        echo json_encode(['city' => $index[$psc]], JSON_UNESCAPED_UNICODE);
+        $entry = $index[$psc];
+        echo json_encode([
+            'city'    => $entry['city'],
+            'country' => $countryNames[$entry['country']] ?? $entry['country'],
+        ], JSON_UNESCAPED_UNICODE);
     } else {
         http_response_code(404);
-        echo json_encode(['error' => 'PSČ not found']);
+        echo json_encode(['error' => 'Postal code not found']);
     }
     exit;
 }
@@ -36,16 +41,16 @@ if (isset($_GET['city'])) {
     }
 
     $index = json_decode(file_get_contents($dataDir . '/city-to-psc.json'), true);
-    $results = [];
 
     // Exact prefix matches first, then contains
     $prefixMatches = [];
     $containsMatches = [];
 
     foreach ($index as $key => $entry) {
-        if (str_starts_with($key, $q)) {
+        $nameLC = mb_strtolower($entry['name']);
+        if (str_starts_with($nameLC, $q)) {
             $prefixMatches[] = $entry;
-        } elseif (str_contains($key, $q)) {
+        } elseif (str_contains($nameLC, $q)) {
             $containsMatches[] = $entry;
         }
         if (count($prefixMatches) + count($containsMatches) >= $limit * 2) break;
@@ -54,15 +59,18 @@ if (isset($_GET['city'])) {
     $matches = array_merge($prefixMatches, $containsMatches);
     $matches = array_slice($matches, 0, $limit);
 
+    $results = [];
     foreach ($matches as $entry) {
+        $flag = $entry['country'] === 'SK' ? '🇸🇰' : '🇨🇿';
         $pscList = implode(', ', $entry['pscs']);
         $label = count($entry['pscs']) > 1
-            ? $entry['name'] . ' (' . $pscList . ')'
-            : $entry['name'] . ' — ' . $entry['pscs'][0];
+            ? $flag . ' ' . $entry['name'] . ' (' . $pscList . ')'
+            : $flag . ' ' . $entry['name'] . ' — ' . $entry['pscs'][0];
         $results[] = [
-            'value' => $entry['name'],
-            'label' => $label,
-            'psc'   => $entry['pscs'][0],  // first PSČ for auto-fill
+            'value'   => $entry['name'],
+            'label'   => $label,
+            'psc'     => $entry['pscs'][0],
+            'country' => $countryNames[$entry['country']] ?? $entry['country'],
         ];
     }
 
