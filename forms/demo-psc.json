@@ -47,6 +47,15 @@
                     "city": "city",
                     "country": "country"
                 }
+            },
+            "autocomplete_from": {
+                "url": "api-psc.php?psc={{value}}&prefix&limit=10",
+                "min_length": 3,
+                "debounce": 150,
+                "map": {
+                    "city": "city",
+                    "country": "country"
+                }
             }
         },
         {
@@ -67,11 +76,14 @@
         },
         {
             "name": "country",
-            "type": "text",
+            "type": "select",
             "label": "Country",
             "required": true,
-            "readonly": true,
-            "placeholder": "Filled automatically"
+            "placeholder": "Select country",
+            "options": [
+                { "value": "Slovakia", "label": "Slovakia" },
+                { "value": "Czech Republic", "label": "Czech Republic" }
+            ]
         },
         {
             "name": "note",
