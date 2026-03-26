@@ -1046,8 +1046,10 @@
 
                 input.setAttribute('autocomplete', 'off');
 
-                input.addEventListener('input', function() {
+                input.addEventListener('input', function(e) {
                     clearTimeout(acTimer);
+                    // Skip programmatic input events (from lookup, autocomplete select, etc.)
+                    if (!e.isTrusted) { acList.style.display = 'none'; return; }
                     var val = input.value.trim();
                     if (val.length < acMinLen) { acList.style.display = 'none'; return; }
 
