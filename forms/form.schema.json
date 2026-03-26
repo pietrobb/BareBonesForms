@@ -203,6 +203,47 @@
                     "format": "uri-reference",
                     "description": "URL that returns options as JSON array [{value, label}, ...]. Fetched by bbf.js at render time. Use instead of static options for dynamic data (categories, countries, etc.)."
                 },
+                "lookup": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "URL with {{value}} placeholder. Fetched when trigger fires."
+                        },
+                        "map": {
+                            "type": "object",
+                            "additionalProperties": { "type": "string" },
+                            "description": "Maps response keys to form field names: { \"formField\": \"responseKey\" }. Supports dot notation for nested keys (e.g. \"address.street\")."
+                        },
+                        "trigger": {
+                            "oneOf": [
+                                { "type": "string", "enum": ["blur", "change"] },
+                                { "type": "integer", "minimum": 1 }
+                            ],
+                            "default": "blur",
+                            "description": "When to trigger: \"blur\" (default), \"change\", or a number (auto-trigger after N characters)."
+                        }
+                    },
+                    "required": ["url", "map"],
+                    "additionalProperties": false,
+                    "description": "Fetch data from URL and auto-fill other form fields. E.g. enter company ID → fill name, address, VAT."
+                },
+                "autocomplete_from": {
+                    "oneOf": [
+                        { "type": "string", "format": "uri-reference" },
+                        {
+                            "type": "object",
+                            "properties": {
+                                "url": { "type": "string", "description": "URL with {{value}} placeholder." },
+                                "min_length": { "type": "integer", "minimum": 1, "default": 2, "description": "Minimum characters before triggering (default: 2)." },
+                                "debounce": { "type": "integer", "minimum": 0, "default": 300, "description": "Debounce in ms (default: 300)." }
+                            },
+                            "required": ["url"],
+                            "additionalProperties": false
+                        }
+                    ],
+                    "description": "Show typeahead suggestions from URL as user types. URL must return [{value, label}, ...]. String shorthand or object with options."
+                },
                 "size": {
                     "type": "string",
                     "enum": ["small", "medium", "large"],

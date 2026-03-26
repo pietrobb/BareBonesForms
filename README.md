@@ -210,6 +210,8 @@ When `reply_to` is set on `notify`, the admin clicks Reply and responds directly
 | `pattern_message` | string  | Custom error for pattern mismatch                    |
 | `options`         | array   | Options for select/radio/checkbox. Object form: `{value, label, checked?}` |
 | `options_from`    | string  | URL returning options as JSON `[{value, label}, ...]`. Use instead of static `options`. |
+| `lookup`          | object  | Auto-fill other fields from API: `{url, trigger, map}`. See "Lookup" section. |
+| `autocomplete_from` | string/object | Typeahead suggestions from URL. String shorthand or `{url, min_length, debounce}`. |
 | `rows`            | integer | Textarea rows (default: 4)                           |
 | `value`           | string/array | Default value. String for radio, array for checkbox (`["a","b"]`) |
 | `label_position`  | string  | `"left"` puts label beside input instead of above    |
@@ -724,6 +726,99 @@ Emails and webhooks are **deferred until payment is confirmed** — the customer
 
 ---
 
+## Lookup (Auto-fill from API)
+
+Enter a value in one field (e.g. company ID), fetch data from an API, and auto-fill other form fields.
+
+```json
+{
+    "name": "ico",
+    "type": "text",
+    "label": "IČO",
+    "lookup": {
+        "url": "/api/company.php?ico={{value}}",
+        "trigger": 8,
+        "map": {
+            "company_name": "name",
+            "street": "address.street",
+            "city": "address.city",
+            "zip": "address.zip",
+            "dic": "dic",
+            "ic_dph": "ic_dph"
+        }
+    }
+}
+```
+
+**Properties:**
+- `url` — API endpoint. `{{value}}` is replaced with the field's current value (URL-encoded).
+- `trigger` — When to fire: `"blur"` (default, on field leave), `"change"`, or a **number** (auto-trigger when the field reaches N characters — use `8` for IČO).
+- `map` — Maps **form field names** to **response JSON keys**. Supports dot notation for nested objects (e.g. `"address.street"` reads `response.address.street`).
+
+**How it works:**
+1. User types a value (e.g. `12345678`)
+2. When trigger fires, `bbf.js` fetches the URL
+3. Response JSON is parsed, mapped fields are auto-filled
+4. Each filled field fires `input` and `change` events (so conditionals and other logic react)
+5. If the fetch fails or returns 404, nothing happens (no error shown)
+
+**API response example** (for the config above):
+```json
+{
+    "name": "ACME s.r.o.",
+    "address": { "street": "Hlavná 1", "city": "Bratislava", "zip": "81101" },
+    "dic": "2020123456",
+    "ic_dph": "SK2020123456"
+}
+```
+
+---
+
+## Autocomplete (Typeahead Suggestions)
+
+Show a dropdown of suggestions as the user types, fetched from an external URL.
+
+```json
+{
+    "name": "city",
+    "type": "text",
+    "label": "Mesto",
+    "autocomplete_from": "/api/cities.php?q={{value}}"
+}
+```
+
+Or with options:
+
+```json
+{
+    "name": "city",
+    "type": "text",
+    "label": "Mesto",
+    "autocomplete_from": {
+        "url": "/api/cities.php?q={{value}}",
+        "min_length": 2,
+        "debounce": 300
+    }
+}
+```
+
+**Properties:**
+- `url` — API endpoint. `{{value}}` is replaced with current input.
+- `min_length` — Minimum characters before fetching (default: `2`).
+- `debounce` — Delay in ms before fetching after typing stops (default: `300`).
+
+**API response format:** Same as `options_from` — array of `{value, label}` objects:
+```json
+[
+    {"value": "Bratislava", "label": "Bratislava"},
+    {"value": "Banská Bystrica", "label": "Banská Bystrica"}
+]
+```
+
+**Keyboard navigation:** Arrow keys to navigate, Enter to select, Escape to close.
+
+---
+
 ## Dynamic Options (`options_from`)
 
 Load select, radio, or checkbox options from an external URL at render time. Use instead of static `options` for dynamic data (product categories, countries, inventory, etc.).
@@ -985,6 +1080,8 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - `on_submit.store` defaults to `true`. Email and webhooks require SMTP/webhook configuration in `config.php`.
 
 **E-shop integration features:**
+- **Lookup / auto-fill** (`lookup`): Enter IČO → API fetches company data → auto-fills name, address, VAT. Trigger on blur or after N characters. See "Lookup" section.
+- **Autocomplete** (`autocomplete_from`): Typeahead suggestions from URL as user types. Keyboard navigation, debounced. See "Autocomplete" section.
 - **Dynamic options** (`options_from`): Load select/radio/checkbox options from a URL. Use for product categories, countries, variants, etc. See "Dynamic Options" section.
 - **Action response override** (`$actionResponse`): Custom actions can inject fields (order ID, redirect URL, etc.) into the JSON response. See "Action Response Override" section.
 - **Callbacks** (`onSuccess`, `onError`): Handle submission results in JavaScript. `onSuccess` receives the full response including custom action fields. Return `false` to skip default handling. See "onSuccess / onError Callbacks" section.

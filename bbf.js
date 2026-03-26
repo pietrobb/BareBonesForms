@@ -978,6 +978,134 @@
                 wrap.appendChild(confirmInput);
             }
 
+            // Lookup: fetch data from URL and auto-fill other form fields
+            if (field.lookup && field.lookup.url && field.lookup.map) {
+                const lk = field.lookup;
+                const trigger = lk.trigger || 'blur';
+                let lookupBusy = false;
+
+                const doLookup = async function() {
+                    var val = input.value.trim();
+                    if (!val || lookupBusy) return;
+                    if (typeof trigger === 'number' && val.length < trigger) return;
+
+                    lookupBusy = true;
+                    try {
+                        var url = lk.url.replace('{{value}}', encodeURIComponent(val));
+                        var resp = await fetch(url);
+                        if (!resp.ok) return;
+                        var data = await resp.json();
+
+                        var formEl = input.closest('.bbf-form');
+                        if (!formEl) return;
+
+                        Object.keys(lk.map).forEach(function(formField) {
+                            var responseKey = lk.map[formField];
+                            var value = responseKey.split('.').reduce(function(obj, key) { return obj && obj[key]; }, data);
+                            if (value !== undefined && value !== null) {
+                                var target = formEl.querySelector('[name="' + formField + '"]');
+                                if (target) {
+                                    target.value = String(value);
+                                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                                    target.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+                            }
+                        });
+                    } catch (err) {
+                        console.warn('BBF lookup failed for ' + field.name + ':', err);
+                    } finally {
+                        lookupBusy = false;
+                    }
+                };
+
+                if (typeof trigger === 'number') {
+                    input.addEventListener('input', function() {
+                        if (input.value.trim().length === trigger) doLookup();
+                    });
+                } else {
+                    input.addEventListener(trigger === 'change' ? 'change' : 'blur', doLookup);
+                }
+            }
+
+            // Autocomplete: show typeahead suggestions from URL
+            if (field.autocomplete_from) {
+                var acConfig = typeof field.autocomplete_from === 'object' ? field.autocomplete_from : { url: field.autocomplete_from };
+                var acUrl = acConfig.url;
+                var acMinLen = acConfig.min_length || 2;
+                var acDebounce = acConfig.debounce !== undefined ? acConfig.debounce : 300;
+
+                var acList = document.createElement('div');
+                acList.className = 'bbf-autocomplete-list';
+                acList.style.display = 'none';
+                wrap.style.position = 'relative';
+                wrap.appendChild(acList);
+
+                var acTimer = null;
+                var acActive = -1;
+
+                input.setAttribute('autocomplete', 'off');
+
+                input.addEventListener('input', function() {
+                    clearTimeout(acTimer);
+                    var val = input.value.trim();
+                    if (val.length < acMinLen) { acList.style.display = 'none'; return; }
+
+                    acTimer = setTimeout(async function() {
+                        try {
+                            var url = acUrl.replace('{{value}}', encodeURIComponent(val));
+                            var resp = await fetch(url);
+                            if (!resp.ok) return;
+                            var items = await resp.json();
+
+                            acList.innerHTML = '';
+                            acActive = -1;
+                            if (!items || !items.length) { acList.style.display = 'none'; return; }
+
+                            items.forEach(function(item) {
+                                var div = document.createElement('div');
+                                div.className = 'bbf-autocomplete-item';
+                                div.textContent = typeof item === 'object' ? item.label : item;
+                                div.addEventListener('mousedown', function(e) {
+                                    e.preventDefault();
+                                    input.value = typeof item === 'object' ? item.value : item;
+                                    acList.style.display = 'none';
+                                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                                });
+                                acList.appendChild(div);
+                            });
+                            acList.style.display = '';
+                        } catch (err) {
+                            console.warn('BBF autocomplete failed for ' + field.name + ':', err);
+                        }
+                    }, acDebounce);
+                });
+
+                input.addEventListener('keydown', function(e) {
+                    var items = acList.querySelectorAll('.bbf-autocomplete-item');
+                    if (!items.length || acList.style.display === 'none') return;
+
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        acActive = Math.min(acActive + 1, items.length - 1);
+                        items.forEach(function(el, i) { el.classList.toggle('bbf-autocomplete-active', i === acActive); });
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        acActive = Math.max(acActive - 1, 0);
+                        items.forEach(function(el, i) { el.classList.toggle('bbf-autocomplete-active', i === acActive); });
+                    } else if (e.key === 'Enter' && acActive >= 0) {
+                        e.preventDefault();
+                        items[acActive].dispatchEvent(new MouseEvent('mousedown'));
+                    } else if (e.key === 'Escape') {
+                        acList.style.display = 'none';
+                    }
+                });
+
+                input.addEventListener('blur', function() {
+                    setTimeout(function() { acList.style.display = 'none'; }, 200);
+                });
+            }
+
             // Error placeholder
             const errEl = document.createElement('div');
             errEl.className = 'bbf-field-error';

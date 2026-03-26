@@ -1272,6 +1272,115 @@ foreach ($backends as $backend) {
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Test 8: Lookup & Autocomplete
+    // ─────────────────────────────────────────────────────────────
+    section("Test 8: Lookup & Autocomplete ($backend)");
+
+    // 8a: Form definition includes lookup and autocomplete_from
+    $lkDef = httpGet("$baseUrl/submit.php?form=test-lookup&action=definition");
+    if ($lkDef['code'] === 200) {
+        pass("lookup: definition endpoint returns 200");
+        $def = $lkDef['json'];
+        $icoField = null;
+        $cityField = null;
+        foreach ($def['fields'] ?? [] as $f) {
+            if (($f['name'] ?? '') === 'ico') $icoField = $f;
+            if (($f['name'] ?? '') === 'city') $cityField = $f;
+        }
+        if ($icoField && !empty($icoField['lookup']['url']) && !empty($icoField['lookup']['map'])) {
+            pass("lookup: ico field has lookup config in definition");
+            assertEqual(8, $icoField['lookup']['trigger'] ?? null, "lookup: trigger is 8 (IČO length)");
+        } else {
+            fail("lookup: ico field missing lookup config", json_encode($icoField));
+        }
+        if ($cityField && !empty($cityField['autocomplete_from'])) {
+            pass("lookup: city field has autocomplete_from in definition");
+        } else {
+            fail("lookup: city field missing autocomplete_from", json_encode($cityField));
+        }
+    } else {
+        fail("lookup: definition endpoint HTTP {$lkDef['code']}", substr($lkDef['body'], 0, 300));
+    }
+
+    // 8b: Lookup endpoint returns company data
+    $lkResult = httpGet("$baseUrl/tests/test-lookup-endpoint.php?ico=12345678");
+    if ($lkResult['code'] === 200 && !empty($lkResult['json'])) {
+        assertEqual('ACME s.r.o.', $lkResult['json']['name'] ?? '', "lookup: endpoint returns company name");
+        assertEqual('Bratislava', $lkResult['json']['city'] ?? '', "lookup: endpoint returns city");
+        assertEqual('SK2020123456', $lkResult['json']['ic_dph'] ?? '', "lookup: endpoint returns IČ DPH");
+    } else {
+        fail("lookup: endpoint HTTP {$lkResult['code']}", substr($lkResult['body'], 0, 200));
+    }
+
+    // 8c: Lookup endpoint returns 404 for unknown IČO
+    $lkMiss = httpGet("$baseUrl/tests/test-lookup-endpoint.php?ico=00000000");
+    assertEqual(404, $lkMiss['code'], "lookup: endpoint returns 404 for unknown IČO");
+
+    // 8d: Autocomplete endpoint returns suggestions
+    $acResult = httpGet("$baseUrl/tests/test-autocomplete-endpoint.php?q=bra");
+    if ($acResult['code'] === 200 && is_array($acResult['json'])) {
+        $acCount = count($acResult['json']);
+        if ($acCount > 0) {
+            pass("autocomplete: endpoint returns $acCount suggestions for 'bra'");
+            $firstSuggestion = $acResult['json'][0] ?? [];
+            if (isset($firstSuggestion['value']) && isset($firstSuggestion['label'])) {
+                pass("autocomplete: suggestions have value/label structure");
+            } else {
+                fail("autocomplete: suggestion missing value/label", json_encode($firstSuggestion));
+            }
+            // Should include Bratislava
+            $values = array_map(function($s) { return $s['value'] ?? ''; }, $acResult['json']);
+            if (in_array('Bratislava', $values, true)) {
+                pass("autocomplete: 'Bratislava' found in results for 'bra'");
+            } else {
+                fail("autocomplete: 'Bratislava' not in results", json_encode($values));
+            }
+        } else {
+            fail("autocomplete: no suggestions returned for 'bra'");
+        }
+    } else {
+        fail("autocomplete: endpoint HTTP {$acResult['code']}", substr($acResult['body'], 0, 200));
+    }
+
+    // 8e: Autocomplete with empty query returns empty
+    $acEmpty = httpGet("$baseUrl/tests/test-autocomplete-endpoint.php?q=");
+    if ($acEmpty['code'] === 200 && is_array($acEmpty['json'])) {
+        assertEqual(0, count($acEmpty['json']), "autocomplete: empty query returns empty array");
+    } else {
+        fail("autocomplete: empty query HTTP {$acEmpty['code']}");
+    }
+
+    // 8f: Submit form with lookup-populated data
+    $lkSubmit = submitForm('test-lookup', [
+        'ico'          => '12345678',
+        'company_name' => 'ACME s.r.o.',
+        'street'       => 'Hlavná 1',
+        'city'         => 'Bratislava',
+        'zip'          => '81101',
+        'dic'          => '2020123456',
+        'ic_dph'       => 'SK2020123456',
+        'email'        => 'test@acme.sk',
+    ]);
+    if ($lkSubmit['code'] === 200 && ($lkSubmit['json']['status'] ?? '') === 'ok') {
+        pass("lookup: form submit OK (id: {$lkSubmit['json']['submission_id']})");
+    } else {
+        fail("lookup: form submit failed HTTP {$lkSubmit['code']}", substr($lkSubmit['body'], 0, 300));
+    }
+
+    // 8g: Verify stored data
+    usleep(300000);
+    $lkSubs = getSubmissions('test-lookup');
+    if ($lkSubs !== null && !empty($lkSubs)) {
+        $lkData = $lkSubs[0]['data'] ?? [];
+        assertEqual('12345678', $lkData['ico'] ?? '', "lookup: ico stored correctly");
+        assertEqual('ACME s.r.o.', $lkData['company_name'] ?? '', "lookup: company_name stored correctly");
+        assertEqual('Bratislava', $lkData['city'] ?? '', "lookup: city stored correctly");
+        assertEqual('SK2020123456', $lkData['ic_dph'] ?? '', "lookup: ic_dph stored correctly");
+    } else {
+        fail("lookup: cannot read submissions");
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Backend summary
     // ─────────────────────────────────────────────────────────────
     $backendPassed = $passed - $prevPassed;

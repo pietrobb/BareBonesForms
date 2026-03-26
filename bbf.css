@@ -439,6 +439,34 @@
     border: 1px solid #f5c6cb;
 }
 
+/* ─── Autocomplete dropdown ──────────── */
+
+.bbf-autocomplete-list {
+    position: absolute;
+    z-index: 100;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    border-top: none;
+    border-radius: 0 0 5px 5px;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.bbf-autocomplete-item {
+    padding: 8px 11px;
+    cursor: pointer;
+    font-size: 0.93em;
+}
+
+.bbf-autocomplete-item:hover,
+.bbf-autocomplete-active {
+    background: #f0f4ff;
+    color: #1a1a1a;
+}
+
 /* ─── Loading ────────────────────────── */
 
 .bbf-spinner {

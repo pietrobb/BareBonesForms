@@ -1,0 +1,70 @@
+{
+    "$schema": "../../forms/form.schema.json",
+    "schema_version": 1,
+    "id": "test-lookup",
+    "name": "Lookup Test",
+    "fields": [
+        {
+            "name": "ico",
+            "type": "text",
+            "label": "IČO",
+            "required": true,
+            "lookup": {
+                "url": "/tests/test-lookup-endpoint.php?ico={{value}}",
+                "trigger": 8,
+                "map": {
+                    "company_name": "name",
+                    "street": "street",
+                    "city": "city",
+                    "zip": "zip",
+                    "dic": "dic",
+                    "ic_dph": "ic_dph"
+                }
+            }
+        },
+        {
+            "name": "company_name",
+            "type": "text",
+            "label": "Názov firmy"
+        },
+        {
+            "name": "street",
+            "type": "text",
+            "label": "Ulica"
+        },
+        {
+            "name": "city",
+            "type": "text",
+            "label": "Mesto",
+            "autocomplete_from": {
+                "url": "/tests/test-autocomplete-endpoint.php?q={{value}}",
+                "min_length": 2,
+                "debounce": 100
+            }
+        },
+        {
+            "name": "zip",
+            "type": "text",
+            "label": "PSČ"
+        },
+        {
+            "name": "dic",
+            "type": "text",
+            "label": "DIČ"
+        },
+        {
+            "name": "ic_dph",
+            "type": "text",
+            "label": "IČ DPH"
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "required": true
+        }
+    ],
+    "on_submit": {
+        "store": true
+    }
+}
