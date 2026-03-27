@@ -196,79 +196,61 @@ body {
 
 .form-column .bbf-form-container { max-width: 100%; }
 
-/* ─── Dark-theme overrides for bbf.css ────────── */
+/* ─── Dark-theme overrides for bbf.css ──────────
+     Uses --bbf-* CSS variables from bbf.css v2.0.
+     Only the variables need to be overridden — all
+     .bbf-* classes pick them up automatically.
+     See bbf-theme.css for more theme examples.      */
 
+.form-column .bbf-form-container {
+    /* ── Text colors ── */
+    --bbf-text: var(--text-primary);
+    --bbf-text-muted: var(--text-muted);
+    --bbf-text-light: #555;
+
+    /* ── Backgrounds ── */
+    --bbf-bg: #1e1e28;
+    --bbf-bg-alt: #2a2a36;
+    --bbf-bg-readonly: #252530;
+    --bbf-bg-hover: #2a2a3e;
+
+    /* ── Borders ── */
+    --bbf-border: var(--card-border);
+    --bbf-border-light: var(--card-border);
+
+    /* ── Focus ── */
+    --bbf-focus: var(--accent);
+    --bbf-focus-shadow: var(--accent-dim);
+
+    /* ── Buttons ── */
+    --bbf-btn-bg: var(--accent);
+    --bbf-btn-text: #0e0e12;
+    --bbf-btn-hover: #d4b35a;
+    --bbf-btn-disabled: #555;
+
+    /* ── Validation ── */
+    --bbf-error: #f87171;
+    --bbf-error-bg: rgba(220, 53, 69, 0.1);
+    --bbf-error-border: rgba(220, 53, 69, 0.2);
+    --bbf-error-shadow: rgba(220, 53, 69, 0.15);
+    --bbf-success: var(--accent);
+    --bbf-success-bg: rgba(201, 168, 76, 0.12);
+    --bbf-success-border: rgba(201, 168, 76, 0.3);
+
+    /* ── Stars ── */
+    --bbf-star: #555;
+}
+
+/* Extra: demo title font override (not a bbf variable) */
 .form-column .bbf-title {
-    color: var(--text-primary);
     font-family: 'Georgia', serif;
     font-weight: 400;
     font-size: 1.3em;
 }
 
-.form-column .bbf-description   { color: var(--text-muted); }
-.form-column .bbf-label         { color: var(--text-primary); }
-.form-column .bbf-field-desc    { color: var(--text-muted); }
-.form-column .bbf-option        { color: var(--text-primary); }
-.form-column .bbf-fieldset      { color: var(--text-primary); }
-.form-column .bbf-section-title { color: var(--text-primary); }
-.form-column .bbf-section-desc  { color: var(--text-muted); }
-.form-column .bbf-group-title   { color: var(--text-primary); }
-.form-column .bbf-section       { border-color: var(--card-border); }
-
-.form-column .bbf-input,
-.form-column .bbf-form select,
-.form-column .bbf-form textarea {
-    background: #1e1e28;
-    border-color: var(--card-border);
-    color: var(--text-primary);
-}
-
-.form-column .bbf-input:focus,
-.form-column .bbf-form select:focus,
-.form-column .bbf-form textarea:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-dim);
-}
-
-.form-column .bbf-input::placeholder { color: #555; }
-
-.form-column .bbf-submit {
-    background: var(--accent);
-    color: #0e0e12;
-    font-weight: 600;
-    border-radius: 6px;
-    transition: background 0.15s, transform 0.1s;
-}
-
-.form-column .bbf-submit:hover {
-    background: #d4b35a;
-    transform: translateY(-1px);
-}
-
-.form-column .bbf-submit:disabled {
-    background: #555;
-    transform: none;
-}
-
-.form-column .bbf-success {
-    background: rgba(201, 168, 76, 0.12);
-    color: var(--accent);
-    border-color: rgba(201, 168, 76, 0.3);
-}
-
-.form-column .bbf-error {
-    background: rgba(220, 53, 69, 0.1);
-    color: #f87171;
-    border-color: rgba(220, 53, 69, 0.2);
-}
-
-.form-column .bbf-has-error .bbf-input,
-.form-column .bbf-has-error select,
-.form-column .bbf-has-error textarea {
-    border-color: #dc3545;
-}
-
-.form-column .bbf-field-error { color: #f87171; }
+/* Hover transform for submit (not a variable) */
+.form-column .bbf-submit { transition: background 0.15s, transform 0.1s; }
+.form-column .bbf-submit:hover { transform: translateY(-1px); }
 
 /* ─── Sidebar ─────────────────────────────────── */
 

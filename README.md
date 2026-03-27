@@ -355,20 +355,54 @@ When `bbf.js` renders a form, it produces this DOM structure. These are the clas
 | `bbf-labels-top` | `.bbf-form` | Labels above fields (default) |
 | `bbf-labels-left` | `.bbf-form` | Labels left of fields |
 
-### Quick styling examples
+### Theming with CSS variables (recommended)
+
+All visual properties in `bbf.css` are controlled by `--bbf-*` CSS custom properties. Override them to theme your forms — no need to touch `bbf.css` itself:
 
 ```css
-/* Change submit button */
-.bbf-submit { background: #2563eb; border-radius: 8px; }
+/* Quick brand theme — only override what you need */
+.bbf-form-container {
+    --bbf-focus: #2563eb;        /* focus ring color */
+    --bbf-btn-bg: #2563eb;       /* submit button */
+    --bbf-btn-hover: #1d4ed8;
+    --bbf-radius: 8px;           /* rounded corners */
+    --bbf-border: #cbd5e1;       /* softer borders */
+    --bbf-font: "Inter", sans-serif;
+}
+```
 
-/* Error state */
-.bbf-has-error .bbf-input { border-color: #ef4444; }
+Scope per form using `data-form`:
 
-/* Section titles */
-.bbf-section-title { font-size: 1.25rem; color: #1a1a1a; }
+```css
+[data-form="contact"] .bbf-form-container { --bbf-btn-bg: #059669; }
+[data-form="quote"]   .bbf-form-container { --bbf-btn-bg: #7c3aed; }
+```
 
-/* Star rating colors */
+**Key variables** (full list in `bbf.css` `:root` block):
+
+| Variable | Default | Controls |
+|----------|---------|----------|
+| `--bbf-text` | `#1a1a1a` | Main text color |
+| `--bbf-bg` | `#fff` | Input backgrounds |
+| `--bbf-border` | `#d0d0d0` | Input borders |
+| `--bbf-focus` | `#4a90d9` | Focus ring |
+| `--bbf-btn-bg` | `#1a1a1a` | Submit button |
+| `--bbf-radius` | `5px` | Border radius |
+| `--bbf-spacing` | `16px` | Field gap |
+| `--bbf-error` | `#dc3545` | Error color |
+| `--bbf-success` | `#1a7a1a` | Success color |
+
+> **AI models:** Search for `--bbf-` to find all customizable variables. Search for `.bbf-` for all CSS classes.
+
+See [`bbf-theme.css`](bbf-theme.css) for complete example themes (dark mode, corporate, warm/earthy, minimal/borderless).
+
+### Quick class override examples
+
+```css
+/* Target classes directly when variables aren't enough */
+.bbf-title { font-family: Georgia, serif; font-size: 1.5rem; }
 .bbf-star-active { color: #f59e0b; }
+.bbf-labels-left .bbf-label { flex: 0 0 180px; }
 ```
 
 > **Full CSS class reference with 21 entries** → see [docs.html](docs.html) § Styling & CSS Classes.
@@ -1042,7 +1076,8 @@ barebonesforms/
 ├── check.php           ← Installation diagnostics
 ├── docs.html           ← Full documentation (standalone)
 ├── bbf.js              ← Form renderer (zero dependencies)
-├── bbf.css             ← Default styles (auto-loaded by bbf.js)
+├── bbf.css             ← Default styles with --bbf-* CSS variables (auto-loaded by bbf.js)
+├── bbf-theme.css       ← Example themes: dark, corporate, warm, minimal (copy & customize)
 ├── .htaccess           ← Protects sensitive dirs (Apache)
 ├── lang/               ← Language packs (32 languages)
 │   ├── en.js / en.php  ← English (reference)
@@ -1080,6 +1115,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 
 **Common pitfalls to avoid:**
 - Do not add a `<link>` tag for `bbf.css` — it is auto-loaded by `bbf.js`.
+- To theme forms, override `--bbf-*` CSS variables on `.bbf-form-container` (see "Theming with CSS variables" section). Do not hardcode colors — use variables.
 - The generated HTML uses `bbf-` prefixed classes (see "Generated HTML & CSS Classes" above). Do not guess class names — they are listed in this README and in docs.html.
 - All validation is enforced server-side. Client-side validation is a convenience, not a guarantee.
 - `on_submit.store` defaults to `true`. Email and webhooks require SMTP/webhook configuration in `config.php`.

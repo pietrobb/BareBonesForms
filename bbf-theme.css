@@ -1,0 +1,142 @@
+/**
+ * BareBonesForms — Theme Examples
+ *
+ * HOW TO USE:
+ * 1. Copy one of the themes below into your own stylesheet
+ * 2. Load it AFTER bbf.css: <link rel="stylesheet" href="my-theme.css">
+ * 3. Adjust the --bbf-* variable values to match your brand
+ *
+ * You only need to override the variables you want to change.
+ * Everything else inherits from the defaults in bbf.css.
+ *
+ * AI MODELS: To theme a BareBonesForms form, override --bbf-* variables
+ * inside a :root or .bbf-form-container selector. The full variable list
+ * is at the top of bbf.css. Key variables for quick theming:
+ *   --bbf-text, --bbf-bg, --bbf-border, --bbf-focus,
+ *   --bbf-btn-bg, --bbf-btn-text, --bbf-radius, --bbf-font
+ */
+
+
+/* ═══════════════════════════════════════════════════════
+   THEME: Dark Mode
+   ═══════════════════════════════════════════════════════ */
+
+/*
+.bbf-form-container {
+    --bbf-text: #e8e6e3;
+    --bbf-text-muted: #a0a0a0;
+    --bbf-text-light: #777;
+    --bbf-bg: #1e1e28;
+    --bbf-bg-alt: #2a2a36;
+    --bbf-bg-readonly: #252530;
+    --bbf-bg-hover: #2a2a3e;
+    --bbf-border: #3a3a48;
+    --bbf-border-light: #2e2e3c;
+    --bbf-focus: #6b9fff;
+    --bbf-focus-shadow: rgba(107, 159, 255, 0.2);
+    --bbf-btn-bg: #6b9fff;
+    --bbf-btn-text: #fff;
+    --bbf-btn-hover: #5a8fee;
+    --bbf-btn-disabled: #555;
+    --bbf-error: #ff6b6b;
+    --bbf-error-bg: #3a1c1c;
+    --bbf-error-border: #5a2020;
+    --bbf-error-shadow: rgba(255, 107, 107, 0.15);
+    --bbf-success: #6bcf6b;
+    --bbf-success-bg: #1c3a1c;
+    --bbf-success-border: #2a5a2a;
+    --bbf-star: #555;
+    --bbf-star-active: #f5a623;
+    --bbf-star-hover: #ffc107;
+}
+*/
+
+
+/* ═══════════════════════════════════════════════════════
+   THEME: Corporate Blue
+   ═══════════════════════════════════════════════════════ */
+
+/*
+.bbf-form-container {
+    --bbf-font: "Inter", "Segoe UI", sans-serif;
+    --bbf-radius: 8px;
+    --bbf-focus: #2563eb;
+    --bbf-focus-shadow: rgba(37, 99, 235, 0.15);
+    --bbf-btn-bg: #2563eb;
+    --bbf-btn-hover: #1d4ed8;
+    --bbf-border: #cbd5e1;
+    --bbf-border-light: #e2e8f0;
+    --bbf-text-muted: #64748b;
+    --bbf-text-light: #94a3b8;
+}
+*/
+
+
+/* ═══════════════════════════════════════════════════════
+   THEME: Warm / Earthy
+   ═══════════════════════════════════════════════════════ */
+
+/*
+.bbf-form-container {
+    --bbf-font: "Georgia", serif;
+    --bbf-radius: 3px;
+    --bbf-text: #3c2415;
+    --bbf-text-muted: #7a5c47;
+    --bbf-border: #c9b8a8;
+    --bbf-border-light: #e0d5ca;
+    --bbf-focus: #b8860b;
+    --bbf-focus-shadow: rgba(184, 134, 11, 0.15);
+    --bbf-btn-bg: #8b4513;
+    --bbf-btn-hover: #6e3710;
+    --bbf-bg-alt: #f5efe8;
+    --bbf-success: #556b2f;
+    --bbf-success-bg: #f0f5e8;
+    --bbf-success-border: #c5d9a4;
+}
+*/
+
+
+/* ═══════════════════════════════════════════════════════
+   THEME: Minimal / Borderless
+   ═══════════════════════════════════════════════════════ */
+
+/*
+.bbf-form-container {
+    --bbf-radius: 0;
+    --bbf-border: transparent;
+    --bbf-border-light: #eee;
+    --bbf-bg-alt: transparent;
+}
+.bbf-form-container .bbf-input,
+.bbf-form-container select,
+.bbf-form-container textarea {
+    border: none;
+    border-bottom: 2px solid #ddd;
+    border-radius: 0;
+    padding-left: 0;
+}
+.bbf-form-container .bbf-input:focus,
+.bbf-form-container select:focus,
+.bbf-form-container textarea:focus {
+    border-bottom-color: var(--bbf-focus);
+    box-shadow: none;
+}
+*/
+
+
+/* ═══════════════════════════════════════════════════════
+   PER-FORM THEMING
+   ═══════════════════════════════════════════════════════
+   Scope variables to a specific form using data-form:
+
+   [data-form="contact"] .bbf-form-container {
+       --bbf-btn-bg: #059669;
+       --bbf-focus: #059669;
+   }
+
+   [data-form="quote"] .bbf-form-container {
+       --bbf-btn-bg: #7c3aed;
+       --bbf-focus: #7c3aed;
+       --bbf-max-width: 680px;
+   }
+*/

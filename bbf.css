@@ -1,16 +1,84 @@
 /**
- * BareBonesForms — Default Styles  v1.0.1
+ * BareBonesForms — Default Styles  v2.0
  *
- * Clean, minimal. Override anything you want.
- * Or delete this file entirely and write your own.
+ * THEMING: Override the --bbf-* CSS variables below to customize colors,
+ * fonts, spacing, and more. All visual properties use these variables.
+ *
+ * Three ways to customize:
+ *   1. Override --bbf-* variables in your stylesheet (easiest)
+ *   2. Override individual .bbf-* classes
+ *   3. Delete this file and write your own from scratch
+ *
+ * See bbf-theme.css for example themes (dark mode, branded, etc.)
+ *
+ * AI models: Search for "--bbf-" to find all customizable variables.
+ * All form classes use the ".bbf-" prefix — grep ".bbf-" for full list.
  */
 
+/* ═══════════════════════════════════════════════════════
+   THEME VARIABLES — Override these to customize the form
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+    /* ── Typography ─────────────────── */
+    --bbf-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --bbf-font-size: 15px;
+
+    /* ── Layout ─────────────────────── */
+    --bbf-max-width: 540px;
+    --bbf-radius: 5px;
+    --bbf-spacing: 16px;         /* vertical gap between fields */
+
+    /* ── Colors: text ───────────────── */
+    --bbf-text: #1a1a1a;         /* main text */
+    --bbf-text-muted: #666;      /* descriptions, labels */
+    --bbf-text-light: #888;      /* hints, placeholders */
+
+    /* ── Colors: backgrounds ────────── */
+    --bbf-bg: #fff;              /* input backgrounds */
+    --bbf-bg-alt: #f0f0f0;       /* prefix/suffix, nav buttons */
+    --bbf-bg-readonly: #f5f5f5;  /* readonly fields */
+    --bbf-bg-hover: #f0f4ff;     /* autocomplete hover */
+
+    /* ── Colors: borders ────────────── */
+    --bbf-border: #d0d0d0;       /* input borders */
+    --bbf-border-light: #e0e0e0; /* section dividers */
+
+    /* ── Colors: focus ──────────────── */
+    --bbf-focus: #4a90d9;        /* focus ring color */
+    --bbf-focus-shadow: rgba(74, 144, 217, 0.15);
+
+    /* ── Colors: buttons ────────────── */
+    --bbf-btn-bg: #1a1a1a;
+    --bbf-btn-text: #fff;
+    --bbf-btn-hover: #333;
+    --bbf-btn-disabled: #999;
+
+    /* ── Colors: validation ─────────── */
+    --bbf-error: #dc3545;
+    --bbf-error-bg: #fdecea;
+    --bbf-error-border: #f5c6cb;
+    --bbf-error-shadow: rgba(220, 53, 69, 0.15);
+    --bbf-success: #1a7a1a;
+    --bbf-success-bg: #eafbe7;
+    --bbf-success-border: #b8e6b0;
+
+    /* ── Colors: rating stars ───────── */
+    --bbf-star: #d0d0d0;
+    --bbf-star-active: #f5a623;
+    --bbf-star-hover: #ffc107;
+}
+
+/* ═══════════════════════════════════════════════════════
+   FORM STRUCTURE
+   ═══════════════════════════════════════════════════════ */
+
 .bbf-form-container {
-    max-width: 540px;
+    max-width: var(--bbf-max-width);
     margin: 0 auto;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 15px;
-    color: #1a1a1a;
+    font-family: var(--bbf-font);
+    font-size: var(--bbf-font-size);
+    color: var(--bbf-text);
 }
 
 .bbf-title {
@@ -20,7 +88,7 @@
 }
 
 .bbf-description {
-    color: #666;
+    color: var(--bbf-text-muted);
     margin: 0 0 20px 0;
     font-size: 0.93em;
 }
@@ -28,7 +96,7 @@
 /* ─── Fields ─────────────────────────── */
 
 .bbf-field {
-    margin-bottom: 16px;
+    margin-bottom: var(--bbf-spacing);
 }
 
 .bbf-label {
@@ -39,12 +107,12 @@
 }
 
 .bbf-required {
-    color: #dc3545;
+    color: var(--bbf-error);
 }
 
 .bbf-field-desc {
     display: block;
-    color: #888;
+    color: var(--bbf-text-light);
     font-size: 0.82em;
     margin-bottom: 4px;
 }
@@ -55,12 +123,12 @@
     display: block;
     width: 100%;
     padding: 9px 11px;
-    border: 1px solid #d0d0d0;
-    border-radius: 5px;
-    font-size: 15px;
+    border: 1px solid var(--bbf-border);
+    border-radius: var(--bbf-radius);
+    font-size: var(--bbf-font-size);
     font-family: inherit;
-    color: #1a1a1a;
-    background: #fff;
+    color: var(--bbf-text);
+    background: var(--bbf-bg);
     box-sizing: border-box;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -69,8 +137,8 @@
 .bbf-form select:focus,
 .bbf-form textarea:focus {
     outline: none;
-    border-color: #4a90d9;
-    box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+    border-color: var(--bbf-focus);
+    box-shadow: 0 0 0 3px var(--bbf-focus-shadow);
 }
 
 /* ─── Field sizes ────────────────────── */
@@ -135,40 +203,40 @@
     display: flex;
     align-items: center;
     padding: 0 10px;
-    background: #f0f0f0;
-    border: 1px solid #ccc;
-    color: #555;
+    background: var(--bbf-bg-alt);
+    border: 1px solid var(--bbf-border);
+    color: var(--bbf-text-muted);
     font-size: 0.9em;
     white-space: nowrap;
 }
 
 .bbf-input-prefix {
     border-right: none;
-    border-radius: 6px 0 0 6px;
+    border-radius: var(--bbf-radius) 0 0 var(--bbf-radius);
 }
 
 .bbf-input-suffix {
     border-left: none;
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--bbf-radius) var(--bbf-radius) 0;
 }
 
 .bbf-input-group > .bbf-input:first-child {
-    border-radius: 6px 0 0 6px;
+    border-radius: var(--bbf-radius) 0 0 var(--bbf-radius);
 }
 
 .bbf-input-group > .bbf-input:last-child {
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--bbf-radius) var(--bbf-radius) 0;
 }
 
 .bbf-input-group > .bbf-input:only-child {
-    border-radius: 6px;
+    border-radius: var(--bbf-radius);
 }
 
 /* ─── Readonly ───────────────────────── */
 
 .bbf-readonly {
-    background: #f5f5f5;
-    color: #666;
+    background: var(--bbf-bg-readonly);
+    color: var(--bbf-text-muted);
     cursor: not-allowed;
 }
 
@@ -177,15 +245,15 @@
 .bbf-has-error .bbf-input,
 .bbf-has-error select,
 .bbf-has-error textarea {
-    border-color: #dc3545;
+    border-color: var(--bbf-error);
 }
 
 .bbf-has-error .bbf-input:focus {
-    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.15);
+    box-shadow: 0 0 0 3px var(--bbf-error-shadow);
 }
 
 .bbf-field-error {
-    color: #dc3545;
+    color: var(--bbf-error);
     font-size: 0.82em;
     margin-top: 4px;
     min-height: 0;
@@ -196,7 +264,7 @@
 .bbf-fieldset {
     border: none;
     padding: 0;
-    margin: 0 0 16px 0;
+    margin: 0 0 var(--bbf-spacing) 0;
 }
 
 .bbf-fieldset legend.bbf-label {
@@ -252,8 +320,8 @@
 .bbf-section {
     margin-top: 24px;
     margin-bottom: 12px;
-    padding-top: 16px;
-    border-top: 1px solid #e0e0e0;
+    padding-top: var(--bbf-spacing);
+    border-top: 1px solid var(--bbf-border-light);
 }
 
 .bbf-section:first-child {
@@ -269,7 +337,7 @@
 }
 
 .bbf-section-desc {
-    color: #666;
+    color: var(--bbf-text-muted);
     font-size: 0.9em;
     margin: 0;
 }
@@ -283,7 +351,7 @@
 
 .bbf-star {
     font-size: 1.6em;
-    color: #d0d0d0;
+    color: var(--bbf-star);
     cursor: pointer;
     transition: color 0.1s;
     user-select: none;
@@ -291,17 +359,17 @@
 }
 
 .bbf-star:focus {
-    outline: 2px solid #4a90d9;
+    outline: 2px solid var(--bbf-focus);
     outline-offset: 2px;
     border-radius: 2px;
 }
 
 .bbf-star-active {
-    color: #f5a623;
+    color: var(--bbf-star-active);
 }
 
 .bbf-star-hover {
-    color: #ffc107;
+    color: var(--bbf-star-hover);
 }
 
 /* ─── Multi-page navigation ──────────── */
@@ -316,17 +384,17 @@
 
 .bbf-page-indicator {
     font-size: 0.85em;
-    color: #888;
+    color: var(--bbf-text-light);
 }
 
 .bbf-prev,
 .bbf-next {
     display: inline-block;
     padding: 9px 22px;
-    background: #f0f0f0;
-    color: #1a1a1a;
-    border: 1px solid #d0d0d0;
-    border-radius: 5px;
+    background: var(--bbf-bg-alt);
+    color: var(--bbf-text);
+    border: 1px solid var(--bbf-border);
+    border-radius: var(--bbf-radius);
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
@@ -336,7 +404,7 @@
 
 .bbf-prev:hover,
 .bbf-next:hover {
-    background: #e0e0e0;
+    background: var(--bbf-border-light);
 }
 
 /* ─── Label position variants ────────── */
@@ -398,11 +466,11 @@
 .bbf-submit {
     display: inline-block;
     padding: 10px 28px;
-    background: #1a1a1a;
-    color: #fff;
+    background: var(--bbf-btn-bg);
+    color: var(--bbf-btn-text);
     border: none;
-    border-radius: 5px;
-    font-size: 15px;
+    border-radius: var(--bbf-radius);
+    font-size: var(--bbf-font-size);
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s;
@@ -410,11 +478,11 @@
 }
 
 .bbf-submit:hover {
-    background: #333;
+    background: var(--bbf-btn-hover);
 }
 
 .bbf-submit:disabled {
-    background: #999;
+    background: var(--bbf-btn-disabled);
     cursor: not-allowed;
 }
 
@@ -422,21 +490,21 @@
 
 .bbf-message {
     padding: 12px 16px;
-    border-radius: 5px;
+    border-radius: var(--bbf-radius);
     margin-top: 12px;
     font-size: 0.93em;
 }
 
 .bbf-success {
-    background: #eafbe7;
-    color: #1a7a1a;
-    border: 1px solid #b8e6b0;
+    background: var(--bbf-success-bg);
+    color: var(--bbf-success);
+    border: 1px solid var(--bbf-success-border);
 }
 
 .bbf-error {
-    background: #fdecea;
-    color: #b71c1c;
-    border: 1px solid #f5c6cb;
+    background: var(--bbf-error-bg);
+    color: var(--bbf-error);
+    border: 1px solid var(--bbf-error-border);
 }
 
 /* ─── Autocomplete dropdown ──────────── */
@@ -447,10 +515,10 @@
     left: 0;
     min-width: 100%;
     width: max-content;
-    background: #fff;
-    border: 1px solid #d0d0d0;
+    background: var(--bbf-bg);
+    border: 1px solid var(--bbf-border);
     border-top: none;
-    border-radius: 0 0 5px 5px;
+    border-radius: 0 0 var(--bbf-radius) var(--bbf-radius);
     max-height: 200px;
     overflow-y: auto;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
@@ -464,8 +532,8 @@
 
 .bbf-autocomplete-item:hover,
 .bbf-autocomplete-active {
-    background: #f0f4ff;
-    color: #1a1a1a;
+    background: var(--bbf-bg-hover);
+    color: var(--bbf-text);
 }
 
 /* ─── Loading ────────────────────────── */
@@ -473,5 +541,5 @@
 .bbf-spinner {
     text-align: center;
     padding: 24px;
-    color: #888;
+    color: var(--bbf-text-light);
 }

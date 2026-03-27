@@ -431,6 +431,22 @@ if ($action === 'delete') {
     viewerRespond(200, ['ok' => true]);
 }
 
+if ($action === 'bulk_delete') {
+    checkViewerToken();
+    if (!$canDelete) viewerRespond(400, ['error' => 'Delete not supported for CSV storage.']);
+    $body   = @json_decode(file_get_contents('php://input'), true);
+    $formId = sanitizeId($body['form'] ?? '');
+    $ids    = $body['ids'] ?? [];
+    if (!$formId || !is_array($ids) || count($ids) === 0) viewerRespond(400, ['error' => 'Missing form or submission IDs.']);
+    if (count($ids) > 100) viewerRespond(400, ['error' => 'Maximum 100 submissions per bulk delete.']);
+    $deleted = 0;
+    foreach ($ids as $id) {
+        $safeId = sanitizeId($id);
+        if ($safeId && deleteSub($formId, $safeId, $config)) $deleted++;
+    }
+    viewerRespond(200, ['ok' => true, 'deleted' => $deleted]);
+}
+
 if ($action === 'export') {
     $formId = sanitizeId($_GET['form'] ?? '');
     if (!$formId) viewerRespond(400, ['error' => 'Missing form ID.']);
@@ -709,6 +725,80 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     .toolbar input[type="text"] { width: 120px; }
     .detail-actions { width: 100%; justify-content: flex-end; }
 }
+
+/* ─── Filled stat cards ─── */
+.stat-card::before { display: none; }
+.stat-total { background: var(--accent); border-color: var(--accent); }
+.stat-total .stat-value, .stat-total .stat-label { color: #fff; }
+.stat-today { background: var(--green); border-color: var(--green); }
+.stat-today .stat-value, .stat-today .stat-label { color: #fff; }
+.stat-week { background: var(--amber); border-color: var(--amber); }
+.stat-week .stat-value, .stat-week .stat-label { color: #fff; }
+.stat-month { background: var(--violet); border-color: var(--violet); }
+.stat-month .stat-value, .stat-month .stat-label { color: #fff; }
+
+/* ─── View toggle ─── */
+.view-toggle { display: flex; gap: 2px; background: var(--bg-alt); border-radius: 6px; padding: 2px; }
+.view-toggle-btn { padding: 5px 10px; border: none; border-radius: 4px; background: transparent; color: var(--text-muted); font-size: 0.78rem; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 4px; }
+.view-toggle-btn:hover { color: var(--text); }
+.view-toggle-btn.active { background: var(--bg-surface); color: var(--text); box-shadow: var(--shadow-sm); }
+
+/* ─── Bulk action bar ─── */
+.bulk-bar { display: flex; align-items: center; gap: 12px; padding: 8px 20px; background: var(--accent-light); border-bottom: 2px solid var(--accent); flex-shrink: 0; animation: fadeIn 0.15s; }
+.bulk-bar-count { font-size: 0.82rem; font-weight: 600; color: var(--accent-text); }
+.bulk-bar .toolbar-btn { padding: 5px 12px; font-size: 0.78rem; }
+.bulk-bar .btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.bulk-bar .btn-danger:hover { opacity: 0.85; }
+
+/* ─── Checkbox ─── */
+.sub-checkbox { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+
+/* ─── Card grid view ─── */
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.grid-card { position: relative; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column; }
+.grid-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.grid-card.selected { outline: 2px solid var(--accent); }
+.grid-card-bar { height: 4px; flex-shrink: 0; }
+.grid-card-bar.age-today { background: var(--green); }
+.grid-card-bar.age-recent { background: var(--amber); }
+.grid-card-bar.age-week { background: var(--violet); }
+.grid-card-bar.age-older { background: var(--text-light); }
+.grid-card-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px 4px; }
+.grid-card-time { font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+.grid-card-time.age-today { background: var(--green-bg); color: var(--green-text); }
+.grid-card-time.age-recent { background: var(--amber-bg); color: var(--amber-text); }
+.grid-card-time.age-week { background: var(--violet-bg); color: var(--violet-text); }
+.grid-card-time.age-older { background: var(--bg-alt); color: var(--text-muted); }
+.grid-card-check { color: var(--green); font-size: 0.9rem; }
+.grid-card-body { flex: 1; padding: 2px 0; }
+.grid-card-section { padding: 4px 14px 6px; }
+.grid-card-section-title { font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; padding-bottom: 2px; border-bottom: 1px solid var(--border-light); }
+.grid-card-field { font-size: 0.8rem; color: var(--text); padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grid-card-field strong { font-weight: 500; color: var(--text-muted); margin-right: 4px; }
+.grid-card-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-top: 1px solid var(--border-light); margin-top: auto; }
+.grid-card-details { font-size: 0.78rem; color: var(--accent-text); font-weight: 500; }
+.grid-card-id { font-size: 0.68rem; font-family: 'SFMono-Regular', Consolas, monospace; color: var(--text-light); }
+.grid-card .sub-checkbox { position: absolute; top: 14px; right: 12px; z-index: 2; }
+
+/* ─── Table view ─── */
+.sub-table-wrap { overflow-x: auto; }
+.sub-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.sub-table th { padding: 10px 12px; text-align: left; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); background: var(--bg-alt); border-bottom: 2px solid var(--border); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+.sub-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-light); vertical-align: middle; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub-table tbody tr { cursor: pointer; transition: background 0.1s; border-left: 3px solid transparent; }
+.sub-table tbody tr:hover { background: var(--bg-alt); }
+.sub-table tbody tr.age-today { border-left-color: var(--green); }
+.sub-table tbody tr.age-recent { border-left-color: var(--amber); }
+.sub-table tbody tr.age-week { border-left-color: var(--violet); }
+.sub-table tbody tr.selected { background: var(--accent-light); }
+.sub-table .row-num { color: var(--text-light); font-size: 0.75rem; width: 40px; text-align: center; }
+.sub-table .row-time { white-space: nowrap; }
+.sub-table .time-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600; }
+.sub-table .time-badge.age-today { background: var(--green-bg); color: var(--green-text); }
+.sub-table .time-badge.age-recent { background: var(--amber-bg); color: var(--amber-text); }
+.sub-table .time-badge.age-week { background: var(--violet-bg); color: var(--violet-text); }
+.sub-table .time-badge.age-older { background: var(--bg-alt); color: var(--text-muted); }
+.sub-table .cb-cell { width: 36px; text-align: center; }
 </style>
 </head>
 <body>
@@ -757,6 +847,10 @@ const I18N = {
         other:'Other fields', prev:'Prev', next:'Next',
         just_now:'just now', min_ago:'min ago', h_ago:'h ago', yesterday:'yesterday', days_ago:'days ago',
         generated:'Generated from', today_label:'today',
+        cards:'Cards', table:'Table', card_view:'Card view', table_view:'Table view',
+        view_details:'View Details', selected:'selected', bulk_delete:'Delete selected',
+        deselect_all:'Deselect all', select_all:'Select all',
+        bulk_confirm:'Delete {n} submissions?', bulk_deleted:'{n} deleted',
     },
     sk: {
         dashboard:'Prehľad', forms:'Formuláre', forms_overview:'Prehľad formulárov', recent:'Posledné odoslania',
@@ -774,6 +868,10 @@ const I18N = {
         other:'Ostatné polia', prev:'Predch.', next:'Ďalšie',
         just_now:'práve teraz', min_ago:'min', h_ago:'hod', yesterday:'včera', days_ago:'dní',
         generated:'Vygenerované z', today_label:'dnes',
+        cards:'Karty', table:'Tabuľka', card_view:'Kartové zobrazenie', table_view:'Tabuľkové zobrazenie',
+        view_details:'Zobraziť detail', selected:'vybraných', bulk_delete:'Zmazať vybrané',
+        deselect_all:'Zrušiť výber', select_all:'Vybrať všetky',
+        bulk_confirm:'Zmazať {n} odoslaní?', bulk_deleted:'{n} zmazaných',
     },
     de: {
         dashboard:'Übersicht', forms:'Formulare', forms_overview:'Formulare', recent:'Letzte Einreichungen',
@@ -791,6 +889,10 @@ const I18N = {
         other:'Weitere Felder', prev:'Zurück', next:'Weiter',
         just_now:'gerade eben', min_ago:'Min.', h_ago:'Std.', yesterday:'gestern', days_ago:'Tage',
         generated:'Erstellt von', today_label:'heute',
+        cards:'Karten', table:'Tabelle', card_view:'Kartenansicht', table_view:'Tabellenansicht',
+        view_details:'Details anzeigen', selected:'ausgewählt', bulk_delete:'Ausgewählte löschen',
+        deselect_all:'Auswahl aufheben', select_all:'Alle auswählen',
+        bulk_confirm:'{n} Einreichungen löschen?', bulk_deleted:'{n} gelöscht',
     },
 };
 function t(key) { return (I18N[LANG] || I18N.en)[key] || I18N.en[key] || key; }
@@ -818,6 +920,8 @@ const state = {
     detail: null,
     todayMap: {},
     deleteTimer: null,
+    viewMode: localStorage.getItem('bbf_viewMode') || 'cards',
+    selected: new Set(),
 };
 
 // ─── API ─────────────────────────────────────────────────────────
@@ -867,6 +971,16 @@ const api = {
     async listForms() {
         const r = await fetch('viewer.php?action=list_forms');
         return r.json();
+    },
+    async bulkDelete(formId, ids) {
+        const r = await fetch('viewer.php?action=bulk_delete', {
+            method: 'POST',
+            body: JSON.stringify({ form: formId, ids }),
+            headers: { 'Content-Type': 'application/json', 'X-BBF-Viewer-Token': TOKEN },
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Bulk delete failed');
+        return d;
     },
 };
 
@@ -1005,6 +1119,7 @@ async function selectForm(formId, opts) {
     state.search = '';
     state.dateFrom = '';
     state.dateTo = '';
+    state.selected.clear();
     renderFormList(FORMS);
     document.title = formId + ' — ' + SITE_NAME;
     updateHash();
@@ -1048,6 +1163,17 @@ function renderMain() {
     html += statCard('stat-week', state.stats?.this_week ?? 0, t('this_week'));
     html += statCard('stat-month', state.stats?.this_month ?? 0, t('this_month'));
     html += '</div>';
+
+    // Bulk action bar
+    if (state.selected.size > 0 && CAN_DELETE) {
+        html += `<div class="bulk-bar" id="bulk-bar">`;
+        html += `<span class="bulk-bar-count">${state.selected.size} ${esc(t('selected'))}</span>`;
+        html += `<button class="toolbar-btn btn-danger" id="bulk-delete">${esc(t('bulk_delete'))}</button>`;
+        html += `<button class="toolbar-btn" id="bulk-cancel">${esc(t('deselect_all'))}</button>`;
+        html += `<span class="toolbar-spacer"></span>`;
+        html += `</div>`;
+    }
+
     html += '<div class="toolbar">';
     html += `<input type="text" id="search-input" placeholder="${esc(t('search'))}" value="${esc(state.search)}">`;
     html += `<input type="date" id="filter-from" value="${esc(state.dateFrom)}">`;
@@ -1055,11 +1181,16 @@ function renderMain() {
     html += `<input type="date" id="filter-to" value="${esc(state.dateTo)}">`;
     html += `<button class="toolbar-btn" id="btn-filter">${esc(t('filter'))}</button>`;
     html += `<span class="toolbar-spacer"></span>`;
+    // View toggle
+    html += `<div class="view-toggle">`;
+    html += `<button class="view-toggle-btn${state.viewMode === 'cards' ? ' active' : ''}" data-mode="cards" title="${esc(t('card_view'))}">&#9638; ${esc(t('cards'))}</button>`;
+    html += `<button class="view-toggle-btn${state.viewMode === 'table' ? ' active' : ''}" data-mode="table" title="${esc(t('table_view'))}">&#9776; ${esc(t('table'))}</button>`;
+    html += `</div>`;
     html += `<span class="toolbar-count" id="toolbar-count">${state.total} ${esc(t('submissions'))}</span>`;
     html += `<button class="toolbar-btn btn-accent" id="btn-export">${esc(t('export_csv'))}</button>`;
     html += '</div>';
     html += '<div class="content" id="content">';
-    html += renderCards();
+    html += state.viewMode === 'table' ? renderTable() : renderCardsGrid();
     html += '</div>';
     html += '<div class="pagination" id="pagination">';
     html += renderPagination();
@@ -1141,6 +1272,174 @@ function renderCards(subs, opts) {
     }).join('');
 }
 
+// ─── Age classification ──────────────────────────────────────────
+function getAgeCls(iso) {
+    if (!iso) return 'age-older';
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 86400) return 'age-today';
+    if (diff < 259200) return 'age-recent';
+    if (diff < 604800) return 'age-week';
+    return 'age-older';
+}
+
+// ─── Card sections from form definition ──────────────────────────
+function getCardSections(formDef, data) {
+    if (!formDef?.fields) {
+        const keys = Object.keys(data).filter(k => data[k] !== '' && data[k] !== null).slice(0, 6);
+        return [{ title: '', fields: keys.map(k => ({ key: k, label: state.labelMap[k] || k, value: data[k] })) }];
+    }
+    const sections = [];
+    let current = { title: '', fields: [] };
+    let totalFields = 0;
+
+    function walk(fieldList) {
+        for (const f of fieldList) {
+            if (totalFields >= 6 || sections.length >= 3) return;
+            if (f.type === 'section') {
+                if (current.fields.length > 0) sections.push(current);
+                if (sections.length >= 3) return;
+                current = { title: f.title || f.label || f.name, fields: [] };
+                continue;
+            }
+            if (f.type === 'page_break' || f.type === 'hidden') continue;
+            if (f.type === 'group' && f.fields) { walk(f.fields); continue; }
+            const val = data[f.name];
+            if (val === undefined || val === null || val === '') continue;
+            current.fields.push({ key: f.name, label: f.label || f.name, value: val });
+            totalFields++;
+        }
+    }
+    walk(formDef.fields);
+    if (current.fields.length > 0 && sections.length < 3) sections.push(current);
+    return sections;
+}
+
+// ─── Table columns from form definition ──────────────────────────
+function getTableColumns(formDef, subs) {
+    if (formDef?.fields) {
+        const cols = [];
+        function walk(fields) {
+            for (const f of fields) {
+                if (f.type === 'group' && f.fields) { walk(f.fields); continue; }
+                if (['section', 'page_break', 'hidden'].includes(f.type)) continue;
+                if (f.name) cols.push({ key: f.name, label: f.label || f.name });
+            }
+        }
+        walk(formDef.fields);
+        return cols.slice(0, 7);
+    }
+    if (subs.length > 0) {
+        return Object.keys(subs[0].data || {}).slice(0, 7).map(k => ({ key: k, label: state.labelMap[k] || k }));
+    }
+    return [];
+}
+
+// ─── Render: Card grid ───────────────────────────────────────────
+function renderCardsGrid() {
+    const items = state.subs;
+    if (items.length === 0) {
+        return `<div class="empty-state"><div class="empty-state-icon">&#128203;</div>`
+            + `<h3>${esc(t('no_subs'))}</h3><p>${esc(t('no_match'))}</p></div>`;
+    }
+    let html = '<div class="cards-grid">';
+    items.forEach(sub => {
+        const time = relativeTime(sub.meta?.submitted);
+        const ageCls = getAgeCls(sub.meta?.submitted);
+        const sections = getCardSections(state.formDef, sub.data || {});
+        const isSelected = state.selected.has(sub.id);
+        const todayCheck = isToday(sub.meta?.submitted) ? `<span class="grid-card-check">&#10003;</span>` : '';
+
+        html += `<div class="grid-card${isSelected ? ' selected' : ''}" data-id="${esc(sub.id)}">`;
+        html += `<div class="grid-card-bar ${ageCls}"></div>`;
+        if (CAN_DELETE) html += `<input type="checkbox" class="sub-checkbox" data-id="${esc(sub.id)}"${isSelected ? ' checked' : ''}>`;
+        html += `<div class="grid-card-header">`;
+        html += `<span class="grid-card-time ${ageCls}">${esc(time)}</span>`;
+        html += todayCheck;
+        html += `</div>`;
+        html += `<div class="grid-card-body">`;
+        sections.forEach(section => {
+            html += `<div class="grid-card-section">`;
+            if (section.title) html += `<div class="grid-card-section-title">${esc(section.title)}</div>`;
+            section.fields.forEach(f => {
+                const val = Array.isArray(f.value) ? f.value.join(', ') : String(f.value);
+                const display = val.length > 35 ? val.substring(0, 35) + '...' : val;
+                html += `<div class="grid-card-field"><strong>${esc(f.label)}:</strong> ${esc(display)}</div>`;
+            });
+            html += `</div>`;
+        });
+        html += `</div>`;
+        html += `<div class="grid-card-footer">`;
+        html += `<span class="grid-card-details">${esc(t('view_details'))}</span>`;
+        html += `<span class="grid-card-id">${esc(sub.id.length > 14 ? sub.id.substring(0, 14) + '...' : sub.id)}</span>`;
+        html += `</div></div>`;
+    });
+    html += '</div>';
+    return html;
+}
+
+// ─── Render: Table ───────────────────────────────────────────────
+function renderTable() {
+    const items = state.subs;
+    if (items.length === 0) {
+        return `<div class="empty-state"><div class="empty-state-icon">&#128203;</div>`
+            + `<h3>${esc(t('no_subs'))}</h3><p>${esc(t('no_match'))}</p></div>`;
+    }
+    const cols = getTableColumns(state.formDef, items);
+    const offset = (state.page - 1) * state.perPage;
+    const allChecked = items.length > 0 && items.every(s => state.selected.has(s.id));
+
+    let html = '<div class="sub-table-wrap"><table class="sub-table">';
+    html += '<thead><tr>';
+    if (CAN_DELETE) html += `<th class="cb-cell"><input type="checkbox" class="sub-checkbox" id="select-all"${allChecked ? ' checked' : ''}></th>`;
+    html += `<th class="row-num">#</th>`;
+    html += `<th>${esc(t('submitted'))}</th>`;
+    cols.forEach(c => { html += `<th>${esc(c.label)}</th>`; });
+    html += '</tr></thead><tbody>';
+
+    items.forEach((sub, idx) => {
+        const ageCls = getAgeCls(sub.meta?.submitted);
+        const time = relativeTime(sub.meta?.submitted);
+        const isSelected = state.selected.has(sub.id);
+        html += `<tr class="${ageCls}${isSelected ? ' selected' : ''}" data-id="${esc(sub.id)}">`;
+        if (CAN_DELETE) html += `<td class="cb-cell"><input type="checkbox" class="sub-checkbox" data-id="${esc(sub.id)}"${isSelected ? ' checked' : ''}></td>`;
+        html += `<td class="row-num">${offset + idx + 1}</td>`;
+        html += `<td class="row-time"><span class="time-badge ${ageCls}">${esc(time)}</span></td>`;
+        cols.forEach(c => {
+            const v = (sub.data || {})[c.key];
+            const val = v === undefined || v === null ? '' : (Array.isArray(v) ? v.join(', ') : String(v));
+            const display = val.length > 40 ? val.substring(0, 40) + '...' : val;
+            html += `<td title="${esc(val)}">${esc(display)}</td>`;
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
+}
+
+// ─── Bulk bar dynamic update ─────────────────────────────────────
+function updateBulkBar() {
+    const existing = document.getElementById('bulk-bar');
+    if (state.selected.size > 0 && CAN_DELETE) {
+        if (existing) {
+            existing.querySelector('.bulk-bar-count').textContent = state.selected.size + ' ' + t('selected');
+        } else {
+            const toolbar = panelMain.querySelector('.toolbar');
+            if (toolbar) {
+                const bar = document.createElement('div');
+                bar.className = 'bulk-bar';
+                bar.id = 'bulk-bar';
+                bar.innerHTML = `<span class="bulk-bar-count">${state.selected.size} ${esc(t('selected'))}</span>`
+                    + `<button class="toolbar-btn btn-danger" id="bulk-delete">${esc(t('bulk_delete'))}</button>`
+                    + `<button class="toolbar-btn" id="bulk-cancel">${esc(t('deselect_all'))}</button>`
+                    + `<span class="toolbar-spacer"></span>`;
+                toolbar.before(bar);
+            }
+        }
+    } else if (existing) {
+        existing.remove();
+    }
+}
+
 function renderPagination() {
     const pages = Math.ceil(state.total / state.perPage);
     if (pages <= 1) return '';
@@ -1167,7 +1466,7 @@ async function loadPage() {
         const content = document.getElementById('content');
         const pagination = document.getElementById('pagination');
         const count = document.getElementById('toolbar-count');
-        if (content) content.innerHTML = renderCards();
+        if (content) content.innerHTML = state.viewMode === 'table' ? renderTable() : renderCardsGrid();
         if (pagination) pagination.innerHTML = renderPagination();
         if (count) count.textContent = state.total + ' submission' + (state.total !== 1 ? 's' : '');
         updateHash();
@@ -1557,6 +1856,89 @@ panelMain.addEventListener('click', (e) => {
         if (state.dateFrom) url += `&from=${state.dateFrom}`;
         if (state.dateTo) url += `&to=${state.dateTo}`;
         window.location.href = url;
+        return;
+    }
+
+    // View toggle
+    const toggleBtn = e.target.closest('.view-toggle-btn');
+    if (toggleBtn && toggleBtn.dataset.mode) {
+        state.viewMode = toggleBtn.dataset.mode;
+        localStorage.setItem('bbf_viewMode', state.viewMode);
+        state.selected.clear();
+        renderMain();
+        return;
+    }
+
+    // Checkbox click (individual and select-all)
+    if (e.target.type === 'checkbox' && (e.target.classList.contains('sub-checkbox') || e.target.id === 'select-all')) {
+        e.stopPropagation();
+        if (e.target.id === 'select-all') {
+            if (e.target.checked) state.subs.forEach(s => state.selected.add(s.id));
+            else state.subs.forEach(s => state.selected.delete(s.id));
+            const content = document.getElementById('content');
+            if (content) content.innerHTML = state.viewMode === 'table' ? renderTable() : renderCardsGrid();
+            updateBulkBar();
+        } else {
+            const id = e.target.dataset.id;
+            if (id) {
+                if (e.target.checked) state.selected.add(id);
+                else state.selected.delete(id);
+            }
+            // Update visual state
+            const card = e.target.closest('.grid-card');
+            if (card) card.classList.toggle('selected', e.target.checked);
+            const row = e.target.closest('tr');
+            if (row) row.classList.toggle('selected', e.target.checked);
+            updateBulkBar();
+        }
+        return;
+    }
+
+    // Bulk delete
+    if (e.target.closest('#bulk-delete')) {
+        const count = state.selected.size;
+        if (!confirm(t('bulk_confirm').replace('{n}', count))) return;
+        const btn = e.target.closest('#bulk-delete');
+        btn.textContent = t('deleting');
+        btn.disabled = true;
+        (async () => {
+            try {
+                const result = await api.bulkDelete(state.formId, [...state.selected]);
+                flash(t('bulk_deleted').replace('{n}', result.deleted));
+                state.selected.clear();
+                const [statsData, subsData] = await Promise.all([
+                    api.stats(state.formId),
+                    api.submissions(state.formId, state.perPage, (state.page - 1) * state.perPage),
+                ]);
+                state.stats = statsData;
+                state.subs = subsData.submissions;
+                state.total = subsData.total;
+                renderMain();
+                const forms = await api.listForms();
+                renderFormList(forms);
+            } catch (err) { flash(err.message, true); }
+        })();
+        return;
+    }
+
+    // Bulk cancel (deselect all)
+    if (e.target.closest('#bulk-cancel')) {
+        state.selected.clear();
+        renderMain();
+        return;
+    }
+
+    // Table row click (open detail)
+    const tableRow = e.target.closest('.sub-table tbody tr');
+    if (tableRow && !e.target.closest('.sub-checkbox') && tableRow.dataset.id) {
+        openDetail(tableRow.dataset.id);
+        return;
+    }
+
+    // Grid card click (open detail)
+    const gridCard = e.target.closest('.grid-card');
+    if (gridCard && !e.target.closest('.sub-checkbox') && gridCard.dataset.id) {
+        openDetail(gridCard.dataset.id);
         return;
     }
 });

@@ -814,6 +814,54 @@ details summary:hover { text-decoration: underline; }
 
 <p><code>bbf.css</code> is <strong>auto-loaded</strong> by <code>bbf.js</code> &mdash; if the stylesheet sits next to the script, it will be injected into <code>&lt;head&gt;</code> automatically. No need to add a <code>&lt;link&gt;</code> tag manually (though you still can). To use your own styles instead, either override the classes below or delete <code>bbf.css</code> entirely.</p>
 
+<h3>Theming with CSS variables (recommended)</h3>
+
+<p>The easiest way to customize the look of your forms is to override <code>--bbf-*</code> CSS variables. All colors, spacing, fonts, and border radii are controlled by these variables. Just set them in your stylesheet &mdash; no need to touch <code>bbf.css</code> itself.</p>
+
+<div class="code-block"><span class="lang">css</span><pre>/* Quick brand theme — only override what you need */
+.bbf-form-container {
+    --bbf-focus: #2563eb;          /* focus ring: blue */
+    --bbf-btn-bg: #2563eb;         /* submit button */
+    --bbf-btn-hover: #1d4ed8;
+    --bbf-radius: 8px;             /* rounded corners */
+    --bbf-border: #cbd5e1;         /* softer borders */
+    --bbf-font: "Inter", sans-serif;
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Scope per form by targeting <code>[data-form="..."]</code>:</p>
+
+<div class="code-block"><span class="lang">css</span><pre>/* Different button color for each form */
+[data-form="contact"] .bbf-form-container { --bbf-btn-bg: #059669; }
+[data-form="quote"]   .bbf-form-container { --bbf-btn-bg: #7c3aed; }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h4>Full variable reference</h4>
+
+<table>
+    <tr><th>Variable</th><th>Default</th><th>Controls</th></tr>
+    <tr><td><code>--bbf-font</code></td><td>system stack</td><td>Font family</td></tr>
+    <tr><td><code>--bbf-font-size</code></td><td>15px</td><td>Base font size</td></tr>
+    <tr><td><code>--bbf-max-width</code></td><td>540px</td><td>Form container width</td></tr>
+    <tr><td><code>--bbf-radius</code></td><td>5px</td><td>Border radius (inputs, buttons)</td></tr>
+    <tr><td><code>--bbf-spacing</code></td><td>16px</td><td>Gap between fields</td></tr>
+    <tr><td><code>--bbf-text</code></td><td>#1a1a1a</td><td>Main text color</td></tr>
+    <tr><td><code>--bbf-text-muted</code></td><td>#666</td><td>Descriptions, secondary text</td></tr>
+    <tr><td><code>--bbf-text-light</code></td><td>#888</td><td>Hints, placeholders</td></tr>
+    <tr><td><code>--bbf-bg</code></td><td>#fff</td><td>Input backgrounds</td></tr>
+    <tr><td><code>--bbf-bg-alt</code></td><td>#f0f0f0</td><td>Prefix/suffix, nav buttons</td></tr>
+    <tr><td><code>--bbf-border</code></td><td>#d0d0d0</td><td>Input borders</td></tr>
+    <tr><td><code>--bbf-border-light</code></td><td>#e0e0e0</td><td>Section dividers</td></tr>
+    <tr><td><code>--bbf-focus</code></td><td>#4a90d9</td><td>Focus ring color</td></tr>
+    <tr><td><code>--bbf-focus-shadow</code></td><td>rgba(74,144,217,0.15)</td><td>Focus glow</td></tr>
+    <tr><td><code>--bbf-btn-bg</code></td><td>#1a1a1a</td><td>Submit button background</td></tr>
+    <tr><td><code>--bbf-btn-text</code></td><td>#fff</td><td>Submit button text</td></tr>
+    <tr><td><code>--bbf-btn-hover</code></td><td>#333</td><td>Submit button hover</td></tr>
+    <tr><td><code>--bbf-error</code></td><td>#dc3545</td><td>Error color (borders, text)</td></tr>
+    <tr><td><code>--bbf-success</code></td><td>#1a7a1a</td><td>Success message color</td></tr>
+    <tr><td><code>--bbf-star-active</code></td><td>#f5a623</td><td>Selected star color</td></tr>
+</table>
+
+<p>See <code>bbf-theme.css</code> for complete example themes (dark mode, corporate blue, warm/earthy, minimal/borderless).</p>
+
 <h3>CSS class reference</h3>
 
 <p>All elements use <code>bbf-*</code> class names, so they won't collide with your existing styles.</p>
@@ -845,13 +893,13 @@ details summary:hover { text-decoration: underline; }
 
 <h3>Quick examples</h3>
 
-<div class="code-block"><span class="lang">css</span><pre>/* Make inputs rounded */
-.bbf-input, .bbf-form select { border-radius: 8px; }
+<div class="code-block"><span class="lang">css</span><pre>/* Using variables (preferred) */
+.bbf-form-container {
+    --bbf-radius: 8px;             /* rounded inputs */
+    --bbf-btn-bg: #dc3545;         /* red submit button */
+}
 
-/* Red submit button */
-.bbf-submit { background: #dc3545; }
-
-/* Larger labels */
+/* Or target classes directly */
 .bbf-label { font-size: 1.1em; font-weight: 700; }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p>Delete <code>bbf.css</code> entirely if you prefer. The JavaScript doesn't depend on it. The forms will render naked, and you can dress them however you see fit.</p>
