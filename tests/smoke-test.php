@@ -303,6 +303,11 @@ function generateTestData(array $form, bool $fillRequired = true): array {
                 $data[$name] = 'REF-A1B2C3';
                 continue;
             }
+            // Digits-only pattern (e.g. postal codes: ^[0-9]{5}$)
+            if (preg_match('/^\^\[0-9\]\{(\d+)\}/', $p, $pm)) {
+                $data[$name] = str_repeat('1', (int)$pm[1]);
+                continue;
+            }
         }
 
         switch ($type) {
@@ -310,6 +315,10 @@ function generateTestData(array $form, bool $fillRequired = true): array {
                 $data[$name] = 'Test Value';
                 if (!empty($field['minlength']) && $field['minlength'] > 10) {
                     $data[$name] = str_repeat('Test data. ', (int)ceil($field['minlength'] / 11));
+                }
+                // Respect maxlength — truncate if needed
+                if (!empty($field['maxlength']) && strlen($data[$name]) > $field['maxlength']) {
+                    $data[$name] = substr($data[$name], 0, (int)$field['maxlength']);
                 }
                 break;
             case 'email':

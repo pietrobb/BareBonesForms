@@ -1170,6 +1170,12 @@ foreach ($backends as $backend) {
 
     // 6b: Test options endpoint returns valid JSON
     $optResult = httpGet("$baseUrl/tests/test-options-endpoint.php");
+    if ($optResult['code'] === 0) {
+        warn("dynamic-options: options endpoint HTTP 0, restarting server...");
+        restartServer();
+        usleep(300000);
+        $optResult = httpGet("$baseUrl/tests/test-options-endpoint.php");
+    }
     if ($optResult['code'] === 200 && is_array($optResult['json'])) {
         $optCount = count($optResult['json']);
         if ($optCount > 0) {

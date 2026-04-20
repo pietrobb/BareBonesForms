@@ -954,6 +954,7 @@
                 otherInput.className = 'bbf-input bbf-other-input';
                 otherInput.placeholder = field.other_label || 'Other…';
                 otherInput.style.display = 'none';
+                otherInput.setAttribute('aria-label', field.other_label || 'Other');
                 otherInput.style.marginTop = '6px';
                 wrap.appendChild(otherInput);
 
@@ -970,9 +971,11 @@
                 confirmInput.name = field.name + '_confirm';
                 confirmInput.id = `bbf-${field.name}-confirm`;
                 confirmInput.className = 'bbf-input';
-                confirmInput.placeholder = this._t('emailMismatch', { label: field.label || field.name }, langCode).includes('match')
+                const confirmLabel = this._t('emailMismatch', { label: field.label || field.name }, langCode).includes('match')
                     ? 'Confirm ' + (field.label || 'email')
                     : (field.label || 'email') + ' (confirm)';
+                confirmInput.placeholder = confirmLabel;
+                confirmInput.setAttribute('aria-label', confirmLabel);
                 confirmInput.style.marginTop = '6px';
                 if (field.required) confirmInput.required = true;
                 wrap.appendChild(confirmInput);
@@ -1036,7 +1039,10 @@
                 var acMap = acConfig.map || null;
 
                 var acList = document.createElement('div');
+                var acListId = `bbf-${field.name}-autocomplete`;
                 acList.className = 'bbf-autocomplete-list';
+                acList.id = acListId;
+                acList.setAttribute('role', 'listbox');
                 acList.style.display = 'none';
                 wrap.style.position = 'relative';
                 wrap.appendChild(acList);
@@ -1045,13 +1051,27 @@
                 var acActive = -1;
 
                 input.setAttribute('autocomplete', 'off');
+                input.setAttribute('role', 'combobox');
+                input.setAttribute('aria-autocomplete', 'list');
+                input.setAttribute('aria-expanded', 'false');
+                input.setAttribute('aria-controls', acListId);
 
                 input.addEventListener('input', function(e) {
                     clearTimeout(acTimer);
                     // Skip programmatic input events (from lookup, autocomplete select, etc.)
-                    if (!e.isTrusted) { acList.style.display = 'none'; return; }
+                    if (!e.isTrusted) {
+                        acList.style.display = 'none';
+                        input.setAttribute('aria-expanded', 'false');
+                        input.removeAttribute('aria-activedescendant');
+                        return;
+                    }
                     var val = input.value.trim();
-                    if (val.length < acMinLen) { acList.style.display = 'none'; return; }
+                    if (val.length < acMinLen) {
+                        acList.style.display = 'none';
+                        input.setAttribute('aria-expanded', 'false');
+                        input.removeAttribute('aria-activedescendant');
+                        return;
+                    }
 
                     acTimer = setTimeout(async function() {
                         try {
@@ -1062,16 +1082,26 @@
 
                             acList.innerHTML = '';
                             acActive = -1;
-                            if (!items || !items.length) { acList.style.display = 'none'; return; }
+                            input.removeAttribute('aria-activedescendant');
+                            if (!items || !items.length) {
+                                acList.style.display = 'none';
+                                input.setAttribute('aria-expanded', 'false');
+                                return;
+                            }
 
-                            items.forEach(function(item) {
+                            items.forEach(function(item, index) {
                                 var div = document.createElement('div');
                                 div.className = 'bbf-autocomplete-item';
+                                div.id = acListId + '-' + index;
+                                div.setAttribute('role', 'option');
+                                div.setAttribute('aria-selected', 'false');
                                 div.textContent = typeof item === 'object' ? item.label : item;
                                 div.addEventListener('mousedown', function(e) {
                                     e.preventDefault();
                                     input.value = typeof item === 'object' ? item.value : item;
                                     acList.style.display = 'none';
+                                    input.setAttribute('aria-expanded', 'false');
+                                    input.removeAttribute('aria-activedescendant');
                                     input.dispatchEvent(new Event('input', { bubbles: true }));
                                     input.dispatchEvent(new Event('change', { bubbles: true }));
                                     // Map extra fields from response item
@@ -1096,6 +1126,7 @@
                                 acList.appendChild(div);
                             });
                             acList.style.display = '';
+                            input.setAttribute('aria-expanded', 'true');
                         } catch (err) {
                             console.warn('BBF autocomplete failed for ' + field.name + ':', err);
                         }
@@ -1109,21 +1140,37 @@
                     if (e.key === 'ArrowDown') {
                         e.preventDefault();
                         acActive = Math.min(acActive + 1, items.length - 1);
-                        items.forEach(function(el, i) { el.classList.toggle('bbf-autocomplete-active', i === acActive); });
+                        items.forEach(function(el, i) {
+                            var isActive = i === acActive;
+                            el.classList.toggle('bbf-autocomplete-active', isActive);
+                            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                        });
+                        input.setAttribute('aria-activedescendant', items[acActive].id);
                     } else if (e.key === 'ArrowUp') {
                         e.preventDefault();
                         acActive = Math.max(acActive - 1, 0);
-                        items.forEach(function(el, i) { el.classList.toggle('bbf-autocomplete-active', i === acActive); });
+                        items.forEach(function(el, i) {
+                            var isActive = i === acActive;
+                            el.classList.toggle('bbf-autocomplete-active', isActive);
+                            el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                        });
+                        input.setAttribute('aria-activedescendant', items[acActive].id);
                     } else if (e.key === 'Enter' && acActive >= 0) {
                         e.preventDefault();
                         items[acActive].dispatchEvent(new MouseEvent('mousedown'));
                     } else if (e.key === 'Escape') {
                         acList.style.display = 'none';
+                        input.setAttribute('aria-expanded', 'false');
+                        input.removeAttribute('aria-activedescendant');
                     }
                 });
 
                 input.addEventListener('blur', function() {
-                    setTimeout(function() { acList.style.display = 'none'; }, 200);
+                    setTimeout(function() {
+                        acList.style.display = 'none';
+                        input.setAttribute('aria-expanded', 'false');
+                        input.removeAttribute('aria-activedescendant');
+                    }, 200);
                 });
             }
 
@@ -1233,6 +1280,7 @@
                 otherText.name = field.name + '_other';
                 otherText.className = 'bbf-input bbf-other-input';
                 otherText.style.display = 'none';
+                otherText.setAttribute('aria-label', field.other_label || 'Other');
                 otherText.style.marginTop = '4px';
 
                 otherInp.addEventListener('change', () => {
@@ -1302,12 +1350,24 @@
             starsWrap.setAttribute('role', 'radiogroup');
             starsWrap.setAttribute('aria-label', field.label || 'Rating');
 
+            const updateRating = (value, focusStar = false) => {
+                hidden.value = String(value);
+                starsWrap.querySelectorAll('.bbf-star').forEach(s => {
+                    const sv = parseInt(s.getAttribute('data-value'));
+                    const checked = sv === value;
+                    s.classList.toggle('bbf-star-active', sv <= value);
+                    s.setAttribute('aria-checked', checked ? 'true' : 'false');
+                    s.setAttribute('tabindex', checked ? '0' : '-1');
+                    if (focusStar && checked) s.focus();
+                });
+            };
+
             for (let i = 1; i <= maxRating; i++) {
                 const star = document.createElement('span');
                 star.className = 'bbf-star';
                 star.setAttribute('data-value', i);
                 star.setAttribute('role', 'radio');
-                star.setAttribute('tabindex', '0');
+                star.setAttribute('tabindex', i === 1 ? '0' : '-1');
                 star.setAttribute('aria-checked', 'false');
                 star.setAttribute('aria-label', `${i} / ${maxRating}`);
                 star.textContent = '\u2605'; // ★
@@ -1317,19 +1377,22 @@
             starsWrap.addEventListener('click', (e) => {
                 const star = e.target.closest('.bbf-star');
                 if (!star) return;
-                const val = star.getAttribute('data-value');
-                hidden.value = val;
-                starsWrap.querySelectorAll('.bbf-star').forEach(s => {
-                    const sv = parseInt(s.getAttribute('data-value'));
-                    s.classList.toggle('bbf-star-active', sv <= parseInt(val));
-                    s.setAttribute('aria-checked', sv === parseInt(val) ? 'true' : 'false');
-                });
+                updateRating(parseInt(star.getAttribute('data-value')), true);
             });
 
             starsWrap.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
+                const star = e.target.closest('.bbf-star');
+                if (!star) return;
+                const current = parseInt(star.getAttribute('data-value'));
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                     e.preventDefault();
-                    e.target.click();
+                    updateRating(Math.min(current + 1, maxRating), true);
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    updateRating(Math.max(current - 1, 1), true);
+                } else if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    updateRating(current, true);
                 }
             });
 
@@ -1627,7 +1690,7 @@
     };
 
     // Auto-init: find all elements with data-form attribute
-    document.addEventListener('DOMContentLoaded', () => {
+    const init = () => {
         document.querySelectorAll('[data-form]').forEach(el => {
             const formId = el.getAttribute('data-form');
             const opts = {
@@ -1636,7 +1699,13 @@
             };
             BBF.render(formId, el, opts);
         });
-    });
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 
     // Expose globally
     window.BBF = BBF;
