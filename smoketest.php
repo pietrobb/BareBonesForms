@@ -128,6 +128,34 @@ $formFiles = array_values($formFiles);
 // ─── HTTP POST helper (for live mode) ───────────────────────────
 function smokePost(string $url, array $data, string $token): array {
     $postData = http_build_query($data);
+
+    // Prefer cURL — works on shared hosts with allow_url_fopen=0
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $postData,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/x-www-form-urlencoded',
+                'X-BBF-Smoke-Token: ' . $token,
+                'Connection: close',
+            ],
+        ]);
+        $body = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+        return [
+            'code'  => $code,
+            'body'  => is_string($body) ? $body : '',
+            'json'  => @json_decode(is_string($body) ? $body : '', true),
+            'error' => ($body === false || $code === 0) ? ('HTTP request failed: ' . $err) : '',
+        ];
+    }
+
+    // Fallback to file_get_contents (requires allow_url_fopen=1)
     $headers  = "Content-Type: application/x-www-form-urlencoded\r\n"
               . "Content-Length: " . strlen($postData) . "\r\n"
               . "X-BBF-Smoke-Token: $token\r\n"
@@ -151,7 +179,7 @@ function smokePost(string $url, array $data, string $token): array {
         'code'  => $code,
         'body'  => $body ?: '',
         'json'  => @json_decode($body ?: '', true),
-        'error' => $body === false ? 'HTTP request failed' : '',
+        'error' => $body === false ? 'HTTP request failed (allow_url_fopen disabled and curl not available)' : '',
     ];
 }
 
