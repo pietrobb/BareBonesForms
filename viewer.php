@@ -918,6 +918,7 @@ const state = {
     dateTo: '',
     stats: null,
     detail: null,
+    detailReturn: null,
     todayMap: {},
     deleteTimer: null,
     viewMode: localStorage.getItem('bbf_viewMode') || 'cards',
@@ -985,23 +986,51 @@ const api = {
 };
 
 // ─── URL Hash Routing ────────────────────────────────────────────
-function updateHash() {
-    let hash = '';
+let navigationRequest = 0;
+
+function updateHash(replace = false) {
+    const params = new URLSearchParams();
     if (state.view === 'form' && state.formId) {
-        hash = `form=${state.formId}`;
-        if (state.detail) hash += `&id=${state.detail}`;
-        else if (state.page > 1) hash += `&page=${state.page}`;
+        params.set('form', state.formId);
+        if (state.detail) params.set('id', state.detail);
+        if (state.page > 1) params.set('page', state.page);
+        if (state.search) params.set('q', state.search);
+        if (state.dateFrom) params.set('from', state.dateFrom);
+        if (state.dateTo) params.set('to', state.dateTo);
     }
-    history.replaceState(null, '', hash ? '#' + hash : location.pathname + location.search);
+    const hash = params.size ? '#' + params.toString() : '';
+    const method = replace || hash === location.hash ? 'replaceState' : 'pushState';
+    history[method]({ detailReturn: state.detailReturn }, '', location.pathname + location.search + hash);
 }
 
 function readHash() {
-    const h = location.hash.slice(1);
-    if (!h) return null;
-    const params = {};
-    h.split('&').forEach(p => { const [k, v] = p.split('='); if (k && v) params[k] = decodeURIComponent(v); });
-    return params;
+    return Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
 }
+
+function restoreRoute() {
+    const params = readHash();
+    if (params.form) {
+        return selectForm(params.form, {
+            detail: params.id || null, page: Math.max(1, parseInt(params.page) || 1),
+            search: params.q || '', dateFrom: params.from || '', dateTo: params.to || '',
+            detailReturn: history.state?.detailReturn ?? null, replace: true,
+        });
+    }
+    return showDashboard(true);
+}
+
+function backFromDetail() {
+    if (state.detailReturn !== null) {
+        history.back();
+        return;
+    }
+    // A bookmarked detail has no originating list in this tab's history.
+    return selectForm(state.formId, {
+        page: state.page, search: state.search, dateFrom: state.dateFrom, dateTo: state.dateTo,
+    });
+}
+
+window.addEventListener('hashchange', restoreRoute);
 
 // ─── Mobile drawer ───────────────────────────────────────────────
 document.getElementById('btn-hamburger')?.addEventListener('click', () => {
@@ -1039,16 +1068,20 @@ formListEl.addEventListener('click', (e) => {
 headerTitle.addEventListener('click', () => showDashboard());
 
 // ─── Dashboard ───────────────────────────────────────────────────
-async function showDashboard() {
+async function showDashboard(replace = false) {
+    const request = ++navigationRequest;
+    clearTimeout(searchTimer);
     state.view = 'dashboard';
     state.formId = null;
     state.detail = null;
+    state.detailReturn = null;
     document.title = SITE_NAME;
-    updateHash();
+    updateHash(replace);
     renderFormList(FORMS);
     panelMain.innerHTML = `<div class="loading">${esc(t('loading_dash'))}</div>`;
     try {
         const data = await api.dashboard();
+        if (request !== navigationRequest) return;
         const todayMap = {};
         (data.per_form || []).forEach(f => { todayMap[f.id] = f.today; });
         state.todayMap = todayMap;
@@ -1112,22 +1145,34 @@ function renderDashboard(data) {
 
 // ─── Select form ─────────────────────────────────────────────────
 async function selectForm(formId, opts) {
+    const request = ++navigationRequest;
+    clearTimeout(searchTimer);
     state.view = 'form';
     state.formId = formId;
     state.page = opts?.page || 1;
     state.detail = opts?.detail || null;
-    state.search = '';
-    state.dateFrom = '';
-    state.dateTo = '';
+    state.detailReturn = state.detail ? (opts?.detailReturn ?? null) : null;
+    state.search = opts?.search || '';
+    state.dateFrom = opts?.dateFrom || '';
+    state.dateTo = opts?.dateTo || '';
+    state.subs = [];
+    state.stats = null;
+    state.total = 0;
     state.selected.clear();
     renderFormList(FORMS);
     document.title = formId + ' — ' + SITE_NAME;
-    updateHash();
+    updateHash(opts?.replace);
 
     if (state.detail) {
         panelMain.innerHTML = '<div class="loading">Loading...</div>';
         try {
             const data = await api.detail(formId, state.detail);
+            if (request !== navigationRequest) return;
+            if (state.detailReturn !== '') {
+                const list = await api.submissions(formId, state.perPage, (state.page - 1) * state.perPage, state.dateFrom, state.dateTo, state.search);
+                if (request !== navigationRequest) return;
+                state.subs = list.submissions;
+            }
             state.formDef = data.form_def;
             state.labelMap = buildLabelMap(state.formDef);
             renderDetailView(data.submission, data.form_def);
@@ -1139,8 +1184,9 @@ async function selectForm(formId, opts) {
     try {
         const [statsData, subsData] = await Promise.all([
             api.stats(formId),
-            api.submissions(formId, state.perPage, (state.page - 1) * state.perPage),
+            api.submissions(formId, state.perPage, (state.page - 1) * state.perPage, state.dateFrom, state.dateTo, state.search),
         ]);
+        if (request !== navigationRequest) return;
         state.stats = statsData;
         state.subs = subsData.submissions;
         state.total = subsData.total;
@@ -1458,9 +1504,12 @@ function renderPagination() {
 
 // ─── Page navigation ─────────────────────────────────────────────
 async function loadPage() {
+    const request = ++navigationRequest;
+    updateHash();
     const offset = (state.page - 1) * state.perPage;
     try {
         const data = await api.submissions(state.formId, state.perPage, offset, state.dateFrom || null, state.dateTo || null, state.search || null);
+        if (request !== navigationRequest) return;
         state.subs = data.submissions;
         state.total = data.total;
         const content = document.getElementById('content');
@@ -1475,18 +1524,23 @@ async function loadPage() {
 
 // ─── Detail view ─────────────────────────────────────────────────
 async function openDetail(subId, formId) {
+    clearTimeout(searchTimer);
+    const replace = !!state.detail;
+    const detailReturn = replace ? state.detailReturn : location.hash;
     if (formId && formId !== state.formId) {
-        selectForm(formId, { detail: subId });
-        return;
+        return selectForm(formId, { detail: subId, detailReturn });
     }
+    const request = ++navigationRequest;
+    state.detailReturn = detailReturn;
     state.detail = subId;
-    updateHash();
+    updateHash(replace);
     const content = document.getElementById('content');
     if (content) content.innerHTML = '<div class="loading">Loading...</div>';
     const pagination = document.getElementById('pagination');
     if (pagination) pagination.innerHTML = '';
     try {
         const data = await api.detail(state.formId, subId);
+        if (request !== navigationRequest) return;
         state.formDef = data.form_def;
         state.labelMap = buildLabelMap(state.formDef);
         renderDetailView(data.submission, data.form_def);
@@ -1760,9 +1814,7 @@ panelMain.addEventListener('click', (e) => {
 
     // Back button
     if (e.target.closest('#btn-back')) {
-        state.detail = null;
-        updateHash();
-        renderMain();
+        backFromDetail();
         return;
     }
 
@@ -1966,9 +2018,7 @@ document.addEventListener('keydown', (e) => {
         if (document.body.classList.contains('drawer-open')) { closeDrawer(); return; }
         // Back from detail
         if (state.detail) {
-            state.detail = null;
-            updateHash();
-            renderMain();
+            backFromDetail();
         }
     }
     // Prev/Next with arrow keys in detail
@@ -1989,12 +2039,7 @@ document.addEventListener('keydown', (e) => {
 
 // ─── Init ────────────────────────────────────────────────────────
 renderFormList(FORMS);
-const hashParams = readHash();
-if (hashParams?.form) {
-    selectForm(hashParams.form, { detail: hashParams.id || null, page: parseInt(hashParams.page) || 1 });
-} else {
-    showDashboard();
-}
+restoreRoute();
 
 })();
 </script>
