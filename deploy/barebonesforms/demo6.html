@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo 6: Print Shop Order &mdash; BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* Price summary card */
+.price-card { background: #1e1e2e; border: 2px solid #10b981; border-radius: 10px; padding: 20px; position: sticky; top: 80px; }
+.price-card h4 { color: #10b981; margin-bottom: 12px; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.price-empty { color: #94a3b8; font-size: 0.88rem; font-style: italic; }
+.price-line { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.88rem; color: #cbd5e1; }
+.price-line.sub { color: #94a3b8; font-size: 0.82rem; padding-left: 8px; }
+.price-sep { border-top: 1px solid #334155; margin: 8px 0; }
+.price-sep.thick { border-top: 2px solid #10b981; }
+.price-total { display: flex; justify-content: space-between; font-size: 1.15rem; font-weight: 700; color: #10b981; padding: 4px 0; }
+.price-discount { color: #34d399; font-weight: 600; }
+.price-note { font-size: 0.78rem; color: #94a3b8; margin-top: 10px; line-height: 1.4; }
+/* Sandbox notice */
+.sandbox-notice { max-width: 640px; margin: 20px auto 0; padding: 16px 20px; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; font-size: 0.85rem; }
+.sandbox-notice.active { border-color: rgba(16, 185, 129, 0.5); background: rgba(16, 185, 129, 0.1); }
+.sandbox-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sandbox-header h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #10b981; margin: 0; }
+.sandbox-notice p { color: #94a3b8; font-size: 0.82rem; margin: 0 0 10px; line-height: 1.5; }
+.sandbox-notice p em { color: #cbd5e1; font-style: normal; font-weight: 600; }
+.sandbox-details { margin: 10px 0; }
+.sandbox-item { padding: 2px 0; font-size: 0.82rem; color: #94a3b8; }
+.sandbox-yes { color: #4ade80; margin-right: 4px; }
+.sandbox-no { color: #f87171; margin-right: 4px; }
+.sandbox-tip { font-size: 0.78rem !important; color: #6b7280 !important; margin-bottom: 0 !important; }
+.sandbox-tip code { background: rgba(16, 185, 129, 0.1); padding: 1px 5px; border-radius: 3px; font-size: 0.75rem; }
+
+/* Toggle switch */
+.sandbox-toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+.sandbox-toggle input { opacity: 0; width: 0; height: 0; }
+.sandbox-slider { position: absolute; cursor: pointer; inset: 0; background: #334155; border-radius: 22px; transition: background 0.2s; }
+.sandbox-slider::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; bottom: 3px; background: #94a3b8; border-radius: 50%; transition: transform 0.2s, background 0.2s; }
+.sandbox-toggle input:checked + .sandbox-slider { background: #10b981; }
+.sandbox-toggle input:checked + .sandbox-slider::before { transform: translateX(18px); background: #fff; }
+
+</style>
+</head>
+<body>
+
+<nav class="demo-nav">
+    <a href="demo1.html" class="demo-nav-brand">Bare<span>Bones</span>Forms</a>
+    <div class="demo-nav-links">
+        <a href="demo1.html">Demo 1</a>
+        <a href="demo2.html">Demo 2</a>
+        <a href="demo3.html">Demo 3</a>
+        <a href="demo4.html">Demo 4</a>
+        <a href="demo5.html">Demo 5</a>
+        <a href="demo6.html" class="active">Demo 6</a>
+        <a href="demo7.html">Demo 7</a>
+        <a href="demo8.html">Demo 8</a>
+        <span class="nav-sep">|</span>
+        <a href="docs.html">Docs</a>
+    </div>
+</nav>
+
+<div class="hero">
+    <div class="hero-number" style="background: rgba(245,158,11,0.15); color: #f59e0b;">6</div>
+    <h1>Print Shop Order</h1>
+    <p>An order form with live pricing. Select a product, configure variants, choose delivery &mdash; the sidebar price summary updates in real time. Demonstrates conditional product groups, variant-based pricing, volume discounts, and conditional delivery options.</p>
+</div>
+
+<div class="server-notice">
+    This form demands a PHP server to function. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo6.html</code>.
+</div>
+
+<div class="sandbox-notice" id="sandbox-notice">
+    <div class="sandbox-header">
+        <h4>Sandbox Mode</h4>
+        <label class="sandbox-toggle">
+            <input type="checkbox" id="sandbox-toggle">
+            <span class="sandbox-slider"></span>
+        </label>
+    </div>
+    <p>A dry run. Submit the form and see exactly what <em>would</em> happen &mdash; without actually doing it. Nothing is saved, no emails are sent, no payments are charged.</p>
+    <div class="sandbox-details">
+        <div class="sandbox-item"><span class="sandbox-yes">&#10003;</span> Full server-side validation runs</div>
+        <div class="sandbox-item"><span class="sandbox-yes">&#10003;</span> Email previews (confirmation + notification) with rendered templates</div>
+        <div class="sandbox-item"><span class="sandbox-yes">&#10003;</span> Payment config preview (provider, amount, currency)</div>
+        <div class="sandbox-item"><span class="sandbox-yes">&#10003;</span> Webhook URLs and custom actions listed</div>
+        <div class="sandbox-item"><span class="sandbox-no">&#10007;</span> No data stored, no emails sent, no webhooks fired, no Stripe calls</div>
+    </div>
+    <p class="sandbox-tip">You can also activate sandbox by adding <code>?sandbox</code> to any page URL.</p>
+</div>
+
+<div class="setup-notice">
+    <h4>What works &amp; what needs setup</h4>
+    <div class="setup-item"><span class="ok">&#10003;</span> Fully functional out of the box. No configuration needed.</div>
+    <div class="setup-item"><span class="ok">&#128193;</span> Submissions are saved as JSON files in <code>submissions/demo-order/</code>.</div>
+    <div class="setup-item"><span class="ok">&#9993;</span> Email confirmations require SMTP config in <code>config.php</code>.</div>
+</div>
+
+<div class="page-grid">
+    <div class="form-column">
+        <div id="order-form" data-form="demo-order" data-show-title="true"></div>
+    </div>
+
+    <div class="sidebar-column">
+
+        <!-- Live price summary -->
+        <div class="price-card" id="price-summary">
+            <h4>Order Summary</h4>
+            <div id="price-content">
+                <p class="price-empty">Select a product to see pricing.</p>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h4>How pricing works</h4>
+            <ul class="pipeline">
+                <li><span class="pip">1&#xFE0F;&#x20E3;</span> <span>Base price per piece depends on the product.</span></li>
+                <li><span class="pip">2&#xFE0F;&#x20E3;</span> <span>Each variant option applies a multiplier (e.g. Premium paper = +50%).</span></li>
+                <li><span class="pip">3&#xFE0F;&#x20E3;</span> <span>Quantity discount kicks in at 100+ pieces (up to 20% off at 1000+).</span></li>
+                <li><span class="pip">&#10003;</span> <span>Delivery cost depends on destination and speed.</span></li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>Features demonstrated</h4>
+            <ul class="tech-list">
+                <li>conditional product groups</li>
+                <li>per-product quantity min/max</li>
+                <li>variant-based price multipliers</li>
+                <li>volume discounts (5%&ndash;20%)</li>
+                <li>conditional delivery speed</li>
+                <li>conditional shipping address</li>
+                <li>payment method with COD fee</li>
+                <li>live sidebar price engine</li>
+                <li>hidden field (order total)</li>
+                <li>email confirmations</li>
+                <li>multi-page (2 pages)</li>
+                <li>GDPR consent</li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>Volume discounts</h4>
+            <div class="json-snippet">100+  pieces &rarr;  5% off
+250+  pieces &rarr; 10% off
+500+  pieces &rarr; 15% off
+1000+ pieces &rarr; 20% off</div>
+        </div>
+
+        <a href="https://roguebard.net/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Music</span>
+            <h3>Rogue Bard</h3>
+            <p>Soulful jazz, emotional blues, raw rock &mdash; wrapped in philosophical lyrics.</p>
+            <span class="card-link">Listen now</span>
+        </a>
+
+        <a href="https://lasttrial.art/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Dark Fantasy</span>
+            <h3>The Last Trial</h3>
+            <p>A dark fantasy graphic novel. 200+ illustrated panels, an original soundtrack.</p>
+            <span class="card-link">Explore the story</span>
+        </a>
+    </div>
+</div>
+
+<div class="footer">
+    <p>BareBonesForms &mdash; forms for developers, not for clicking around.</p>
+    <div class="footer-links">
+        <a href="docs.html">Documentation</a>
+        <a href="sandbox.php">Sandbox</a>
+        <a href="check.php">Check Installation</a>
+    </div>
+</div>
+
+<script src="bbf.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    // ─── Pricing data ───────────────────────────────────────────
+    var PRODUCTS = {
+        business_cards: { name: 'Business Cards', base: 0.05, unit: 'pc' },
+        flyers:         { name: 'Flyers',         base: 0.15, unit: 'pc' },
+        posters:        { name: 'Posters',        base: 2.00, unit: 'pc' },
+        stickers:       { name: 'Stickers',       base: 0.08, unit: 'pc' }
+    };
+
+    var MULTIPLIERS = {
+        cards_paper:    { standard: 1, premium: 1.5, luxury: 2.5 },
+        cards_finish:   { matte: 1, glossy: 1.2, soft_touch: 1.8 },
+        cards_sides:    { single: 1, double: 1.4 },
+        flyers_size:    { a5: 1, a4: 1.5, a3: 2.5 },
+        flyers_paper:   { '90g': 1, '130g': 1.3, '170g': 1.6 },
+        flyers_sides:   { single: 1, double: 1.5 },
+        posters_size:   { a3: 1, a2: 1.8, a1: 3, a0: 5 },
+        posters_paper:  { standard: 1, photo: 1.5, canvas: 2.5 },
+        stickers_shape: { round: 1, square: 1, die_cut: 1.5 },
+        stickers_size:  { '5cm': 1, '8cm': 1.5, '10cm': 2 }
+    };
+
+    var PRODUCT_FIELDS = {
+        business_cards: { qty: 'cards_qty', specs: ['cards_paper', 'cards_finish', 'cards_sides'] },
+        flyers:         { qty: 'flyers_qty', specs: ['flyers_size', 'flyers_paper', 'flyers_sides'] },
+        posters:        { qty: 'posters_qty', specs: ['posters_size', 'posters_paper'] },
+        stickers:       { qty: 'stickers_qty', specs: ['stickers_shape', 'stickers_size'] }
+    };
+
+    var SPEC_LABELS = {
+        cards_paper: { standard: 'Standard 300g', premium: 'Premium 400g', luxury: 'Luxury Cotton' },
+        cards_finish: { matte: 'Matte', glossy: 'Glossy', soft_touch: 'Soft Touch' },
+        cards_sides: { single: 'Front only', double: 'Front + Back' },
+        flyers_size: { a5: 'A5', a4: 'A4', a3: 'A3' },
+        flyers_paper: { '90g': '90g', '130g': '130g', '170g': '170g' },
+        flyers_sides: { single: 'Single side', double: 'Double side' },
+        posters_size: { a3: 'A3', a2: 'A2', a1: 'A1', a0: 'A0' },
+        posters_paper: { standard: 'Standard', photo: 'Photo Paper', canvas: 'Canvas' },
+        stickers_shape: { round: 'Round', square: 'Square', die_cut: 'Die-cut' },
+        stickers_size: { '5cm': '5 cm', '8cm': '8 cm', '10cm': '10 cm' }
+    };
+
+    var VOLUME_DISCOUNTS = [
+        { min: 1000, pct: 20 },
+        { min: 500,  pct: 15 },
+        { min: 250,  pct: 10 },
+        { min: 100,  pct: 5 }
+    ];
+
+    var DELIVERY = {
+        pickup: 0,
+        domestic: { standard: 5, express: 12 },
+        eu: { standard: 15, express: 25 },
+        international: { standard: 25, express: 45 }
+    };
+
+    // ─── Price calculation ──────────────────────────────────────
+    function getFormValue(form, name) {
+        var el = form.querySelector('select[name="' + name + '"]');
+        if (el) return el.value;
+        var radios = form.querySelectorAll('input[type="radio"][name="' + name + '"]');
+        if (radios.length > 0) {
+            var checked = form.querySelector('input[name="' + name + '"]:checked');
+            return checked ? checked.value : '';
+        }
+        var input = form.querySelector('input[name="' + name + '"]');
+        if (input) return input.value;
+        return '';
+    }
+
+    function calculatePrice(form) {
+        var product = getFormValue(form, 'product');
+        if (!product || !PRODUCTS[product]) return null;
+
+        var pf = PRODUCT_FIELDS[product];
+        var qty = parseInt(getFormValue(form, pf.qty), 10) || 0;
+        if (qty < 1) return { product: product, incomplete: true, reason: 'quantity' };
+
+        var unitPrice = PRODUCTS[product].base;
+        var specDetails = [];
+        var allSpecsSelected = true;
+
+        for (var i = 0; i < pf.specs.length; i++) {
+            var field = pf.specs[i];
+            var val = getFormValue(form, field);
+            if (!val) { allSpecsSelected = false; continue; }
+            var mult = MULTIPLIERS[field] && MULTIPLIERS[field][val];
+            if (mult) {
+                unitPrice *= mult;
+                specDetails.push((SPEC_LABELS[field] && SPEC_LABELS[field][val]) || val);
+            }
+        }
+
+        var subtotal = unitPrice * qty;
+        var discountPct = 0;
+        for (var d = 0; d < VOLUME_DISCOUNTS.length; d++) {
+            if (qty >= VOLUME_DISCOUNTS[d].min) { discountPct = VOLUME_DISCOUNTS[d].pct; break; }
+        }
+        var discountAmount = subtotal * (discountPct / 100);
+        var afterDiscount = subtotal - discountAmount;
+
+        var deliveryCountry = getFormValue(form, 'delivery_country');
+        var deliverySpeed = getFormValue(form, 'delivery_speed');
+        var deliveryCost = 0;
+        var deliveryLabel = '';
+        if (deliveryCountry === 'pickup') {
+            deliveryCost = 0; deliveryLabel = 'Pickup (free)';
+        } else if (deliveryCountry && DELIVERY[deliveryCountry]) {
+            if (deliverySpeed && DELIVERY[deliveryCountry][deliverySpeed] !== undefined) {
+                deliveryCost = DELIVERY[deliveryCountry][deliverySpeed];
+                deliveryLabel = (deliveryCountry === 'domestic' ? 'Domestic' : deliveryCountry === 'eu' ? 'EU' : 'International')
+                    + ' ' + (deliverySpeed === 'express' ? 'Express' : 'Standard');
+            }
+        }
+
+        var codFee = 0;
+        var paymentMethod = getFormValue(form, 'payment_method');
+        if (paymentMethod === 'cod') codFee = 2;
+
+        return {
+            product: product,
+            productName: PRODUCTS[product].name,
+            specs: specDetails,
+            allSpecsSelected: allSpecsSelected,
+            qty: qty,
+            unitPrice: unitPrice,
+            subtotal: subtotal,
+            discountPct: discountPct,
+            discountAmount: discountAmount,
+            afterDiscount: afterDiscount,
+            deliveryLabel: deliveryLabel,
+            deliveryCost: deliveryCost,
+            codFee: codFee,
+            paymentMethod: paymentMethod,
+            total: afterDiscount + deliveryCost + codFee
+        };
+    }
+
+    function fmt(n) { return n.toFixed(2); }
+
+    function updatePriceSummary(form) {
+        var el = document.getElementById('price-content');
+        if (!el) return;
+
+        var p = calculatePrice(form);
+        if (!p) { el.innerHTML = '<p class="price-empty">Select a product to see pricing.</p>'; return; }
+        if (p.incomplete) { el.innerHTML = '<p class="price-empty">Enter quantity to see pricing.</p>'; return; }
+
+        var h = '';
+        h += '<div class="price-line"><strong>' + p.productName + '</strong></div>';
+        if (p.specs.length > 0) {
+            h += '<div class="price-line sub">' + p.specs.join(' &middot; ') + '</div>';
+        }
+        if (!p.allSpecsSelected) {
+            h += '<div class="price-line sub" style="color:#f59e0b">Select all options for final price</div>';
+        }
+        h += '<div class="price-sep"></div>';
+        h += '<div class="price-line"><span>Unit price</span><span>&euro;' + fmt(p.unitPrice) + '</span></div>';
+        h += '<div class="price-line"><span>&times; ' + p.qty + ' pieces</span><span>&euro;' + fmt(p.subtotal) + '</span></div>';
+
+        if (p.discountPct > 0) {
+            h += '<div class="price-line price-discount"><span>Volume discount (' + p.discountPct + '%)</span><span>&minus;&euro;' + fmt(p.discountAmount) + '</span></div>';
+        }
+
+        if (p.deliveryLabel) {
+            h += '<div class="price-line"><span>' + p.deliveryLabel + '</span><span>' + (p.deliveryCost > 0 ? '&euro;' + fmt(p.deliveryCost) : 'Free') + '</span></div>';
+        }
+
+        if (p.codFee > 0) {
+            h += '<div class="price-line"><span>Cash on Delivery fee</span><span>&euro;' + fmt(p.codFee) + '</span></div>';
+        }
+
+        h += '<div class="price-sep thick"></div>';
+        h += '<div class="price-total"><span>Total</span><span>&euro;' + fmt(p.total) + '</span></div>';
+
+        if (p.discountPct > 0) {
+            h += '<div class="price-note">You save &euro;' + fmt(p.discountAmount) + ' with the volume discount.</div>';
+        }
+
+        el.innerHTML = h;
+
+        // Fill hidden order_total field
+        var hiddenTotal = form.querySelector('input[name="order_total"]');
+        if (hiddenTotal) hiddenTotal.value = p ? fmt(p.total) : '';
+    }
+
+    // ─── Hook into form ─────────────────────────────────────────
+    var container = document.getElementById('order-form');
+    if (!container) return;
+
+    var formObserver = new MutationObserver(function() {
+        var form = container.querySelector('form.bbf-form');
+        if (!form) return;
+        formObserver.disconnect();
+
+        // Update on any change
+        form.addEventListener('change', function() { updatePriceSummary(form); });
+        form.addEventListener('input', function() { updatePriceSummary(form); });
+
+        // Initial calculation
+        updatePriceSummary(form);
+    });
+    formObserver.observe(container, { childList: true, subtree: true });
+})();
+
+// ─── Sandbox toggle ──────────────────────────────────────────
+(function() {
+    var toggle = document.getElementById('sandbox-toggle');
+    var notice = document.getElementById('sandbox-notice');
+    if (!toggle) return;
+
+    // Default to sandbox ON for this demo
+    var params = new URLSearchParams(window.location.search);
+    var isSandbox = params.has('sandbox');
+    var hasNoSandbox = params.has('no-sandbox');
+
+    if (!isSandbox && !hasNoSandbox) {
+        var url = new URL(window.location);
+        url.searchParams.set('sandbox', '');
+        window.location.replace(url.toString());
+        return;
+    }
+
+    // Set initial state
+    toggle.checked = isSandbox;
+    if (isSandbox) notice.classList.add('active');
+
+    toggle.addEventListener('change', function() {
+        var url = new URL(window.location);
+        if (toggle.checked) {
+            url.searchParams.set('sandbox', '');
+            url.searchParams.delete('no-sandbox');
+        } else {
+            url.searchParams.delete('sandbox');
+            url.searchParams.set('no-sandbox', '');
+        }
+        window.location.href = url.toString();
+    });
+})();
+</script>
+</body>
+</html>

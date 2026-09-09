@@ -1,0 +1,303 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-allergy",
+    "name": "Allergy Remedy Finder",
+    "description": "Answer the questions below to find the homeopathic remedy that best matches your allergy symptoms. The form adapts \u2014 only relevant follow-up questions appear based on your selections.",
+    "submit_label": "Find My Remedy",
+    "success_message": "Analyzing your symptom profile\u2026",
+    "label_position": "top",
+
+    "fields": [
+        {
+            "name": "section_symptoms",
+            "type": "section",
+            "title": "What are your main symptoms?"
+        },
+        {
+            "name": "symptoms",
+            "type": "checkbox",
+            "label": "Select all that apply",
+            "required": true,
+            "columns": 2,
+            "options": [
+                { "value": "sneezing", "label": "Sneezing" },
+                { "value": "runny_nose", "label": "Runny nose" },
+                { "value": "itchy_eyes", "label": "Itchy / watery eyes" },
+                { "value": "nasal_congestion", "label": "Nasal congestion" },
+                { "value": "throat_irritation", "label": "Throat irritation" },
+                { "value": "skin_rash", "label": "Skin rash / hives" }
+            ]
+        },
+
+        { "name": "page2", "type": "page_break" },
+
+        {
+            "name": "section_details",
+            "type": "section",
+            "title": "Tell us more about your symptoms"
+        },
+
+        {
+            "name": "sneezing_group",
+            "type": "group",
+            "title": "Sneezing",
+            "show_if": { "field": "symptoms", "value": "sneezing" },
+            "fields": [
+                {
+                    "name": "sneeze_intensity",
+                    "type": "radio",
+                    "label": "How would you describe your sneezing?",
+                    "columns": "inline",
+                    "options": [
+                        { "value": "occasional", "label": "Occasional, mild" },
+                        { "value": "frequent_violent", "label": "Frequent, violent bouts" }
+                    ]
+                },
+                {
+                    "name": "sneeze_timing",
+                    "type": "radio",
+                    "label": "When is sneezing worst?",
+                    "columns": "inline",
+                    "options": [
+                        { "value": "morning", "label": "Morning" },
+                        { "value": "evening", "label": "Evening" },
+                        { "value": "constant", "label": "All day" }
+                    ]
+                },
+                {
+                    "name": "sneeze_trigger",
+                    "type": "checkbox",
+                    "label": "What triggers your sneezing?",
+                    "columns": 2,
+                    "options": [
+                        { "value": "cold_air", "label": "Cold air" },
+                        { "value": "dust", "label": "Dust" },
+                        { "value": "pollen", "label": "Pollen" },
+                        { "value": "light", "label": "Bright light" }
+                    ]
+                }
+            ]
+        },
+
+        {
+            "name": "discharge_group",
+            "type": "group",
+            "title": "Nasal Discharge",
+            "show_if": { "field": "symptoms", "value": "runny_nose" },
+            "fields": [
+                {
+                    "name": "discharge_type",
+                    "type": "radio",
+                    "label": "What does the discharge look like?",
+                    "options": [
+                        { "value": "watery_clear", "label": "Watery, clear" },
+                        { "value": "thick_yellow", "label": "Thick, yellowish-green" },
+                        { "value": "thin_burning", "label": "Thin but burning / irritating" },
+                        { "value": "egg_white", "label": "Like egg white" }
+                    ]
+                },
+                {
+                    "name": "discharge_side",
+                    "type": "radio",
+                    "label": "Which side is worse?",
+                    "columns": "inline",
+                    "options": [
+                        { "value": "both", "label": "Both equally" },
+                        { "value": "left", "label": "Left side" },
+                        { "value": "right", "label": "Right side" },
+                        { "value": "alternating", "label": "Alternates sides" }
+                    ]
+                }
+            ]
+        },
+
+        {
+            "name": "eyes_group",
+            "type": "group",
+            "title": "Eye Symptoms",
+            "show_if": { "field": "symptoms", "value": "itchy_eyes" },
+            "fields": [
+                {
+                    "name": "eye_sensation",
+                    "type": "radio",
+                    "label": "How do your eyes feel?",
+                    "options": [
+                        { "value": "burning_tears", "label": "Burning with profuse tears" },
+                        { "value": "gritty_dry", "label": "Gritty, dry sensation" },
+                        { "value": "watery_bland", "label": "Watery but not burning" }
+                    ]
+                },
+                {
+                    "name": "eye_worse",
+                    "type": "checkbox",
+                    "label": "Eyes feel worse from:",
+                    "columns": 2,
+                    "options": [
+                        { "value": "light", "label": "Bright light" },
+                        { "value": "wind", "label": "Wind" },
+                        { "value": "rubbing", "label": "Rubbing" },
+                        { "value": "warmth", "label": "Warm rooms" }
+                    ]
+                }
+            ]
+        },
+
+        {
+            "name": "congestion_group",
+            "type": "group",
+            "title": "Nasal Congestion",
+            "show_if": { "field": "symptoms", "value": "nasal_congestion" },
+            "fields": [
+                {
+                    "name": "congestion_side",
+                    "type": "radio",
+                    "label": "Which side is more blocked?",
+                    "columns": "inline",
+                    "options": [
+                        { "value": "both", "label": "Both" },
+                        { "value": "left", "label": "Left" },
+                        { "value": "right", "label": "Right" },
+                        { "value": "alternating", "label": "Alternates" }
+                    ]
+                },
+                {
+                    "name": "congestion_timing",
+                    "type": "radio",
+                    "label": "When is congestion worst?",
+                    "columns": "inline",
+                    "options": [
+                        { "value": "morning", "label": "Morning" },
+                        { "value": "night", "label": "Night" },
+                        { "value": "constant", "label": "Constant" }
+                    ]
+                }
+            ]
+        },
+
+        {
+            "name": "throat_group",
+            "type": "group",
+            "title": "Throat",
+            "show_if": { "field": "symptoms", "value": "throat_irritation" },
+            "fields": [
+                {
+                    "name": "throat_sensation",
+                    "type": "radio",
+                    "label": "How does your throat feel?",
+                    "options": [
+                        { "value": "scratchy", "label": "Scratchy, raw" },
+                        { "value": "burning", "label": "Burning" },
+                        { "value": "dry", "label": "Dry, tickling" },
+                        { "value": "mucus", "label": "Mucus dripping down" }
+                    ]
+                }
+            ]
+        },
+
+        {
+            "name": "skin_group",
+            "type": "group",
+            "title": "Skin Reaction",
+            "show_if": { "field": "symptoms", "value": "skin_rash" },
+            "fields": [
+                {
+                    "name": "skin_type",
+                    "type": "radio",
+                    "label": "What does the skin reaction look like?",
+                    "options": [
+                        { "value": "hives", "label": "Hives (raised welts)" },
+                        { "value": "itchy_patches", "label": "Itchy, red patches" },
+                        { "value": "swelling", "label": "Puffy swelling" },
+                        { "value": "dry_flaky", "label": "Dry, flaky skin" }
+                    ]
+                }
+            ]
+        },
+
+        { "name": "page3", "type": "page_break" },
+
+        {
+            "name": "section_general",
+            "type": "section",
+            "title": "General Characteristics"
+        },
+        {
+            "name": "worse_from",
+            "type": "checkbox",
+            "label": "My symptoms get worse from:",
+            "columns": 3,
+            "options": [
+                { "value": "heat", "label": "Heat" },
+                { "value": "cold", "label": "Cold" },
+                { "value": "dry_weather", "label": "Dry weather" },
+                { "value": "damp", "label": "Damp weather" },
+                { "value": "morning", "label": "Morning" },
+                { "value": "evening", "label": "Evening" },
+                { "value": "night", "label": "Night / after midnight" },
+                { "value": "outdoors", "label": "Going outdoors" },
+                { "value": "warm_room", "label": "Warm rooms" }
+            ]
+        },
+        {
+            "name": "better_from",
+            "type": "checkbox",
+            "label": "My symptoms improve from:",
+            "columns": 3,
+            "options": [
+                { "value": "fresh_air", "label": "Fresh, open air" },
+                { "value": "warm_room", "label": "Warm rooms" },
+                { "value": "rest", "label": "Rest / lying down" },
+                { "value": "cold_applications", "label": "Cold compresses" },
+                { "value": "movement", "label": "Gentle movement" },
+                { "value": "eating", "label": "Eating" }
+            ]
+        },
+        {
+            "name": "thirst",
+            "type": "radio",
+            "label": "How is your thirst?",
+            "columns": "inline",
+            "options": [
+                { "value": "very_thirsty", "label": "Very thirsty" },
+                { "value": "thirstless", "label": "Not thirsty at all" },
+                { "value": "small_sips", "label": "Only small sips" }
+            ]
+        },
+        {
+            "name": "mood",
+            "type": "radio",
+            "label": "How do you feel emotionally?",
+            "options": [
+                { "value": "irritable", "label": "Irritable, want to be left alone" },
+                { "value": "weepy_clingy", "label": "Weepy, wanting comfort" },
+                { "value": "restless_anxious", "label": "Restless, anxious" },
+                { "value": "lethargic", "label": "Tired, indifferent" }
+            ]
+        },
+
+        {
+            "name": "severe_warning",
+            "type": "group",
+            "title": "Consider Professional Consultation",
+            "description": "Some of your symptoms suggest a stronger allergic reaction. While a well-chosen remedy may help, consult a healthcare professional if symptoms are severe or persistent.",
+            "css_class": "bbf-warning",
+            "show_if": {
+                "any": [
+                    { "field": "symptoms", "value": "skin_rash" },
+                    { "field": "symptoms", "value": "throat_irritation" },
+                    {
+                        "all": [
+                            { "field": "symptoms", "value": "sneezing" },
+                            { "field": "sneeze_intensity", "value": "frequent_violent" }
+                        ]
+                    }
+                ]
+            }
+        }
+    ],
+
+    "on_submit": {
+        "store": true
+    }
+}

@@ -15,13 +15,13 @@
  * No emails sent, no data stored — everything goes through sandbox.
  */
 
-// ─── Config ─────────────────────────────────────────────────────
-$projectDir  = realpath(__DIR__ . '/..');
+require_once __DIR__ . '/test-isolation-helper.php'; // CLI-only, before any side effects.
+$projectDir  = bbf_test_installation(dirname(__DIR__), true); bbf_test_copy(dirname(__DIR__) . '/sandbox.php', $projectDir . '/sandbox.php');
 $formsDir    = $projectDir . '/forms';
 $templatesDir = $projectDir . '/templates';
 $configFile  = $projectDir . '/config.php';
 $host        = '127.0.0.1';
-$port        = 9753 + rand(0, 200); // random port to avoid conflicts
+$port        = bbf_test_port(); // OS-selected loopback port
 $baseUrl     = "http://$host:$port";
 $filterForm  = $argv[1] ?? null;
 
@@ -45,18 +45,8 @@ function cleanup(): void {
     } elseif ($configBackup !== null) {
         file_put_contents($configFile, $configBackup);
     }
-    if (isset($serverProc) && is_resource($serverProc)) {
-        $status = proc_get_status($serverProc);
-        if ($status['running']) {
-            // Kill process tree on Windows
-            if (stripos(PHP_OS, 'WIN') === 0) {
-                exec("taskkill /F /T /PID {$status['pid']} 2>nul");
-            } else {
-                posix_kill($status['pid'], SIGTERM);
-            }
-        }
-        proc_close($serverProc);
-    }
+    bbf_test_stop_server($serverProc ?? null);
+    $serverProc = null;
 }
 register_shutdown_function('cleanup');
 
@@ -64,14 +54,14 @@ if (file_exists($configFile)) {
     $configBackup = file_get_contents($configFile);
 }
 
-// Write test config (sandbox enabled, CSRF disabled for easy testing)
+// Write private test config (sandbox and CSRF enabled; fixture-only admin credential)
 $testConfig = <<<'PHP'
 <?php
 defined('BBF_LOADED') || exit;
 return [
     'storage'        => 'file',
     'sandbox'        => true,
-    'csrf'           => false,
+    'csrf'           => true,
     'rate_limit'     => 9999,
     'store_ip'       => false,
     'store_user_agent' => false,
@@ -187,11 +177,15 @@ foreach ($formFiles as $file) {
             pass("$name.json: payment provider = stripe");
         }
 
-        if (empty($pay['amount_field']) && empty($pay['amount'])) {
-            fail("$name.json: payment needs 'amount_field' or 'amount'");
+        $mode = $pay['mode'] ?? '';
+        if ($mode === 'catalog' && !empty($pay['catalog']) && is_array($pay['catalog'])) {
+            pass("$name.json: payment amount from trusted catalog");
+        } elseif ($mode === 'donation' && !empty($pay['amount_field'])) {
+            pass("$name.json: donation amount from field '{$pay['amount_field']}'");
+        } elseif (isset($pay['amount']) && is_numeric($pay['amount'])) {
+            pass("$name.json: fixed payment amount {$pay['amount']}");
         } else {
-            $amtSrc = !empty($pay['amount_field']) ? "field '{$pay['amount_field']}'" : "fixed {$pay['amount']}";
-            pass("$name.json: payment amount from $amtSrc");
+            fail("$name.json: payment needs trusted catalog, explicit donation amount_field, or fixed amount");
         }
 
         if (!empty($pay['currency'])) {
@@ -223,60 +217,17 @@ if (empty($forms)) {
 
 section("Phase 2: Starting PHP dev server");
 
-$serverCmd = PHP_BINARY . " -S $host:$port -t " . escapeshellarg($projectDir);
-$descriptors = [
-    0 => ['pipe', 'r'],
-    1 => ['pipe', 'w'],
-    2 => ['pipe', 'w'],
-];
-$serverProc = proc_open($serverCmd, $descriptors, $pipes, $projectDir);
-
-if (!is_resource($serverProc)) {
-    fail("Cannot start PHP dev server");
-    exit(1);
-}
-
-// Wait for server to be ready
-$ready = false;
-for ($i = 0; $i < 30; $i++) {
-    usleep(200000); // 200ms
-    $conn = @fsockopen($host, $port, $errno, $errstr, 1);
-    if ($conn) {
-        fclose($conn);
-        $ready = true;
-        break;
-    }
-}
-
-if (!$ready) {
-    fail("PHP dev server failed to start on $host:$port");
-    exit(1);
-}
+$serverProc = bbf_test_start_server($projectDir, $host, $port);
+bbf_test_verify_server($serverProc);
 pass("PHP dev server running on $host:$port");
-
-// ─── HTTP helper (no curl dependency) ───────────────────────────
+// Login once over owned HTTP; the fixture session survives server restarts.
+$login = bbf_test_http($serverProc, "$baseUrl/sandbox.php", null, ['headers' => ['X-BBF-Token' => 'test-token']]);
+preg_match('/^Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/mi', $login['headers'], $sessionCookie);
+preg_match('/const sandboxCsrf = ("[a-f0-9]{64}")/', $login['body'], $sessionCsrf);
+if ($login['code'] !== 200 || empty($sessionCookie[1]) || empty($sessionCsrf[1])) { fail('fixture admin login must return HTTP 200, session cookie and management CSRF'); exit(1); }
 function httpPost(string $url, array $data): array {
-    $postData = http_build_query($data);
-    $ctx = stream_context_create([
-        'http' => [
-            'method'  => 'POST',
-            'header'  => "Content-Type: application/x-www-form-urlencoded\r\nConnection: close\r\nContent-Length: " . strlen($postData) . "\r\n",
-            'content' => $postData,
-            'timeout' => 10,
-            'ignore_errors' => true,
-        ],
-    ]);
-    $http_response_header = null;
-    $body = @file_get_contents($url, false, $ctx);
-    $code = 0;
-    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
-        $code = (int)$m[1];
-    }
-    $error = ($body === false) ? 'Request failed' : '';
-    return ['code' => $code, 'body' => $body ?: '', 'error' => $error, 'json' => @json_decode($body ?: '', true)];
-}
-
-// ─── Generate valid test data for a form ────────────────────────
+    global $serverProc, $sessionCookie, $sessionCsrf;
+    return bbf_test_http($serverProc, $url, $data, ['cookie' => $sessionCookie[1], 'headers' => ['X-BBF-CSRF' => json_decode($sessionCsrf[1])]]); }
 function generateTestData(array $form, bool $fillRequired = true): array {
     $data = [];
     $flatFields = flattenFields($form['fields'] ?? []);
@@ -433,27 +384,10 @@ function countRequired(array $fields): int {
 // ─── Server restart helper ──────────────────────────────────────
 function restartServer(): void {
     global $host, $port, $serverProc, $projectDir;
-    // Kill existing
-    if (is_resource($serverProc)) {
-        $status = proc_get_status($serverProc);
-        if ($status['running']) {
-            if (stripos(PHP_OS, 'WIN') === 0) {
-                exec("taskkill /F /T /PID {$status['pid']} 2>nul");
-            } else {
-                posix_kill($status['pid'], SIGTERM);
-            }
-        }
-        proc_close($serverProc);
-    }
+    bbf_test_stop_server($serverProc);
+    $serverProc = null;
     usleep(300000); // wait for port to free
-    $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-    $pipes = [];
-    $serverProc = proc_open(PHP_BINARY . " -S $host:$port -t " . escapeshellarg($projectDir), $desc, $pipes, $projectDir);
-    for ($i = 0; $i < 30; $i++) {
-        usleep(200000);
-        $conn = @fsockopen($host, $port, $errno, $errstr, 1);
-        if ($conn) { fclose($conn); return; }
-    }
+    $serverProc = bbf_test_start_server($projectDir, $host, $port);
 }
 
 // ─── Run functional tests ───────────────────────────────────────
@@ -461,8 +395,8 @@ $formIndex = 0;
 foreach ($forms as $name => $form) {
     section("Form: $name");
 
-    // Restart server every 3 forms to prevent hangs on Windows
-    if ($formIndex > 0 && $formIndex % 3 === 0) {
+    // Restart every form to prevent Windows hangs; keep the same fixture session.
+    if ($formIndex > 0) {
         restartServer();
     }
     $formIndex++;
@@ -474,7 +408,7 @@ foreach ($forms as $name => $form) {
     // Test 1: Definition endpoint
     $defUrl = "$baseUrl/submit.php?form=$formId&action=definition";
     $ctx = stream_context_create(['http' => ['timeout' => 10]]);
-    $defBody = @file_get_contents($defUrl, false, $ctx);
+    $defBody = bbf_test_http($serverProc, $defUrl)['body'];
     $def = $defBody ? json_decode($defBody, true) : null;
 
     if ($def && !empty($def['id'])) {

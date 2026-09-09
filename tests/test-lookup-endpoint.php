@@ -3,7 +3,7 @@
  * Test endpoint that simulates company lookup by IČO.
  * Used by integration tests for lookup feature.
  */
-header('Content-Type: application/json; charset=utf-8');
+if (PHP_SAPI !== 'cli' && !(PHP_SAPI === 'cli-server' && getenv('BBF_TEST_FIXTURE_ROOT') === realpath(__DIR__ . '/..'))) { http_response_code(403); exit('Test fixture only.'); } header('Content-Type: application/json; charset=utf-8');
 
 $ico = $_GET['ico'] ?? '';
 

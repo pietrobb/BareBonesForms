@@ -1,0 +1,65 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-csv",
+    "name": "Event Registration",
+    "description": "Store the submission and notify the administrator. A step beyond mere storage.",
+    "submit_label": "Register",
+    "submitting_label": "Registering...",
+    "success_message": "Registered! Open submissions/demo-csv.csv to see your row.",
+    "fields": [
+        {
+            "name": "name",
+            "type": "text",
+            "label": "Full Name",
+            "placeholder": "John Smith",
+            "required": true
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "placeholder": "john@company.com",
+            "required": true
+        },
+        {
+            "name": "company",
+            "type": "text",
+            "label": "Company",
+            "placeholder": "Acme Corp",
+            "required": false
+        },
+        {
+            "name": "ticket",
+            "type": "select",
+            "label": "Ticket Type",
+            "required": true,
+            "placeholder": "Select ticket...",
+            "options": [
+                { "value": "free", "label": "Free (online only)" },
+                { "value": "standard", "label": "Standard ($49)" },
+                { "value": "vip", "label": "VIP ($149)" }
+            ]
+        },
+        {
+            "name": "dietary",
+            "type": "checkbox",
+            "label": "Dietary Requirements",
+            "required": false,
+            "options": [
+                { "value": "vegetarian", "label": "Vegetarian" },
+                { "value": "vegan", "label": "Vegan" },
+                { "value": "gluten-free", "label": "Gluten-free" },
+                { "value": "none", "label": "No restrictions" }
+            ]
+        }
+    ],
+    "on_submit": {
+        "store": true,
+        "notify": {
+            "to": "admin@example.com",
+            "subject": "New registration: {{name}} ({{ticket}})",
+            "template": "notify.html"
+        }
+    }
+}

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo 7: Monty Python Quiz &mdash; BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* Quiz results */
+.quiz-results { margin-top: 20px; }
+.quiz-results h2 { font-size: 1.4rem; margin-bottom: 8px; }
+.quiz-subtitle { color: #6b7280; font-size: 0.95rem; margin-bottom: 20px; }
+.quiz-score-wrap { text-align: center; margin-bottom: 24px; }
+.quiz-score-ring { display: inline-block; width: 120px; height: 120px; border-radius: 50%; border: 8px solid #e5e7eb; position: relative; }
+.quiz-score-ring .fill { position: absolute; inset: -8px; border-radius: 50%; border: 8px solid transparent; border-top-color: #10b981; border-right-color: #10b981; transition: transform 0.8s ease; transform-origin: center; }
+.quiz-score-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; font-weight: 800; }
+.quiz-score-label { margin-top: 8px; font-size: 1rem; font-weight: 600; }
+.quiz-answer { background: var(--bg, #fff); border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px 18px; margin-bottom: 10px; }
+.quiz-answer.correct { border-left: 4px solid #10b981; }
+.quiz-answer.wrong { border-left: 4px solid #ef4444; }
+.quiz-answer .q { font-weight: 600; font-size: 0.92rem; margin-bottom: 4px; }
+.quiz-answer .a { font-size: 0.85rem; }
+.quiz-answer .a.your-pick { color: #ef4444; }
+.quiz-answer .a.right-pick { color: #10b981; }
+.quiz-verdict { margin-top: 20px; padding: 16px 20px; border-radius: 10px; font-size: 0.95rem; line-height: 1.5; }
+.quiz-verdict.excellent { background: #d1fae5; color: #065f46; }
+.quiz-verdict.good { background: #dbeafe; color: #1e40af; }
+.quiz-verdict.mediocre { background: #fef3c7; color: #92400e; }
+.quiz-verdict.terrible { background: #fee2e2; color: #991b1b; }
+.quiz-retry { display: inline-block; margin-top: 12px; padding: 8px 20px; background: #6366f1; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+.quiz-retry:hover { background: #4f46e5; }
+@media (prefers-color-scheme: dark) {
+    .quiz-answer { background: #1e1e2e; border-color: #334155; }
+    .quiz-answer.correct { border-left-color: #10b981; }
+    .quiz-answer.wrong { border-left-color: #ef4444; }
+    .quiz-score-ring { border-color: #334155; }
+    .quiz-subtitle { color: #94a3b8; }
+    .quiz-verdict.excellent { background: #064e3b; color: #a7f3d0; }
+    .quiz-verdict.good { background: #1e3a5f; color: #93c5fd; }
+    .quiz-verdict.mediocre { background: #451a03; color: #fcd34d; }
+    .quiz-verdict.terrible { background: #450a0a; color: #fca5a5; }
+}
+</style>
+</head>
+<body>
+
+<nav class="demo-nav">
+    <a href="demo1.html" class="demo-nav-brand">Bare<span>Bones</span>Forms</a>
+    <div class="demo-nav-links">
+        <a href="demo1.html">Demo 1</a>
+        <a href="demo2.html">Demo 2</a>
+        <a href="demo3.html">Demo 3</a>
+        <a href="demo4.html">Demo 4</a>
+        <a href="demo5.html">Demo 5</a>
+        <a href="demo6.html">Demo 6</a>
+        <a href="demo7.html" class="active">Demo 7</a>
+        <a href="demo8.html">Demo 8</a>
+        <span class="nav-sep">|</span>
+        <a href="docs.html">Docs</a>
+    </div>
+</nav>
+
+<div class="hero">
+    <div class="hero-number" style="background: rgba(99,102,241,0.15); color: #6366f1;">7</div>
+    <h1>The Spanish Inquisition Entrance Exam</h1>
+    <p>A Monty Python&ndash;themed quiz with randomized answer order. Every page load shuffles the options, so memorising positions won&rsquo;t help. Demonstrates the new <code>shuffle</code> property on radio, select, and group fields.</p>
+</div>
+
+<div class="server-notice">
+    This form demands a PHP server to function. Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo7.html</code>.
+</div>
+
+<div class="setup-notice">
+    <h4>What works &amp; what needs setup</h4>
+    <div class="setup-item"><span class="ok">&#10003;</span> Fully functional out of the box. No configuration needed.</div>
+    <div class="setup-item"><span class="ok">&#128193;</span> Submissions are saved as JSON files in <code>submissions/demo-quiz/</code>.</div>
+</div>
+
+<div class="page-grid">
+    <div class="form-column">
+        <div id="quiz-form" data-form="demo-quiz" data-show-title="true" data-hide-on-success="true"></div>
+        <div id="quiz-results"></div>
+    </div>
+
+    <div class="sidebar-column">
+
+        <div class="info-card">
+            <h4>How it works</h4>
+            <ul class="pipeline">
+                <li><span class="pip">1&#xFE0F;&#x20E3;</span> <span>Answer 10 questions across 2 pages of absurd trivia.</span></li>
+                <li><span class="pip">2&#xFE0F;&#x20E3;</span> <span>Options are shuffled on every page load &mdash; no muscle memory!</span></li>
+                <li><span class="pip">3&#xFE0F;&#x20E3;</span> <span>Submit, get your score, verdict, and see which ones you got wrong.</span></li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>Features demonstrated</h4>
+            <ul class="tech-list">
+                <li><code>shuffle</code> on radio options</li>
+                <li><code>shuffle</code> on select options</li>
+                <li>multi-page (3 pages)</li>
+                <li>client-side scoring engine</li>
+                <li>post-submit results panel</li>
+                <li><code>data-hide-on-success</code></li>
+                <li>server stores the submission</li>
+            </ul>
+        </div>
+
+        <div class="info-card">
+            <h4>Scoring</h4>
+            <div class="json-snippet">10/10 &rarr; Supreme Inquisitor
+8&ndash;9  &rarr; Grand Inquisitor
+5&ndash;7  &rarr; Passable Peasant
+0&ndash;4  &rarr; Witch Material</div>
+        </div>
+
+        <a href="https://roguebard.net/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Music</span>
+            <h3>Rogue Bard</h3>
+            <p>Soulful jazz, emotional blues, raw rock &mdash; wrapped in philosophical lyrics.</p>
+            <span class="card-link">Listen now</span>
+        </a>
+
+        <a href="https://lasttrial.art/" target="_blank" rel="noopener" class="project-card">
+            <span class="card-label">Dark Fantasy</span>
+            <h3>The Last Trial</h3>
+            <p>A dark fantasy graphic novel. 200+ illustrated panels, an original soundtrack.</p>
+            <span class="card-link">Explore the story</span>
+        </a>
+    </div>
+</div>
+
+<div class="footer">
+    <p>BareBonesForms &mdash; forms for developers, not for clicking around.</p>
+    <div class="footer-links">
+        <a href="docs.html">Documentation</a>
+        <a href="sandbox.php">Sandbox</a>
+        <a href="check.php">Check Installation</a>
+    </div>
+</div>
+
+<script src="bbf.js"></script>
+<script>
+(function() {
+    'use strict';
+
+    // ─── Answer key ──────────────────────────────────────────
+    var ANSWERS = {
+        q_swallow:            'african',
+        q_witch:              'duck',
+        q_holy_hand_grenade:  '3',
+        q_parrot:             'dead',
+        q_ni:                 'shrubbery',
+        q_cheese:             'none',
+        q_black_knight:       'flesh',
+        q_ministry:           'silly',
+        q_rabbit:             'grenade',
+        q_bridge:             'blue'
+    };
+
+    var QUESTIONS = {
+        q_swallow:            'What is the airspeed velocity of an unladen swallow?',
+        q_witch:              'How do you determine if someone is a witch?',
+        q_holy_hand_grenade:  'When using the Holy Hand Grenade, to what number shalt thou count?',
+        q_parrot:             'A customer brings you a dead parrot. What is the parrot doing?',
+        q_ni:                 'What do the Knights Who Say Ni demand?',
+        q_cheese:             'You enter a cheese shop. What will happen?',
+        q_black_knight:       'The Black Knight has lost both arms. What does he say?',
+        q_ministry:           'At the Ministry of Silly Walks, why was your application rejected?',
+        q_rabbit:             'A cute white rabbit guards a cave. What should you do?',
+        q_bridge:             'The Bridgekeeper asks your favourite colour.'
+    };
+
+    var LABELS = {
+        african: 'African or European?', '42': '42 km/h', fast: 'Faster than a coconut-laden one', nobody: 'Nobody expects the Spanish Inquisition!',
+        duck: 'See if they weigh the same as a duck', float: 'Throw them in the pond', newt: 'Ask if they turned someone into a newt', hat: 'Check if they have a pointy hat',
+        '3': 'Three', '5': 'Five', '1': 'One, then skip straight to three', '4': 'Four, being a nice round number',
+        resting: "It's resting", pining: 'Pining for the fjords', stunned: "It's stunned", dead: 'It has ceased to be',
+        shrubbery: 'A shrubbery!', herring: 'A herring to cut down a tree', ni: "That you say 'Ni' back to them", grail: 'The Holy Grail',
+        none: 'They are fresh out of every cheese you name', cheddar: 'A nice bit of cheddar', wensleydale: "There's lovely Wensleydale in the back", cheese: 'The cat ate the last piece',
+        scratch: "'Tis but a scratch!", flesh: "It's just a flesh wound", run: "Right, I'll do you for that!",
+        silly: 'Your walk was not silly enough', normal: 'You walked in normally like a fool', grant: 'The government grant was cut', department: 'You went to the Ministry of Sensible Walks by mistake',
+        grenade: 'Use the Holy Hand Grenade', pet: 'Pet the nice bunny', brave: 'Charge it bravely like Sir Lancelot',
+        blue: 'Blue', yellow: 'Blue! No, yel\u2014 AAAAAARGH!', green: "Green... no wait, that's Sir Gawain's", dont_know: "I don't know that!"
+    };
+    // Add missing labels for run (rabbit context) — 'run' already used for Black Knight
+    // We reuse labels since values are unique per question
+
+    var VERDICTS = [
+        { min: 10, cls: 'excellent', title: 'Supreme Inquisitor!', text: 'Nobody expected you to get a perfect score! Your knowledge of the absurd is unmatched. The Spanish Inquisition would be proud.' },
+        { min: 8,  cls: 'good',      title: 'Grand Inquisitor', text: 'A most impressive showing! You clearly know your Monty Python. Cardinal Fang would approve.' },
+        { min: 5,  cls: 'mediocre',  title: 'Passable Peasant', text: 'Not bad, not great. You have some knowledge of the silly arts, but more study is required. Perhaps watch the films again... for research purposes.' },
+        { min: 0,  cls: 'terrible',  title: 'Witch Material', text: 'Oh dear. You scored about the same as a duck. We may need to weigh you against one just to be safe. Study more Monty Python immediately!' }
+    ];
+
+    // ─── Hook into form ──────────────────────────────────────
+    var container = document.getElementById('quiz-form');
+    if (!container) return;
+
+    var formObserver = new MutationObserver(function() {
+        var form = container.querySelector('form.bbf-form');
+        if (!form) return;
+        formObserver.disconnect();
+
+        // Capture answers on submit
+        var captured = {};
+        form.addEventListener('submit', function() {
+            var keys = Object.keys(ANSWERS);
+            for (var i = 0; i < keys.length; i++) {
+                var radio = form.querySelector('input[name="' + keys[i] + '"]:checked');
+                captured[keys[i]] = radio ? radio.value : '';
+            }
+        });
+
+        // Watch for success message → show results
+        var successObserver = new MutationObserver(function() {
+            var success = container.querySelector('.bbf-success');
+            if (!success) return;
+            successObserver.disconnect();
+            showResults(captured);
+        });
+        successObserver.observe(container, { childList: true, subtree: true });
+    });
+    formObserver.observe(container, { childList: true, subtree: true });
+
+    function showResults(answers) {
+        var el = document.getElementById('quiz-results');
+        if (!el) return;
+
+        var keys = Object.keys(ANSWERS);
+        var correct = 0;
+        var details = [];
+
+        for (var i = 0; i < keys.length; i++) {
+            var k = keys[i];
+            var userVal = answers[k] || '';
+            var rightVal = ANSWERS[k];
+            var isCorrect = userVal === rightVal;
+            if (isCorrect) correct++;
+            details.push({ key: k, userVal: userVal, rightVal: rightVal, correct: isCorrect });
+        }
+
+        var total = keys.length;
+        var pct = Math.round((correct / total) * 100);
+        var verdict = VERDICTS[VERDICTS.length - 1];
+        for (var v = 0; v < VERDICTS.length; v++) {
+            if (correct >= VERDICTS[v].min) { verdict = VERDICTS[v]; break; }
+        }
+
+        var h = '';
+        h += '<div class="quiz-results">';
+        h += '<h2>Your Results</h2>';
+        h += '<p class="quiz-subtitle">' + correct + ' out of ' + total + ' correct</p>';
+
+        // Score display
+        h += '<div class="quiz-score-wrap">';
+        h += '<div class="quiz-score-num" style="font-size:2.4rem;font-weight:800;color:' + (pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444') + '">' + pct + '%</div>';
+        h += '<div class="quiz-score-label">' + verdict.title + '</div>';
+        h += '</div>';
+
+        // Per-question breakdown
+        for (var d = 0; d < details.length; d++) {
+            var item = details[d];
+            h += '<div class="quiz-answer ' + (item.correct ? 'correct' : 'wrong') + '">';
+            h += '<div class="q">' + (d + 1) + '. ' + (QUESTIONS[item.key] || item.key) + '</div>';
+            if (item.correct) {
+                h += '<div class="a right-pick">\u2713 ' + (LABELS[item.userVal] || item.userVal) + '</div>';
+            } else {
+                h += '<div class="a your-pick">\u2717 ' + (LABELS[item.userVal] || item.userVal || '(no answer)') + '</div>';
+                h += '<div class="a right-pick">\u2713 ' + (LABELS[item.rightVal] || item.rightVal) + '</div>';
+            }
+            h += '</div>';
+        }
+
+        // Verdict
+        h += '<div class="quiz-verdict ' + verdict.cls + '"><strong>' + verdict.title + '</strong> &mdash; ' + verdict.text + '</div>';
+
+        h += '<button class="quiz-retry" onclick="location.reload()">Try Again</button>';
+        h += '</div>';
+
+        el.innerHTML = h;
+    }
+})();
+</script>
+</body>
+</html>

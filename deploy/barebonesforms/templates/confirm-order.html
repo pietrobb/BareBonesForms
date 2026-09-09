@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;max-width:560px;margin:0 auto;padding:20px;">
+    <h2 style="font-size:18px;margin:0 0 12px 0;">Order Confirmed</h2>
+    <p style="color:#555;line-height:1.5;">
+        Hi {{customer_name}}, thank you for your order! We're processing it now.
+    </p>
+
+    <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+        <tr style="background:#f9fafb;">
+            <td style="padding:8px 12px;font-weight:bold;">Product</td>
+            <td style="padding:8px 12px;">{{product}}</td>
+        </tr>
+        <tr>
+            <td style="padding:8px 12px;font-weight:bold;">Total</td>
+            <td style="padding:8px 12px;font-size:1.1em;color:#10b981;font-weight:bold;">&euro;{{order_total}}</td>
+        </tr>
+    </table>
+
+    <h3 style="font-size:15px;margin:20px 0 8px 0;">Order details</h3>
+    {{_summary}}
+
+    <p style="color:#888;font-size:13px;margin-top:24px;border-top:1px solid #eee;padding-top:12px;">
+        Order reference: {{_id}}<br>
+        If you have questions, reply to this email.
+    </p>
+</body>
+</html>

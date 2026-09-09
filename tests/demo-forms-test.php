@@ -2,23 +2,23 @@
 /**
  * BareBonesForms — Demo Forms Round-Trip Test Suite
  *
- * Tests all demo forms against the CSV backend with multiple submission
- * scenarios per form. Verifies round-trip data integrity, conditional field
+ * Tests demo forms against isolated CSV storage, with the payment form on durable file storage.
+ * Scenarios verify round-trip data integrity, conditional field
  * logic, column alignment, and CSV structural correctness.
  *
  * Usage:
- *   C:\WebDesign\php\php.exe tests/demo-forms-test.php
+ *   php tests/demo-forms-test.php
  *
  * WARNING: This test creates real submissions and deletes them afterward.
  *          It uses a temporary submissions directory, NOT your production data.
  */
 
-// ─── Config ─────────────────────────────────────────────────────
-$phpBinary   = 'C:\\WebDesign\\php\\php.exe';
-$projectDir  = realpath(__DIR__ . '/..');
+require_once __DIR__ . '/test-isolation-helper.php'; // CLI-only, before any side effects.
+$phpBinary   = PHP_BINARY;
+$projectDir  = bbf_test_installation(dirname(__DIR__));
 $configFile  = $projectDir . '/config.php';
 $host        = '127.0.0.1';
-$port        = 10000 + rand(0, 5000); // wide random port range to avoid conflicts
+$port        = bbf_test_port(); // OS-selected loopback port
 $baseUrl     = "http://$host:$port";
 
 // Temporary directory for test submissions (isolated from production)
@@ -109,18 +109,8 @@ function removeDir(string $dir): void {
 
 function killServer(): void {
     global $serverProc;
-    if (isset($serverProc) && is_resource($serverProc)) {
-        $status = proc_get_status($serverProc);
-        if ($status['running']) {
-            if (stripos(PHP_OS, 'WIN') === 0) {
-                exec("taskkill /F /T /PID {$status['pid']} 2>nul");
-            } else {
-                posix_kill($status['pid'], SIGTERM);
-            }
-        }
-        proc_close($serverProc);
-        $serverProc = null;
-    }
+    bbf_test_stop_server($serverProc);
+    $serverProc = null;
 }
 
 register_shutdown_function('cleanup');
@@ -132,43 +122,13 @@ if (file_exists($configFile)) {
 
 // ─── HTTP helpers ───────────────────────────────────────────────
 function httpPost(string $url, array $data): array {
-    $postData = http_build_query($data);
-    $ctx = stream_context_create([
-        'http' => [
-            'method'  => 'POST',
-            'header'  => "Content-Type: application/x-www-form-urlencoded\r\nConnection: close\r\nContent-Length: " . strlen($postData) . "\r\n",
-            'content' => $postData,
-            'timeout' => 10,
-            'ignore_errors' => true,
-        ],
-    ]);
-    $http_response_header = null;
-    $body = @file_get_contents($url, false, $ctx);
-    $code = 0;
-    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
-        $code = (int)$m[1];
-    }
-    $error = ($body === false) ? 'Request failed' : '';
-    return ['code' => $code, 'body' => $body ?: '', 'error' => $error, 'json' => @json_decode($body ?: '', true)];
+    global $serverProc;
+    return bbf_test_http($serverProc, $url, $data);
 }
 
 function httpGet(string $url): array {
-    $ctx = stream_context_create([
-        'http' => [
-            'method'  => 'GET',
-            'header'  => "Connection: close\r\n",
-            'timeout' => 10,
-            'ignore_errors' => true,
-        ],
-    ]);
-    $http_response_header = null;
-    $body = @file_get_contents($url, false, $ctx);
-    $code = 0;
-    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
-        $code = (int)$m[1];
-    }
-    $error = ($body === false) ? 'Request failed' : '';
-    return ['code' => $code, 'body' => $body ?: '', 'error' => $error, 'json' => @json_decode($body ?: '', true)];
+    global $serverProc;
+    return bbf_test_http($serverProc, $url);
 }
 
 function getSubmissions(string $formId): ?array {
@@ -208,34 +168,8 @@ function submitForm(string $formId, array $data): array {
 function startServer(): bool {
     global $host, $port, $serverProc, $projectDir, $phpBinary;
 
-    $serverCmd = "$phpBinary -S $host:$port -t " . escapeshellarg($projectDir);
-    $descriptors = [
-        0 => ['pipe', 'r'],
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
-    ];
-    $serverProc = proc_open($serverCmd, $descriptors, $pipes, $projectDir);
-
-    if (!is_resource($serverProc)) {
-        return false;
-    }
-
-    for ($i = 0; $i < 30; $i++) {
-        usleep(200000);
-        $conn = @fsockopen($host, $port, $errno, $errstr, 1);
-        if ($conn) {
-            fclose($conn);
-            usleep(300000);
-            for ($w = 0; $w < 5; $w++) {
-                $r = @file_get_contents("http://$host:$port/submit.php?form=_ping&action=definition", false,
-                    stream_context_create(['http' => ['timeout' => 3, 'ignore_errors' => true]]));
-                if ($r !== false) return true;
-                usleep(500000);
-            }
-            return true;
-        }
-    }
-    return false;
+    $serverProc = bbf_test_start_server($projectDir, $host, $port);
+    return bbf_test_server_alive($serverProc);
 }
 
 function restartServer(): bool {
@@ -360,7 +294,7 @@ section("Setup");
 
 // Kill any orphaned PHP dev servers from previous test runs
 if (stripos(PHP_OS, 'WIN') === 0) {
-    @exec('taskkill /F /IM php.exe /FI "WINDOWTITLE eq *php*-S*" 2>NUL');
+    // Never kill unrelated servers; the helper tracks only this run's child processes.
     usleep(500000);
 }
 
@@ -372,6 +306,11 @@ mkdir($testSubmissionsDir . '/logs', 0755, true);
 
 writeConfig();
 pass("Test config written (CSV backend)");
+$orderFixturePath = $projectDir . '/forms/demo-order.json';
+$orderFixture = json_decode(file_get_contents($orderFixturePath), true, 512, JSON_THROW_ON_ERROR);
+$orderFixture['storage'] = 'file';
+file_put_contents($orderFixturePath, json_encode($orderFixture, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+pass("Payment fixture uses durable file storage");
 
 if (!startServer()) {
     fail("Cannot start PHP dev server on $host:$port");
@@ -818,45 +757,24 @@ if ($orderSubs === null) {
     }
 }
 
-// CSV structure — accept >= 4 rows (retries from server restart may add duplicates)
-section("demo-order CSV structure");
-$orderGroups = ['cards_group', 'flyers_group', 'posters_group', 'stickers_group'];
-$orderCsvFile = $testSubmissionsDir . '/demo-order.csv';
-if (file_exists($orderCsvFile)) {
-    $fp = fopen($orderCsvFile, 'r');
-    $orderHeaders = fgetcsv($fp, 0, ',', '"', '\\');
-    $orderRows = [];
-    while (($row = fgetcsv($fp, 0, ',', '"', '\\')) !== false) {
-        $orderRows[] = $row;
-    }
-    fclose($fp);
-
-    if (is_array($orderHeaders)) {
-        if (count($orderRows) >= 4) {
-            pass("demo-order CSV: " . count($orderRows) . " data rows (>= 4 expected)");
-        } else {
-            fail("demo-order CSV: expected >= 4 data rows, got " . count($orderRows));
-        }
-        $headerCount = count($orderHeaders);
-        $columnMismatch = false;
-        foreach ($orderRows as $i => $row) {
-            if (count($row) !== $headerCount) {
-                fail("demo-order CSV row " . ($i + 1) . ": " . count($row) . " columns vs $headerCount in header");
-                $columnMismatch = true;
-            }
-        }
-        if (!$columnMismatch) {
-            pass("demo-order CSV: all rows match header column count ($headerCount)");
-        }
-        foreach ($orderGroups as $gn) {
-            if (in_array($gn, $orderHeaders, true)) {
-                fail("demo-order CSV: group container '$gn' found in headers");
-            }
-        }
-    }
+section("demo-order durable file structure");
+$orderFiles = glob($testSubmissionsDir . '/demo-order/*.json') ?: [];
+if (count($orderFiles) >= 4) {
+    pass("demo-order file backend: " . count($orderFiles) . " records (>= 4 expected)");
 } else {
-    fail("demo-order CSV: file not created");
+    fail("demo-order file backend: expected >= 4 records, got " . count($orderFiles));
 }
+$orderFilesValid = true;
+foreach ($orderFiles as $orderFile) {
+    $record = json_decode(file_get_contents($orderFile), true);
+    if (!is_array($record) || ($record['form'] ?? '') !== 'demo-order' || empty($record['id'])) {
+        $orderFilesValid = false;
+        break;
+    }
+}
+$orderFilesValid
+    ? pass("demo-order file backend: every record is valid and form-scoped")
+    : fail("demo-order file backend: invalid or cross-form record");
 
 // ═════════════════════════════════════════════════════════════════
 // Test 3: demo-advanced — Email confirm, pattern, rating, "other"
@@ -1094,7 +1012,7 @@ $quizSubs = getSubmissions('demo-quiz');
 if ($quizSubs === null) {
     // Debug: try raw fetch to see what API returns
     $debugUrl = "$baseUrl/submissions.php?form=demo-quiz&token=test-token";
-    $debugResp = @file_get_contents($debugUrl, false, stream_context_create(['http' => ['timeout' => 10, 'ignore_errors' => true]]));
+    $debugResp = httpGet($debugUrl)['body'];
     fail("demo-quiz: cannot read submissions via API", "raw response: " . substr($debugResp ?: 'FALSE', 0, 300));
 } else {
     if (count($quizSubs) >= 2) {
@@ -1428,7 +1346,7 @@ section("Test 8: Cross-form CSV deep verification");
 
 // For each demo form that has CSV data, read the raw CSV and verify
 // that no row has column misalignment
-$csvFormsToCheck = ['demo-allergy', 'demo-order', 'demo-advanced', 'demo-quiz', 'demo-csv', 'demo-file'];
+$csvFormsToCheck = ['demo-allergy', 'demo-advanced', 'demo-quiz', 'demo-csv', 'demo-file'];
 
 foreach ($csvFormsToCheck as $formCheck) {
     $csvPath = $testSubmissionsDir . '/' . $formCheck . '.csv';

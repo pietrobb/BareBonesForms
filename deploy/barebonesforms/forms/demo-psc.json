@@ -1,0 +1,100 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-psc",
+    "name": "Shipping Address",
+    "description": "Enter a postal code and the city fills itself. Or start typing a city and pick from the dropdown.",
+    "submit_label": "Submit",
+    "success_message": "Thank you! Your address has been submitted.",
+    "animate_conditions": true,
+
+    "fields": [
+        {
+            "name": "name",
+            "type": "text",
+            "label": "Full Name",
+            "required": true,
+            "autocomplete": "name"
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "required": true,
+            "autocomplete": "email"
+        },
+        {
+            "name": "street",
+            "type": "text",
+            "label": "Street & Number",
+            "required": true,
+            "placeholder": "Hlavná 1"
+        },
+        {
+            "name": "psc",
+            "type": "text",
+            "label": "Postal Code",
+            "required": true,
+            "size": "small",
+            "placeholder": "811 01",
+            "pattern": "^[0-9]{5}$",
+            "pattern_message": "Postal code must be 5 digits.",
+            "maxlength": 5,
+            "lookup": {
+                "url": "api-psc.php?psc={{value}}",
+                "trigger": 5,
+                "map": {
+                    "city": "city",
+                    "country": "country"
+                }
+            },
+            "autocomplete_from": {
+                "url": "api-psc.php?psc={{value}}&prefix&limit=10",
+                "min_length": 3,
+                "debounce": 150,
+                "map": {
+                    "city": "city",
+                    "country": "country"
+                }
+            }
+        },
+        {
+            "name": "city",
+            "type": "text",
+            "label": "City",
+            "required": true,
+            "placeholder": "Bratislava",
+            "autocomplete_from": {
+                "url": "api-psc.php?city={{value}}",
+                "min_length": 2,
+                "debounce": 200,
+                "map": {
+                    "psc": "psc",
+                    "country": "country"
+                }
+            }
+        },
+        {
+            "name": "country",
+            "type": "select",
+            "label": "Country",
+            "required": true,
+            "placeholder": "Select country",
+            "options": [
+                { "value": "Slovakia", "label": "Slovakia" },
+                { "value": "Czech Republic", "label": "Czech Republic" }
+            ]
+        },
+        {
+            "name": "note",
+            "type": "textarea",
+            "label": "Note",
+            "rows": 3,
+            "placeholder": "e.g. ring bell twice"
+        }
+    ],
+
+    "on_submit": {
+        "store": true
+    }
+}

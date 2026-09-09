@@ -1,0 +1,207 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-modalities",
+    "name": "Homeopathic Modalities Assessment",
+    "description": "Select the areas that bother you. For each, a set of modality questions will appear \u2014 all generated from a single reusable template.",
+    "submit_label": "Submit Assessment",
+    "success_message": "Assessment recorded. Your remedy profile is shown below.",
+    "label_position": "top",
+
+    "templates": {
+        "modalities": [
+            {
+                "name": "time_worse",
+                "type": "radio",
+                "label": "When is it worse?",
+                "required": true,
+                "columns": "inline",
+                "options": [
+                    { "value": "morning", "label": "Morning" },
+                    { "value": "afternoon", "label": "Afternoon" },
+                    { "value": "evening", "label": "Evening" },
+                    { "value": "night", "label": "Night" },
+                    { "value": "no_pattern", "label": "No pattern" }
+                ]
+            },
+            {
+                "name": "temp_influence",
+                "type": "radio",
+                "label": "Temperature influence?",
+                "required": true,
+                "columns": "inline",
+                "options": [
+                    { "value": "worse_cold", "label": "Worse in cold" },
+                    { "value": "worse_warmth", "label": "Worse in warmth" },
+                    { "value": "no_change", "label": "No change" }
+                ]
+            },
+            {
+                "name": "motion_influence",
+                "type": "radio",
+                "label": "Motion influence?",
+                "required": true,
+                "columns": "inline",
+                "options": [
+                    { "value": "worse_rest", "label": "Worse at rest" },
+                    { "value": "worse_motion", "label": "Worse with motion" },
+                    { "value": "better_motion", "label": "Better with motion" },
+                    { "value": "no_change", "label": "No change" }
+                ]
+            },
+            {
+                "name": "helps",
+                "type": "checkbox",
+                "label": "What provides relief?",
+                "columns": 2,
+                "options": [
+                    { "value": "rest", "label": "Rest" },
+                    { "value": "pressure", "label": "Pressure" },
+                    { "value": "warmth", "label": "Warmth" },
+                    { "value": "cold_application", "label": "Cold application" },
+                    { "value": "fresh_air", "label": "Fresh air" },
+                    { "value": "eating", "label": "Eating" }
+                ]
+            },
+            {
+                "name": "intensity",
+                "type": "radio",
+                "label": "Current intensity?",
+                "required": true,
+                "columns": "inline",
+                "options": [
+                    { "value": "mild", "label": "Mild" },
+                    { "value": "moderate", "label": "Moderate" },
+                    { "value": "severe", "label": "Severe" }
+                ]
+            }
+        ]
+    },
+
+    "fields": [
+        {
+            "name": "section_areas",
+            "type": "section",
+            "title": "Affected Areas"
+        },
+        {
+            "name": "areas",
+            "type": "checkbox",
+            "label": "Which areas bother you?",
+            "required": true,
+            "columns": 2,
+            "options": [
+                { "value": "head", "label": "Head" },
+                { "value": "throat", "label": "Throat" },
+                { "value": "chest", "label": "Chest" },
+                { "value": "stomach", "label": "Stomach / Digestion" },
+                { "value": "back", "label": "Back" },
+                { "value": "joints", "label": "Joints / Limbs" }
+            ]
+        },
+
+        { "name": "page2", "type": "page_break" },
+
+        {
+            "name": "section_modalities",
+            "type": "section",
+            "title": "Modalities per Area",
+            "description": "For each selected area, describe when and how the symptoms change."
+        },
+
+        {
+            "name": "head_group",
+            "type": "group",
+            "title": "Head \u2014 Modalities",
+            "show_if": { "field": "areas", "value": "head" },
+            "use": "modalities",
+            "prefix": "head_"
+        },
+        {
+            "name": "throat_group",
+            "type": "group",
+            "title": "Throat \u2014 Modalities",
+            "show_if": { "field": "areas", "value": "throat" },
+            "use": "modalities",
+            "prefix": "throat_"
+        },
+        {
+            "name": "chest_group",
+            "type": "group",
+            "title": "Chest \u2014 Modalities",
+            "show_if": { "field": "areas", "value": "chest" },
+            "use": "modalities",
+            "prefix": "chest_"
+        },
+        {
+            "name": "stomach_group",
+            "type": "group",
+            "title": "Stomach \u2014 Modalities",
+            "show_if": { "field": "areas", "value": "stomach" },
+            "use": "modalities",
+            "prefix": "stomach_"
+        },
+        {
+            "name": "back_group",
+            "type": "group",
+            "title": "Back \u2014 Modalities",
+            "show_if": { "field": "areas", "value": "back" },
+            "use": "modalities",
+            "prefix": "back_"
+        },
+        {
+            "name": "joints_group",
+            "type": "group",
+            "title": "Joints / Limbs \u2014 Modalities",
+            "show_if": { "field": "areas", "value": "joints" },
+            "use": "modalities",
+            "prefix": "joints_"
+        },
+
+        { "name": "page3", "type": "page_break" },
+
+        {
+            "name": "section_general",
+            "type": "section",
+            "title": "General Information"
+        },
+        {
+            "name": "overall_worse",
+            "type": "radio",
+            "label": "Overall, when do you feel worst?",
+            "required": true,
+            "columns": "inline",
+            "options": [
+                { "value": "morning", "label": "Morning" },
+                { "value": "afternoon", "label": "Afternoon" },
+                { "value": "evening", "label": "Evening" },
+                { "value": "night", "label": "Night" }
+            ]
+        },
+        {
+            "name": "thirst",
+            "type": "radio",
+            "label": "Thirst level?",
+            "required": true,
+            "columns": "inline",
+            "options": [
+                { "value": "thirstless", "label": "Thirstless" },
+                { "value": "normal", "label": "Normal" },
+                { "value": "increased", "label": "Increased" },
+                { "value": "extreme", "label": "Extreme thirst" }
+            ]
+        },
+        {
+            "name": "notes",
+            "type": "textarea",
+            "label": "Additional observations",
+            "placeholder": "Anything else the practitioner should know...",
+            "rows": 3,
+            "maxlength": 1000
+        }
+    ],
+
+    "on_submit": {
+        "store": true
+    }
+}

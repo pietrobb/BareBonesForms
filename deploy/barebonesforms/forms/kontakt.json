@@ -1,0 +1,82 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "kontakt",
+    "name": "Contact Form",
+    "description": "Drop us a message and we'll get back to you.",
+    "submit_label": "Send Message",
+    "submitting_label": "Sending…",
+    "success_message": "Thank you! We'll be in touch soon.",
+    "fields": [
+        {
+            "name": "name",
+            "type": "text",
+            "label": "Full Name",
+            "placeholder": "John Doe",
+            "required": true,
+            "minlength": 2,
+            "maxlength": 100
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "placeholder": "john@example.com",
+            "required": true
+        },
+        {
+            "name": "phone",
+            "type": "tel",
+            "label": "Phone",
+            "placeholder": "+421 900 123 456",
+            "required": false
+        },
+        {
+            "name": "subject",
+            "type": "select",
+            "label": "Subject",
+            "required": true,
+            "placeholder": "Choose a topic…",
+            "options": [
+                { "value": "general", "label": "General Inquiry" },
+                { "value": "support", "label": "Support" },
+                { "value": "business", "label": "Business Cooperation" },
+                { "value": "other", "label": "Other" }
+            ]
+        },
+        {
+            "name": "message",
+            "type": "textarea",
+            "label": "Message",
+            "placeholder": "How can we help?",
+            "required": true,
+            "minlength": 10,
+            "maxlength": 5000,
+            "rows": 5
+        },
+        {
+            "name": "gdpr",
+            "type": "checkbox",
+            "label": "Consent",
+            "required": true,
+            "options": [
+                { "value": "yes", "label": "I agree with the processing of my personal data" }
+            ]
+        }
+    ],
+    "on_submit": {
+        "store": true,
+        "confirm_email": {
+            "to": "{{email}}",
+            "subject": "We received your message",
+            "template": "confirm.html"
+        },
+        "notify": {
+            "to": "admin@example.com",
+            "subject": "New contact: {{name}} — {{subject}}",
+            "template": "notify.html"
+        },
+        "webhooks": [],
+        "redirect": null
+    }
+}

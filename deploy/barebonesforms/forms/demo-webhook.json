@@ -1,0 +1,78 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-webhook",
+    "name": "Bug Report",
+    "description": "The full pipeline. Store, notify, fire a webhook, confirm to the reporter. Everything this engine can do.",
+    "submit_label": "Submit Bug Report",
+    "submitting_label": "Submitting...",
+    "success_message": "Bug report submitted! Webhook fired, admin notified.",
+    "fields": [
+        {
+            "name": "reporter",
+            "type": "text",
+            "label": "Your Name",
+            "placeholder": "Jane Developer",
+            "required": true
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "Email",
+            "placeholder": "jane@dev.com",
+            "required": true
+        },
+        {
+            "name": "severity",
+            "type": "radio",
+            "label": "Severity",
+            "required": true,
+            "options": [
+                { "value": "critical", "label": "Critical (app down)" },
+                { "value": "major", "label": "Major (feature broken)" },
+                { "value": "minor", "label": "Minor (cosmetic)" }
+            ]
+        },
+        {
+            "name": "url",
+            "type": "url",
+            "label": "Page URL",
+            "placeholder": "https://example.com/broken-page",
+            "required": false
+        },
+        {
+            "name": "steps",
+            "type": "textarea",
+            "label": "Steps to Reproduce",
+            "placeholder": "1. Go to...\n2. Click on...\n3. See error...",
+            "required": true,
+            "minlength": 20,
+            "rows": 5
+        },
+        {
+            "name": "expected",
+            "type": "textarea",
+            "label": "Expected Behavior",
+            "placeholder": "What should happen instead?",
+            "required": true,
+            "minlength": 10,
+            "rows": 3
+        }
+    ],
+    "on_submit": {
+        "store": true,
+        "notify": {
+            "to": "admin@example.com",
+            "subject": "Bug Report [{{severity}}]: from {{reporter}}",
+            "template": "notify.html"
+        },
+        "webhooks": [
+            "https://httpbin.org/post"
+        ],
+        "confirm_email": {
+            "to": "{{email}}",
+            "subject": "Bug report received",
+            "template": "confirm.html"
+        }
+    }
+}

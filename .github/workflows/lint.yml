@@ -1,4 +1,4 @@
-name: Lint
+name: CI
 
 on:
   push:
@@ -6,80 +6,57 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  php-lint:
-    name: PHP syntax check
+  syntax:
+    name: PHP and JavaScript syntax
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
-      - name: Lint all PHP files
-        run: |
-          errors=0
-          while IFS= read -r file; do
-            if ! php -l "$file" > /dev/null 2>&1; then
-              php -l "$file"
-              errors=$((errors + 1))
-            fi
-          done < <(find . -name '*.php' -not -path './vendor/*')
-          if [ $errors -gt 0 ]; then
-            echo "::error::$errors PHP file(s) have syntax errors"
-            exit 1
-          fi
-          echo "All PHP files passed syntax check"
-
-  js-lint:
-    name: JS syntax check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, sqlite3
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Lint all JS files
+      - name: Check every PHP file
+        shell: bash
         run: |
-          errors=0
-          while IFS= read -r file; do
-            if ! node --check "$file" 2>/dev/null; then
-              echo "Syntax error: $file"
-              errors=$((errors + 1))
-            fi
-          done < <(find . -name '*.js' -not -path './vendor/*' -not -path './node_modules/*')
-          if [ $errors -gt 0 ]; then
-            echo "::error::$errors JS file(s) have syntax errors"
-            exit 1
-          fi
-          echo "All JS files passed syntax check"
+          set -euo pipefail
+          count=0
+          while IFS= read -r -d '' file; do
+            php -l "$file"
+            count=$((count + 1))
+          done < <(find . -type f -name '*.php' -not -path './vendor/*' -print0 | sort -z)
+          printf 'PHP syntax: %d files passed\n' "$count"
+      - name: Check every JavaScript file
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+            count=$((count + 1))
+          done < <(find . -type f -name '*.js' -not -path './vendor/*' -not -path './node_modules/*' -print0 | sort -z)
+          printf 'JavaScript syntax: %d files passed\n' "$count"
 
-  smoke-test:
-    name: Smoke test
+  g6:
+    name: G6 failure-propagating regression gate
     runs-on: ubuntu-latest
-    needs: [php-lint, js-lint]
+    needs: syntax
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
-      - name: Setup config
-        run: cp config.example.php config.php
-      - name: Start PHP server
-        run: php -S 127.0.0.1:8089 &
-      - name: Wait for server
-        run: sleep 2
-      - name: CSRF token endpoint
-        run: |
-          response=$(curl -s 'http://127.0.0.1:8089/submit.php?action=csrf&form=test')
-          echo "$response"
-          echo "$response" | grep -q "csrf_token" || { echo "::error::CSRF endpoint failed"; exit 1; }
-      - name: GET check.php
-        run: |
-          status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8089/check.php)
-          echo "check.php returned HTTP $status"
-          [ "$status" -eq 200 ] || { echo "::error::check.php returned $status"; exit 1; }
-      - name: Form definition endpoint
-        run: |
-          response=$(curl -s 'http://127.0.0.1:8089/submit.php?action=definition&form=demo-file')
-          echo "$response"
-          echo "$response" | grep -q "fields" || echo "No demo-file form (OK if not included)"
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, sqlite3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run focused local-mock orchestration
+        run: php tests/review-ci-test.php

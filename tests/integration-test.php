@@ -10,20 +10,20 @@
  *   - Special characters corrupted in storage/retrieval
  *
  * Usage:
- *   C:\WebDesign\php\php.exe tests/integration-test.php            Run all tests
- *   C:\WebDesign\php\php.exe tests/integration-test.php csv        Run one backend only
+ *   php tests/integration-test.php            Run all tests
+ *   php tests/integration-test.php csv        Run one backend only
  *
  * WARNING: This test creates real submissions and deletes them afterward.
  *          It uses a temporary submissions directory, NOT your production data.
  */
 
-// ─── Config ─────────────────────────────────────────────────────
-$phpBinary   = 'C:\\WebDesign\\php\\php.exe';
-$projectDir  = realpath(__DIR__ . '/..');
-$testFormsDir = __DIR__ . '/test-forms';
+require_once __DIR__ . '/test-isolation-helper.php'; // CLI-only, before any side effects.
+$phpBinary   = PHP_BINARY;
+$projectDir  = bbf_test_installation(dirname(__DIR__));
+$testFormsDir = $projectDir . '/tests/test-forms';
 $configFile  = $projectDir . '/config.php';
 $host        = '127.0.0.1';
-$port        = 9800 + rand(0, 190); // random port to avoid conflicts
+$port        = bbf_test_port(); // OS-selected loopback port
 $baseUrl     = "http://$host:$port";
 $filterBackend = $argv[1] ?? null;
 
@@ -117,18 +117,8 @@ function removeDir(string $dir): void {
 
 function killServer(): void {
     global $serverProc;
-    if (isset($serverProc) && is_resource($serverProc)) {
-        $status = proc_get_status($serverProc);
-        if ($status['running']) {
-            if (stripos(PHP_OS, 'WIN') === 0) {
-                exec("taskkill /F /T /PID {$status['pid']} 2>nul");
-            } else {
-                posix_kill($status['pid'], SIGTERM);
-            }
-        }
-        proc_close($serverProc);
-        $serverProc = null;
-    }
+    bbf_test_stop_server($serverProc);
+    $serverProc = null;
 }
 
 register_shutdown_function('cleanup');
@@ -146,43 +136,13 @@ foreach (glob($testFormsDir . '/*.json') as $tf) {
 
 // ─── HTTP helpers ───────────────────────────────────────────────
 function httpPost(string $url, array $data): array {
-    $postData = http_build_query($data);
-    $ctx = stream_context_create([
-        'http' => [
-            'method'  => 'POST',
-            'header'  => "Content-Type: application/x-www-form-urlencoded\r\nConnection: close\r\nContent-Length: " . strlen($postData) . "\r\n",
-            'content' => $postData,
-            'timeout' => 10,
-            'ignore_errors' => true,
-        ],
-    ]);
-    $http_response_header = null;
-    $body = @file_get_contents($url, false, $ctx);
-    $code = 0;
-    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
-        $code = (int)$m[1];
-    }
-    $error = ($body === false) ? 'Request failed' : '';
-    return ['code' => $code, 'body' => $body ?: '', 'error' => $error, 'json' => @json_decode($body ?: '', true)];
+    global $serverProc;
+    return bbf_test_http($serverProc, $url, $data);
 }
 
 function httpGet(string $url): array {
-    $ctx = stream_context_create([
-        'http' => [
-            'method'  => 'GET',
-            'header'  => "Connection: close\r\n",
-            'timeout' => 10,
-            'ignore_errors' => true,
-        ],
-    ]);
-    $http_response_header = null;
-    $body = @file_get_contents($url, false, $ctx);
-    $code = 0;
-    if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
-        $code = (int)$m[1];
-    }
-    $error = ($body === false) ? 'Request failed' : '';
-    return ['code' => $code, 'body' => $body ?: '', 'error' => $error, 'json' => @json_decode($body ?: '', true)];
+    global $serverProc;
+    return bbf_test_http($serverProc, $url);
 }
 
 function getSubmissions(string $formId): ?array {
@@ -223,36 +183,8 @@ function submitForm(string $formId, array $data): array {
 function startServer(): bool {
     global $host, $port, $serverProc, $projectDir, $phpBinary;
 
-    $serverCmd = "$phpBinary -S $host:$port -t " . escapeshellarg($projectDir);
-    $descriptors = [
-        0 => ['pipe', 'r'],
-        1 => ['pipe', 'w'],
-        2 => ['pipe', 'w'],
-    ];
-    $serverProc = proc_open($serverCmd, $descriptors, $pipes, $projectDir);
-
-    if (!is_resource($serverProc)) {
-        return false;
-    }
-
-    // Wait for server to be ready
-    for ($i = 0; $i < 30; $i++) {
-        usleep(200000);
-        $conn = @fsockopen($host, $port, $errno, $errstr, 1);
-        if ($conn) {
-            fclose($conn);
-            // HTTP warm-up: make sure server actually processes requests
-            usleep(300000);
-            for ($w = 0; $w < 5; $w++) {
-                $r = @file_get_contents("http://$host:$port/submit.php?form=_ping&action=definition", false,
-                    stream_context_create(['http' => ['timeout' => 3, 'ignore_errors' => true]]));
-                if ($r !== false) return true;
-                usleep(500000);
-            }
-            return true; // socket open, assume OK even if warm-up failed
-        }
-    }
-    return false;
+    $serverProc = bbf_test_start_server($projectDir, $host, $port);
+    return bbf_test_server_alive($serverProc);
 }
 
 function restartServer(): bool {

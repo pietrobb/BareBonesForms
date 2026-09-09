@@ -1,0 +1,9 @@
+# BareBonesForms deployment-local files
+/config.php
+/logs/*
+!/logs/.gitkeep
+/submissions/*
+!/submissions/.gitkeep
+*.log
+.DS_Store
+Thumbs.db
