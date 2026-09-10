@@ -54,14 +54,15 @@ function diagnostic_start_server(string $root, bool $streams): array {
         '-d', 'opcache.validate_timestamps=0', '-d', 'opcache.file_update_protection=0', '-d', 'opcache.cache_id=bbf-diagnostic-' . $port]);
     $env = getenv();
     unset($env['PHP_CLI_SERVER_WORKERS'], $env['BBF_TEST_LEASE'], $env['BBF_TEST_LEASE_KEY']);
-    $env['BBF_TEST_IDENTITY'] = bin2hex(random_bytes(32));
+    $identity = bin2hex(random_bytes(32));
+    $probe = bbf_test_identity_probe($root, $identity);
     $proc = proc_open($command, [0 => ['pipe', 'r'],
         1 => ['file', $root . '/logs/diagnostic-server.log', 'a'],
         2 => ['file', $root . '/logs/diagnostic-server.log', 'a']], $pipes, $root, $env);
     if (!is_resource($proc)) throw new RuntimeException('Cannot start owned diagnostic HTTP server.');
     fclose($pipes[0]);
     $server = ['proc' => $proc, 'root' => $root, 'port' => $port,
-        'id' => $env['BBF_TEST_IDENTITY']];
+        'id' => $identity, 'probe' => $probe];
     try { $server['pid'] = bbf_test_verify_server($server, true); }
     catch (Throwable $error) { bbf_test_stop_server($server); throw $error; }
     $GLOBALS['bbf_test_processes'][$root][$server['id']] = $server;

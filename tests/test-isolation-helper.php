@@ -92,6 +92,19 @@ function bbf_test_port(): int {
     return (int)substr(strrchr($address, ':'), 1);
 }
 
+function bbf_test_identity_probe(string $root, string $identity): string {
+    if (empty($GLOBALS['bbf_test_roots'][$root]) || !preg_match('/\A[a-f0-9]{64}\z/D', $identity)) {
+        throw new RuntimeException('Cannot create test server identity probe.');
+    }
+    $probe = 'tests/isolation-probe-' . $identity . '.php';
+    $source = '<?php header("Content-Type: text/plain"); echo '
+        . var_export($identity . ':', true) . ' . getmypid();';
+    if (file_put_contents($root . '/' . $probe, $source) !== strlen($source)) {
+        throw new RuntimeException('Cannot write test server identity probe.');
+    }
+    return $probe;
+}
+
 /** Array commands bypass the shell and handle spaces in both PHP_BINARY and fixture paths. */
 function bbf_test_server_command(string $root, string $host, int $port): array {
     if (empty($GLOBALS['bbf_test_roots'][$root]) || $host !== '127.0.0.1') {
@@ -135,14 +148,15 @@ function bbf_test_start_server(string $root, string $host, int $port, bool $allo
     $env = getenv();
     unset($env['PHP_CLI_SERVER_WORKERS'], $env['BBF_TEST_LEASE'], $env['BBF_TEST_LEASE_KEY']);
     $env['BBF_TEST_FIXTURE_ROOT'] = $allowFixtures ? realpath($root) : '';
-    $env['BBF_TEST_IDENTITY'] = bin2hex(random_bytes(32)); // Fresh for every installation AND restart.
+    $identity = bin2hex(random_bytes(32)); // Fresh for every installation AND restart.
+    $probe = bbf_test_identity_probe($root, $identity);
     $proc = proc_open($command, [0 => ['pipe', 'r'],
         1 => ['file', $root . '/logs/server-output.log', 'a'],
         2 => ['file', $root . '/logs/server-error.log', 'a']], $pipes, $root, $env);
     if (!is_resource($proc)) throw new RuntimeException('Cannot start owned PHP server.');
     fclose($pipes[0]);
     $server = ['proc' => $proc, 'root' => $root, 'port' => $port,
-        'id' => $env['BBF_TEST_IDENTITY']];
+        'id' => $identity, 'probe' => $probe];
     try {
         $server['pid'] = bbf_test_verify_server($server, true);
     } catch (Throwable $error) {
@@ -179,7 +193,7 @@ function bbf_test_verify_server(array $server, bool $wait = false): int {
         if (!bbf_test_server_alive($server)) throw new RuntimeException('Owned test server is not alive; refusing HTTP.');
         set_error_handler(static fn() => true);
         try {
-            $body = file_get_contents('http://127.0.0.1:' . $server['port'] . '/tests/isolation-probe.php', false,
+            $body = file_get_contents('http://127.0.0.1:' . $server['port'] . '/' . $server['probe'], false,
                 stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true, 'follow_location' => 0]]));
         } finally {
             restore_error_handler();
