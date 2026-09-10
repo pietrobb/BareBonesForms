@@ -177,8 +177,13 @@ function bbf_test_verify_server(array $server, bool $wait = false): void {
     $deadline = microtime(true) + ($wait ? 5 : 0);
     do {
         if (!bbf_test_server_alive($server)) throw new RuntimeException('Owned test server is not alive; refusing HTTP.');
-        $body = @file_get_contents('http://127.0.0.1:' . $server['port'] . '/tests/isolation-probe.php', false,
-            stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true, 'follow_location' => 0]]));
+        set_error_handler(static fn() => true);
+        try {
+            $body = file_get_contents('http://127.0.0.1:' . $server['port'] . '/tests/isolation-probe.php', false,
+                stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true, 'follow_location' => 0]]));
+        } finally {
+            restore_error_handler();
+        }
         if ($body !== false) {
             if (!hash_equals($server['id'] . ':' . $server['pid'], $body)) {
                 throw new RuntimeException('Foreign listener / port collision; refusing HTTP.');

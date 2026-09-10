@@ -106,6 +106,27 @@ function bbf_review_patch(array $patch): ?array {
     return $clean;
 }
 
+function bbf_review_transaction_begin(PDO $pdo): bool {
+    $mysql = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql';
+    if ($mysql) $pdo->beginTransaction(); else $pdo->exec('BEGIN IMMEDIATE');
+    return $mysql;
+}
+
+function bbf_review_transaction_commit(PDO $pdo): void {
+    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') $pdo->commit(); else $pdo->exec('COMMIT');
+}
+
+function bbf_review_transaction_rollback(?PDO $pdo): void {
+    if (!$pdo) return;
+    try {
+        if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql') {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+        } else {
+            $pdo->exec('ROLLBACK');
+        }
+    } catch (Throwable $ignored) {}
+}
+
 function bbf_review_file_path(array $config, string $formId): string {
     return rtrim($config['submissions_dir'] ?? __DIR__ . '/submissions', '/\\') . '/.review/' . $formId . '.json';
 }
@@ -437,14 +458,14 @@ function bbf_review_update(array $config, string $formId, string $submissionId, 
             if ($row) return ['ok' => false, 'reason' => 'conflict', 'review' => bbf_review_row($row)];
             throw new RuntimeException('Cannot classify concurrent review creation.');
         }
-        if ($mysql) $pdo->beginTransaction(); else $pdo->exec('BEGIN IMMEDIATE');
+        bbf_review_transaction_begin($pdo);
         $stmt = $pdo->prepare('SELECT * FROM bbf_submission_review WHERE ' . bbf_auth_form_sql($pdo)
             . ' AND submission_id = ?' . ($mysql ? ' FOR UPDATE' : ''));
         $stmt->execute([$formId, $submissionId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row && (int)$row['deleted'] === 1) { $pdo->rollBack(); return ['ok' => false, 'reason' => 'not_found']; }
+        if ($row && (int)$row['deleted'] === 1) { bbf_review_transaction_rollback($pdo); return ['ok' => false, 'reason' => 'not_found']; }
         $result = $apply($row ? bbf_review_row($row) : bbf_review_default());
-        if (!$result['ok']) { $pdo->rollBack(); return $result; }
+        if (!$result['ok']) { bbf_review_transaction_rollback($pdo); return $result; }
         $review = $result['review'];
         $tags = bbf_storage_json($review['tags']);
         if ($row) {
@@ -459,10 +480,10 @@ function bbf_review_update(array $config, string $formId, string $submissionId, 
             $write->execute([$formId, $submissionId, $review['status'], $review['notes'], $tags,
                 $review['revision'], $review['updated_at'], $review['updated_by']]);
         }
-        $pdo->commit();
+        bbf_review_transaction_commit($pdo);
         return $result;
     } catch (Throwable $error) {
-        if ($pdo && $pdo->inTransaction()) $pdo->rollBack();
+        bbf_review_transaction_rollback($pdo);
         if ($expectedRevision === 0) {
             try {
                 $winner = bbf_review_get($config, $formId, $submissionId);
@@ -570,7 +591,7 @@ function bbf_review_filter_save(array $config, string $formId, string $principal
             if ($row) return ['ok' => false, 'reason' => 'conflict', 'filter' => bbf_review_filter_row($row)];
             throw new RuntimeException('Cannot classify concurrent review filter creation.');
         }
-        if ($mysql) $pdo->beginTransaction(); else $pdo->exec('BEGIN IMMEDIATE');
+        bbf_review_transaction_begin($pdo);
         $stmt = $pdo->prepare('SELECT filter_id, name, criteria, revision, updated_at FROM bbf_review_filter WHERE '
             . bbf_auth_form_sql($pdo) . ' AND ' . bbf_review_principal_sql($pdo) . ' AND filter_id = ?'
             . ($mysql ? ' FOR UPDATE' : ''));
@@ -578,7 +599,7 @@ function bbf_review_filter_save(array $config, string $formId, string $principal
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         $current = $row ? bbf_review_filter_record(bbf_review_filter_row($row)) : null;
         $result = $apply($current);
-        if (!$result['ok']) { $pdo->rollBack(); return $result; }
+        if (!$result['ok']) { bbf_review_transaction_rollback($pdo); return $result; }
         $stored = $result['stored'];
         if ($row) {
             $write = $pdo->prepare('UPDATE bbf_review_filter SET name=?, criteria=?, revision=?, updated_at=? WHERE '
@@ -592,9 +613,9 @@ function bbf_review_filter_save(array $config, string $formId, string $principal
             $write->execute([$formId, $principalId, $filterId, $stored['name'], bbf_storage_json($stored['criteria']),
                 $stored['revision'], $stored['updated_at']]);
         }
-        $pdo->commit(); unset($result['stored']); return $result;
+        bbf_review_transaction_commit($pdo); unset($result['stored']); return $result;
     } catch (Throwable $error) {
-        if ($pdo && $pdo->inTransaction()) $pdo->rollBack();
+        bbf_review_transaction_rollback($pdo);
         error_log('BareBonesForms review filter save: ' . $error->getMessage());
         return ['ok' => false, 'reason' => 'storage'];
     }
@@ -626,24 +647,24 @@ function bbf_review_filter_delete(array $config, string $formId, string $princip
     $pdo = null;
     try {
         $pdo = bbf_review_db($config); $mysql = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql';
-        if ($mysql) $pdo->beginTransaction(); else $pdo->exec('BEGIN IMMEDIATE');
+        bbf_review_transaction_begin($pdo);
         $stmt = $pdo->prepare('SELECT filter_id, name, criteria, revision, updated_at FROM bbf_review_filter WHERE '
             . bbf_auth_form_sql($pdo) . ' AND ' . bbf_review_principal_sql($pdo) . ' AND filter_id = ?'
             . ($mysql ? ' FOR UPDATE' : ''));
         $stmt->execute([$formId, $principalId, $filterId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$row) { $pdo->rollBack(); return ['ok' => false, 'reason' => 'not_found']; }
+        if (!$row) { bbf_review_transaction_rollback($pdo); return ['ok' => false, 'reason' => 'not_found']; }
         $current = bbf_review_filter_row($row);
         if ($current['revision'] !== $expectedRevision) {
-            $pdo->rollBack(); return ['ok' => false, 'reason' => 'conflict', 'filter' => $current];
+            bbf_review_transaction_rollback($pdo); return ['ok' => false, 'reason' => 'conflict', 'filter' => $current];
         }
         $delete = $pdo->prepare('DELETE FROM bbf_review_filter WHERE ' . bbf_auth_form_sql($pdo) . ' AND '
             . bbf_review_principal_sql($pdo) . ' AND filter_id=? AND revision=?');
         $delete->execute([$formId, $principalId, $filterId, $expectedRevision]);
         if ($delete->rowCount() !== 1) throw new RuntimeException('Review filter revision changed during delete.');
-        $pdo->commit(); return ['ok' => true, 'deleted' => 1];
+        bbf_review_transaction_commit($pdo); return ['ok' => true, 'deleted' => 1];
     } catch (Throwable $error) {
-        if ($pdo && $pdo->inTransaction()) $pdo->rollBack();
+        bbf_review_transaction_rollback($pdo);
         error_log('BareBonesForms review filter delete: ' . $error->getMessage());
         return ['ok' => false, 'reason' => 'storage'];
     }
@@ -680,7 +701,7 @@ function bbf_review_delete_records(array $config, string $formId, array $submiss
         $ids = array_values($ids); sort($ids, SORT_STRING);
         $deleted = 0; $now = gmdate('Y-m-d\TH:i:s\Z'); $emptyTags = bbf_storage_json([]);
         if ($mysql) {
-            $pdo->beginTransaction();
+            bbf_review_transaction_begin($pdo);
             $tombstone = $pdo->prepare('INSERT INTO bbf_submission_review
                 (form_id, submission_id, status, notes, tags, revision, updated_at, updated_by, deleted)
                 VALUES (?, ?, ?, ?, ?, 0, ?, ?, 1)
@@ -693,9 +714,9 @@ function bbf_review_delete_records(array $config, string $formId, array $submiss
                 $tombstone->execute([$formId, $id, 'new', '', $emptyTags, $now, 'system']);
                 if ($tombstone->rowCount() === 2) $deleted++;
             }
-            $pdo->commit(); return ['ok' => true, 'deleted' => $deleted];
+            bbf_review_transaction_commit($pdo); return ['ok' => true, 'deleted' => $deleted];
         }
-        $pdo->exec('BEGIN IMMEDIATE');
+        bbf_review_transaction_begin($pdo);
         $select = $pdo->prepare('SELECT deleted FROM bbf_submission_review WHERE ' . bbf_auth_form_sql($pdo)
             . ' AND submission_id=?');
         $update = $pdo->prepare('UPDATE bbf_submission_review SET status=?, notes=?, tags=?, revision=0,
@@ -712,9 +733,9 @@ function bbf_review_delete_records(array $config, string $formId, array $submiss
                 $insert->execute([$formId, $id, 'new', '', $emptyTags, $now, 'system']);
             }
         }
-        $pdo->commit(); return ['ok' => true, 'deleted' => $deleted];
+        bbf_review_transaction_commit($pdo); return ['ok' => true, 'deleted' => $deleted];
     } catch (Throwable $error) {
-        if ($pdo && $pdo->inTransaction()) $pdo->rollBack();
+        bbf_review_transaction_rollback($pdo);
         error_log('BareBonesForms review delete: ' . $error->getMessage());
         return ['ok' => false, 'reason' => 'storage'];
     }
@@ -759,7 +780,7 @@ function bbf_review_delete_records_if(array $config, string $formId, array $expe
     try {
         $pdo = bbf_review_db($config);
         $mysql = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql';
-        if ($mysql) $pdo->beginTransaction(); else $pdo->exec('BEGIN IMMEDIATE');
+        bbf_review_transaction_begin($pdo);
         $select = $pdo->prepare('SELECT * FROM bbf_submission_review WHERE ' . bbf_auth_form_sql($pdo)
             . ' AND submission_id=?' . ($mysql ? ' FOR UPDATE' : ''));
         $active = [];
@@ -767,7 +788,7 @@ function bbf_review_delete_records_if(array $config, string $formId, array $expe
             $select->execute([$formId, $id]);
             $row = $select->fetch(PDO::FETCH_ASSOC); $select->closeCursor();
             $current = $row && (int)$row['deleted'] === 0 ? bbf_review_row($row) : null;
-            if ($current !== $expectedRecord) { $pdo->rollBack(); return ['ok' => false, 'reason' => 'conflict']; }
+            if ($current !== $expectedRecord) { bbf_review_transaction_rollback($pdo); return ['ok' => false, 'reason' => 'conflict']; }
             if ($current !== null) $active[$id] = true;
         }
         $now = gmdate('Y-m-d\TH:i:s\Z'); $emptyTags = bbf_storage_json([]);
@@ -792,12 +813,12 @@ function bbf_review_delete_records_if(array $config, string $formId, array $expe
             try { $primary = $deletePrimary($pdo); }
             catch (Throwable $error) { $primary = ['ok' => false, 'deleted' => false, 'reason' => 'primary']; }
             if (!is_array($primary) || ($primary['ok'] ?? false) !== true) {
-                $pdo->rollBack();
+                bbf_review_transaction_rollback($pdo);
                 return ['ok' => false, 'reason' => $primary['reason'] ?? 'primary',
                     'primary' => is_array($primary) ? $primary : null];
             }
         }
-        try { $pdo->commit(); }
+        try { bbf_review_transaction_commit($pdo); }
         catch (Throwable $error) {
             error_log('BareBonesForms conditional review commit: ' . $error->getMessage());
             return ['ok' => false, 'reason' => 'ambiguous', 'primary' => [
@@ -808,7 +829,7 @@ function bbf_review_delete_records_if(array $config, string $formId, array $expe
         if ($primary !== null) $result['primary'] = $primary;
         return $result;
     } catch (Throwable $error) {
-        if ($pdo && $pdo->inTransaction()) $pdo->rollBack();
+        bbf_review_transaction_rollback($pdo);
         error_log('BareBonesForms conditional review delete: ' . $error->getMessage());
         return ['ok' => false, 'reason' => 'storage'];
     }

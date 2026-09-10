@@ -219,7 +219,14 @@ try {
     mysql_access_check((int)$pdo->query("SELECT COUNT(*) FROM bbf_submissions WHERE form_id='alpha'")->fetchColumn() === 3
         && (int)$pdo->query("SELECT COUNT(*) FROM bbf_submissions WHERE BINARY form_id=BINARY 'alpha'")->fetchColumn() === 2,
         'real CI collation reproduces alias match; binary comparison excludes foreign ALPHA row');
-    $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
+    for ($attempt = 0; $attempt < 3; ++$attempt) {
+        try {
+            $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
+            break;
+        } catch (RuntimeException $error) {
+            if (!str_contains($error->getMessage(), 'Foreign listener / port collision') || $attempt === 2) throw $error;
+        }
+    }
     $base = 'http://127.0.0.1:' . $server['port'] . '/';
     $http = static function (string $path, array $options = []) use ($db, $server, $base): array {
         mysql_access_verify($db); // No endpoint/client request after child loss or ownership mismatch.
