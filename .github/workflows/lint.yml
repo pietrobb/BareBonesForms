@@ -74,7 +74,14 @@ jobs:
           extensions: mbstring, pdo_mysql
       - name: Install reviewed MariaDB runtime
         shell: powershell
-        run: choco install mariadb --version=12.1.2 --yes --no-progress
+        run: |
+          for ($attempt = 1; $attempt -le 4; $attempt++) {
+            choco install mariadb --version=12.1.2 --yes --no-progress
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -eq 0) { exit 0 }
+            if ($attempt -lt 4) { Start-Sleep -Seconds (15 * $attempt) }
+          }
+          exit $exitCode
       - name: Run owned disposable MariaDB matrix
         shell: powershell
         run: php tests/review-access-mysql-test.php
