@@ -246,6 +246,8 @@ function bbf_test_http(array $server, string $url, ?array $data = null, array $o
     if (($parts['scheme'] ?? '') !== 'http' || ($parts['host'] ?? '') !== '127.0.0.1'
         || ($parts['port'] ?? 0) !== $server['port'] || isset($parts['user']) || isset($parts['pass'])
         || preg_match('/[\r\n]/', $url)) throw new RuntimeException('HTTP target is not the owned test server.');
+    $timeout = $options['timeout'] ?? 10;
+    if (!is_int($timeout) || $timeout < 1 || $timeout > 120) throw new RuntimeException('Invalid HTTP timeout.');
     bbf_test_verify_server($server);
     $socket = @stream_socket_client('tcp://127.0.0.1:' . $server['port'], $errno, $error, 2);
     if (!$socket) throw new RuntimeException('Cannot connect to owned test server.');
@@ -254,7 +256,7 @@ function bbf_test_http(array $server, string $url, ?array $data = null, array $o
         // this fails BEFORE any request bytes. If it dies later, this pinned socket
         // cannot migrate to a replacement listener. Never reconnect/retry here.
         if (!bbf_test_server_alive($server)) throw new RuntimeException('Owned child exited before HTTP write.');
-        stream_set_timeout($socket, 10);
+        stream_set_timeout($socket, $timeout);
         $payload = $options['raw'] ?? ($data === null ? '' : http_build_query($data)); $method = $options['method'] ?? ($data === null && !isset($options['raw']) ? 'GET' : 'POST'); if (!is_string($payload) || !is_string($method) || !preg_match('/\A[A-Z]+\z/', $method)) throw new RuntimeException('Invalid HTTP options.');
         $target = ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : ''); $extra = ''; $custom = $options['headers'] ?? []; if (isset($options['cookie'])) $custom['Cookie'] = $options['cookie'];
         foreach ($custom as $name => $value) { if (!preg_match('/\A[A-Za-z0-9-]+\z/', $name) || !is_string($value) || preg_match('/[\r\n]/', $value) || in_array(strtolower($name), ['host', 'connection', 'content-length', 'transfer-encoding'], true)) throw new RuntimeException('Unsafe HTTP header.'); $extra .= "$name: $value\r\n"; }

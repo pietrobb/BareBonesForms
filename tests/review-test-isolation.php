@@ -166,6 +166,8 @@ function isolation_collision(string $source): void {
         isolation_refuses(static fn() => bbf_test_http($old, $url, ['stale' => 'must never arrive']),
             'dead owned child cannot POST to a replacement listener');
         $live = bbf_test_start_server($owner, '127.0.0.1', bbf_test_port());
+        isolation_refuses(static fn() => bbf_test_http($live, 'http://127.0.0.1:' . $live['port'] . '/', null, ['timeout' => 0]),
+            'HTTP client rejects an invalid response timeout');
         $wrongListener = $live;
         $wrongListener['port'] = $port;
         isolation_refuses(static fn() => bbf_test_http($wrongListener, $url, ['identity' => 'must never arrive']),

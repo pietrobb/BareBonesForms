@@ -780,6 +780,7 @@ PHP;
     $producerMeasure = static function (string $endpoint, string $mode, array $query) use ($http, $admin, $producerKey, $root, $server): array {
         $nonce = bin2hex(random_bytes(16));
         $options = $admin;
+        $options['timeout'] = 120;
         $options['headers'] += ['X-Mysql-Producer-Key' => $producerKey, 'X-Mysql-Producer-Nonce' => $nonce];
         $r = $http('tests/mysql-producer.php?' . http_build_query(['_endpoint' => $endpoint, '_mode' => $mode, 'form' => 'producer'] + $query), $options);
         $path = "$root/logs/producer-$nonce.json";
