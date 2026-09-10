@@ -96,7 +96,7 @@ function bbf_test_identity_probe(string $root, string $identity): string {
     if (empty($GLOBALS['bbf_test_roots'][$root]) || !preg_match('/\A[a-f0-9]{64}\z/D', $identity)) {
         throw new RuntimeException('Cannot create test server identity probe.');
     }
-    $probe = 'tests/isolation-probe-' . $identity . '.php';
+    $probe = 'tests/isolation-probe-' . bin2hex(random_bytes(16)) . '.php';
     $source = '<?php header("Content-Type: text/plain"); echo '
         . var_export($identity . ':', true) . ' . getmypid();';
     if (file_put_contents($root . '/' . $probe, $source) !== strlen($source)) {
@@ -191,12 +191,32 @@ function bbf_test_verify_server(array $server, bool $wait = false): int {
     $deadline = microtime(true) + ($wait ? 5 : 0);
     do {
         if (!bbf_test_server_alive($server)) throw new RuntimeException('Owned test server is not alive; refusing HTTP.');
+        if (!preg_match('~\Atests/isolation-probe-[a-f0-9]{32}\.php\z~D', $server['probe'] ?? '')) {
+            throw new RuntimeException('Invalid test server identity probe path.');
+        }
         set_error_handler(static fn() => true);
         try {
-            $body = file_get_contents('http://127.0.0.1:' . $server['port'] . '/' . $server['probe'], false,
-                stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true, 'follow_location' => 0]]));
+            $socket = stream_socket_client('tcp://127.0.0.1:' . $server['port'], $errno, $error, 1);
         } finally {
             restore_error_handler();
+        }
+        $body = false;
+        if ($socket !== false) {
+            try {
+                stream_set_timeout($socket, 1);
+                $request = "GET /{$server['probe']} HTTP/1.0\r\nHost: 127.0.0.1:{$server['port']}\r\nConnection: close\r\n\r\n";
+                while ($request !== '') {
+                    $written = @fwrite($socket, $request);
+                    if (!$written) break;
+                    $request = substr($request, $written);
+                }
+                $response = $request === '' ? stream_get_contents($socket) : false;
+                if (is_string($response) && !stream_get_meta_data($socket)['timed_out']) {
+                    [, $body] = array_pad(explode("\r\n\r\n", $response, 2), 2, '');
+                }
+            } finally {
+                fclose($socket);
+            }
         }
         if ($body !== false) {
             [$identity, $pid] = array_pad(explode(':', $body, 2), 2, '');
