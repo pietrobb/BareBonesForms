@@ -186,8 +186,11 @@ function bbf_test_verify_server(array $server, bool $wait = false): int {
         }
         if ($body !== false) {
             [$identity, $pid] = array_pad(explode(':', $body, 2), 2, '');
-            if (!hash_equals($server['id'], $identity) || !ctype_digit($pid) || (int)$pid < 1) {
-                throw new RuntimeException('Foreign listener / port collision; refusing HTTP.');
+            if (!hash_equals($server['id'], $identity)) {
+                throw new RuntimeException('Foreign listener / port collision: identity mismatch; refusing HTTP.');
+            }
+            if (!ctype_digit($pid) || (int)$pid < 1) {
+                throw new RuntimeException('Foreign listener / port collision: invalid child PID; refusing HTTP.');
             }
             if (!bbf_test_server_alive($server)) throw new RuntimeException('Owned test server exited during probe.');
             return (int)$pid;
