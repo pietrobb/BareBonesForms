@@ -23,6 +23,7 @@ function bbf_test_installation(string $source, bool $sandbox = false): string {
     if (!mkdir($root, 0700)) {
         throw new RuntimeException('Cannot create private test installation.');
     }
+    $root = str_replace('\\', '/', realpath($root));
     $GLOBALS['bbf_test_roots'][$root] = true;
     register_shutdown_function(static function () use ($root): void { bbf_test_cleanup($root); });
     try {

@@ -192,6 +192,7 @@ try {
     $baseline = isolation_snapshot($config);
     $root = bbf_test_installation($source);
     isolation_check(!file_exists($root . '/config.php'), 'operator config is not copied or loaded');
+    isolation_check(str_replace('\\', '/', realpath($root)) === $root, 'disposable root uses its canonical path for open_basedir');
     isolation_check(str_contains($root, ' ') && realpath($root) !== realpath($source), 'disposable path includes spaces and is outside the installation');
     file_put_contents($root . '/config.php', "<?php return ['sentinel' => 'do not overwrite'];\n");
     $sentinel = isolation_snapshot($root . '/config.php');
