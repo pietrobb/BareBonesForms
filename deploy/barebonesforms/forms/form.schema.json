@@ -326,6 +326,33 @@
                     "items": { "$ref": "#/$defs/field" },
                     "description": "Child fields for group type."
                 },
+                "repeatable": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Allow respondents to add and remove bounded rows; submitted data is an array of child-field objects."
+                },
+                "min_items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "default": 1,
+                    "description": "Minimum repeatable rows."
+                },
+                "max_items": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 10,
+                    "description": "Maximum repeatable rows."
+                },
+                "add_label": {
+                    "type": "string",
+                    "description": "Accessible label for the add-row control."
+                },
+                "remove_label": {
+                    "type": "string",
+                    "description": "Accessible label for each remove-row control."
+                },
                 "use": {
                     "type": "string",
                     "description": "Name of a template to use as this group's children (group type only)."

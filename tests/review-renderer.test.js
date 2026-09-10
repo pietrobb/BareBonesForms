@@ -36,6 +36,13 @@ class MiniElement {
     set innerHTML(value) { this._innerHTML = String(value); if (value === '') this.children = []; }
     get innerHTML() { return this._innerHTML || ''; }
     appendChild(child) { child.parentElement = this; this.children.push(child); return child; }
+    removeChild(child) {
+        const index = this.children.indexOf(child);
+        if (index >= 0) this.children.splice(index, 1);
+        child.parentElement = null;
+        return child;
+    }
+    remove() { if (this.parentElement) this.parentElement.removeChild(this); }
     insertBefore(child, before) {
         child.parentElement = this;
         const index = this.children.indexOf(before);
@@ -393,6 +400,142 @@ test('successful submit passes the filtered payload and recomputes conditions af
     assert.equal(ratingStars[0].getAttribute('tabindex'), '0');
     assert.equal(ratingStars[2].getAttribute('aria-checked'), 'false');
     assert.equal(ratingStars[2].classList.contains('bbf-star-active'), false);
+});
+
+test('repeatable controls enforce bounds while row and input identities stay stable', () => {
+    const { BBF, context } = loadBBF();
+    const group = BBF._buildField({
+        name: 'items', type: 'group', title: 'Items', repeatable: true, min_items: 1, max_items: 2,
+        fields: [{ name: 'sku', type: 'text', label: 'SKU' }],
+    });
+    const add = group.querySelector('.bbf-repeatable-add');
+    let rows = group.querySelectorAll('.bbf-repeatable-row');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].getAttribute('data-bbf-row-id'), '1');
+    assert.equal(rows[0].querySelector('.bbf-repeatable-remove').disabled, true);
+    const firstInputId = rows[0].querySelector('[name="items__1__sku"]').id;
+
+    add.dispatchEvent(new context.Event('click'));
+    rows = group.querySelectorAll('.bbf-repeatable-row');
+    assert.equal(rows.length, 2);
+    assert.equal(add.disabled, true);
+    assert.equal(rows[0].querySelector('[name="items__1__sku"]').id, firstInputId);
+    assert.equal(rows[1].querySelector('.bbf-repeatable-row-title').textContent, 'Items item 2');
+    assert.match(rows[1].querySelector('.bbf-repeatable-remove').getAttribute('aria-label'), /Items item 2/);
+
+    rows[0].querySelector('.bbf-repeatable-remove').dispatchEvent(new context.Event('click'));
+    rows = group.querySelectorAll('.bbf-repeatable-row');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].getAttribute('data-bbf-row-id'), '2');
+    assert.equal(rows[0].querySelector('[name="items__2__sku"]').id, 'bbf-items__2__sku');
+    add.dispatchEvent(new context.Event('click'));
+    rows = group.querySelectorAll('.bbf-repeatable-row');
+    assert.equal(rows[1].getAttribute('data-bbf-row-id'), '3');
+});
+
+test('repeatable conditions, validation, and serialization stay row-local', () => {
+    const { BBF, context } = loadBBF();
+    const field = {
+        name: 'items', type: 'group', title: 'Items', repeatable: true, min_items: 2, max_items: 2,
+        fields: [
+            { name: 'sku', type: 'text', label: 'SKU', required: true },
+            { name: 'kind', type: 'select', options: [{ value: 'normal', label: 'Normal' }, { value: 'special', label: 'Special' }] },
+            { name: 'special_fields', type: 'group', show_if: { all: [
+                { field: 'kind', value: 'special' }, { field: 'enabled', value: 'yes' },
+            ] }, fields: [
+                { name: 'detail', type: 'text', label: 'Detail', required: true },
+            ] },
+            { name: 'tags', type: 'checkbox', options: [{ value: 'gift', label: 'Gift' }] },
+        ],
+    };
+    const form = new MiniElement('form'); form.className = 'bbf-form';
+    const enabled = form.appendChild(new MiniElement('input'));
+    enabled.name = 'enabled'; enabled.setAttribute('name', 'enabled'); enabled.value = 'yes';
+    const group = form.appendChild(BBF._buildField(field));
+    group._bbfBindRows();
+    const rows = group.querySelectorAll('.bbf-repeatable-row');
+    const firstKind = rows[0].querySelector('[name="items__1__kind"]');
+    const secondKind = rows[1].querySelector('[name="items__2__kind"]');
+    firstKind.value = 'normal'; firstKind.dispatchEvent(new context.Event('change'));
+    secondKind.value = 'special'; secondKind.dispatchEvent(new context.Event('change'));
+    rows[0].querySelector('[name="items__1__sku"]').value = 'A-1';
+    rows[1].querySelector('[name="items__2__sku"]').value = 'B-2';
+    rows[1].querySelector('[name="items__2__tags"]').checked = true;
+
+    assert.equal(rows[0].querySelector('[data-field="items__1__special_fields"]').style.display, 'none');
+    assert.equal(rows[1].querySelector('[data-field="items__2__special_fields"]').style.display, '');
+    enabled.value = 'no'; enabled.dispatchEvent(new context.Event('change'));
+    assert.equal(rows[1].querySelector('[data-field="items__2__special_fields"]').style.display, 'none');
+    enabled.value = 'yes'; enabled.dispatchEvent(new context.Event('change'));
+    assert.equal(rows[1].querySelector('[data-field="items__2__special_fields"]').style.display, '');
+    const errors = BBF._validateRepeatableGroups([field], form);
+    assert.deepEqual(Object.keys(errors), ['items__2__detail']);
+    rows[1].querySelector('[name="items__2__detail"]').value = 'Cold';
+    assert.deepEqual(Object.keys(BBF._validateRepeatableGroups([field], form)), []);
+    assert.deepEqual(JSON.parse(JSON.stringify(BBF._collectRepeatableRows(field, group))), [
+        { sku: 'A-1', kind: 'normal', tags: [] },
+        { sku: 'B-2', kind: 'special', detail: 'Cold', tags: ['gift'] },
+    ]);
+    assert.equal(enabled.listeners.change.length, 2);
+    group._bbfResetRows();
+    assert.equal(enabled.listeners.change.length, 2);
+});
+
+test('repeatable reset restores minimum rows and page navigation validates current rows', () => {
+    const timers = [];
+    const { BBF, context } = loadBBF({ setTimeout: fn => { timers.push(fn); return fn; } });
+    const field = {
+        name: 'items', type: 'group', title: 'Items', repeatable: true, min_items: 1, max_items: 2,
+        fields: [{ name: 'sku', type: 'text', label: 'SKU', required: true }],
+    };
+    const form = BBF._buildForm({ fields: [field, { type: 'page_break' }, { name: 'done', type: 'text' }] },
+        'test', 'https://example.test/', {}, null, null, true);
+    const group = form.querySelector('[data-field="items"]');
+    group.querySelector('.bbf-repeatable-add').dispatchEvent(new context.Event('click'));
+    assert.equal(group.querySelectorAll('.bbf-repeatable-row').length, 2);
+    form.dispatchEvent(new context.Event('reset'));
+    timers.splice(0).forEach(fn => fn());
+    assert.equal(group.querySelectorAll('.bbf-repeatable-row').length, 1);
+
+    form.querySelector('.bbf-next').dispatchEvent(new context.Event('click'));
+    assert.equal(form._bbfPageState.currentPage.value, 0);
+    const input = group.querySelector('.bbf-repeatable-row').querySelector('input');
+    assert.equal(input.focused, true);
+    input.value = 'A-1';
+    form.querySelector('.bbf-next').dispatchEvent(new context.Event('click'));
+    assert.equal(form._bbfPageState.currentPage.value, 1);
+});
+
+test('submit emits structured repeatable rows and maps dotted server errors to current row controls', async () => {
+    let callbackBody = null;
+    class EmptyFormData { forEach() {} }
+    const { BBF, context } = loadBBF({
+        FormData: EmptyFormData,
+        fetch: async () => ({ ok: true, headers: { get: () => 'application/json' }, json: async () => ({ status: 'ok' }) }),
+    });
+    context.window.location = context.location;
+    const field = {
+        name: 'items', type: 'group', title: 'Items', repeatable: true, min_items: 1, max_items: 1,
+        fields: [
+            { name: 'sku', type: 'text', required: true },
+            { name: 'kind', type: 'select', options: [{ value: 'normal', label: 'Normal' }] },
+            { name: 'detail', type: 'text', show_if: { field: 'kind', value: 'special' } },
+        ],
+    };
+    const form = BBF._buildForm({ fields: [field] }, 'test', 'https://example.test/', {
+        onSuccess: (result, body) => { callbackBody = body; return false; },
+    }, null, null, true);
+    const row = form.querySelector('.bbf-repeatable-row');
+    row.querySelector('[name="items__1__sku"]').value = 'A-1';
+    row.querySelector('[name="items__1__kind"]').value = 'normal';
+    form.dispatchEvent(new context.Event('submit'));
+    await settle();
+    assert.deepEqual(JSON.parse(JSON.stringify(callbackBody.items)), [{ sku: 'A-1', kind: 'normal' }]);
+
+    BBF._showErrors(form, { 'items.0.sku': 'Server rejected SKU' });
+    const skuWrap = row.querySelector('[data-field="items__1__sku"]');
+    assert.equal(skuWrap.querySelector('.bbf-field-error').textContent, 'Server rejected SKU');
+    assert.equal(skuWrap.querySelector('input').focused, true);
 });
 
 test('schema permits option-level show_if', () => {

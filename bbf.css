@@ -393,6 +393,48 @@
     margin: 0;
 }
 
+/* ─── Repeatable groups ──────────────── */
+
+.bbf-repeatable-row {
+    margin: 0 0 12px;
+    padding: 12px;
+    border: 1px solid var(--bbf-border-light);
+    border-radius: var(--bbf-radius);
+}
+
+.bbf-repeatable-row-title {
+    padding: 0 4px;
+    font-weight: 600;
+}
+
+.bbf-repeatable-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bbf-repeatable-add,
+.bbf-repeatable-remove {
+    padding: 7px 12px;
+    border: 1px solid var(--bbf-border);
+    border-radius: var(--bbf-radius);
+    background: var(--bbf-bg-alt);
+    color: var(--bbf-text);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.bbf-repeatable-add:disabled,
+.bbf-repeatable-remove:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.bbf-repeatable-status {
+    color: var(--bbf-text-light);
+    font-size: 0.85em;
+}
+
 /* ─── Rating (stars) ─────────────────── */
 
 .bbf-rating-stars {

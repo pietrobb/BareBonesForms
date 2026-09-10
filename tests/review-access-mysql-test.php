@@ -347,6 +347,7 @@ try {
     require "$root/bbf_review.php";
     require_once "$root/bbf_outbox.php";
     require_once "$root/bbf_retention.php";
+    require_once "$root/bbf_backup.php";
     file_put_contents("$root/tests/mysql-payment-worker.php", <<<'PHP'
 <?php
 if (PHP_SAPI !== 'cli') exit(2);
@@ -459,6 +460,72 @@ PHP);
         'G8 real MySQL round-trips the immutable version and safe historical definition snapshot');
     mysql_access_check(!is_dir("$root/submissions/persist") && !file_exists("$root/submissions/persist.csv"),
         'G3 effective MySQL submit creates no global-file or CSV shadow records');
+
+    $repeatableGroup = ['name' => 'items', 'type' => 'group', 'repeatable' => true, 'min_items' => 1, 'max_items' => 2,
+        'fields' => [
+            ['name' => 'sku', 'type' => 'text', 'required' => true],
+            ['name' => 'kind', 'type' => 'select', 'options' => ['normal', 'special']],
+            ['name' => 'detail', 'type' => 'text', 'required' => true, 'show_if' => ['field' => 'kind', 'value' => 'special']],
+            ['name' => 'tags', 'type' => 'checkbox', 'options' => ['fragile', 'gift']],
+        ]];
+    $repeatableForm = $form;
+    $repeatableForm['fields'] = [$repeatableGroup, ['name' => 'details', 'type' => 'group', 'fields' => [
+        ['name' => 'new_field', 'type' => 'text'],
+    ]]];
+    file_put_contents("$root/forms/persist.json", bbf_storage_json($repeatableForm));
+    $repeatableItems = [
+        ['sku' => ' A-1 ', 'kind' => 'normal', 'detail' => '', 'tags' => ['gift']],
+        ['sku' => 'B-2', 'kind' => 'special', 'detail' => 'Cold', 'tags' => []],
+    ];
+    $expectedRepeatableItems = [
+        ['sku' => 'A-1', 'kind' => 'normal', 'tags' => ['gift']],
+        ['sku' => 'B-2', 'kind' => 'special', 'detail' => 'Cold', 'tags' => []],
+    ];
+    $repeatableResponse = $http('submit.php?form=persist', [
+        'method' => 'POST', 'headers' => ['Content-Type' => 'application/json'],
+        'raw' => bbf_storage_json(['items' => $repeatableItems, 'new_field' => 'repeatable mysql č😀']),
+    ]);
+    $repeatableId = $repeatableResponse['json']['submission_id'] ?? 'bbf_not_created';
+    mysql_access_check($repeatableResponse['code'] === 200 && ($repeatableResponse['json']['status'] ?? '') === 'ok',
+        "F7 real HTTP repeatable MySQL submit succeeds (HTTP {$repeatableResponse['code']}: {$repeatableResponse['body']})");
+    $repeatableStored = $load($repeatableId);
+    mysql_access_check(($repeatableStored['data']['items'] ?? null) === $expectedRepeatableItems
+        && ($repeatableStored['data']['new_field'] ?? null) === 'repeatable mysql č😀',
+        'F7 callback loader round-trips stable repeatable row objects through real MySQL');
+    $repeatableSql = $pdo->prepare('SELECT data FROM bbf_submissions WHERE id = ?');
+    $repeatableSql->execute([$repeatableId]);
+    $repeatableSqlData = json_decode((string)$repeatableSql->fetchColumn(), true, 512, JSON_THROW_ON_ERROR);
+    $repeatableSql->closeCursor();
+    mysql_access_check(($repeatableSqlData['items'] ?? null) === $expectedRepeatableItems,
+        'F7 independent SQL verifies durable nested repeatable JSON');
+    $repeatableAdmin = ['headers' => ['X-BBF-Token' => $config['api_token']]];
+    $repeatableDetail = $http('submissions.php?form=persist&id=' . rawurlencode($repeatableId), $repeatableAdmin);
+    mysql_access_check($repeatableDetail['code'] === 200
+        && ($repeatableDetail['json']['data']['items'] ?? null) === $expectedRepeatableItems,
+        'F7 authenticated API detail returns structured repeatable MySQL rows');
+    $repeatableExport = $http('submissions.php?format=csv&form=persist', $repeatableAdmin);
+    $repeatableStream = fopen('php://temp', 'w+b');
+    fwrite($repeatableStream, $repeatableExport['body']); rewind($repeatableStream);
+    $repeatableHeader = fgetcsv($repeatableStream, 0, ',', '"', '');
+    if (isset($repeatableHeader[0])) $repeatableHeader[0] = preg_replace('/^\xEF\xBB\xBF/', '', $repeatableHeader[0]);
+    $repeatableRows = [];
+    while (($repeatableRow = fgetcsv($repeatableStream, 0, ',', '"', '')) !== false) {
+        if (count($repeatableRow) !== count($repeatableHeader)) throw new RuntimeException('Misaligned repeatable MySQL export row.');
+        $repeatableRows[] = array_combine($repeatableHeader, $repeatableRow);
+    }
+    fclose($repeatableStream);
+    $repeatableById = [];
+    foreach ($repeatableRows as $repeatableRow) $repeatableById[$repeatableRow['id']] = $repeatableRow;
+    mysql_access_check($repeatableExport['code'] === 200
+        && ($repeatableById[$repeatableId]['items'] ?? null) === bbf_storage_json($expectedRepeatableItems)
+        && ($repeatableById[$submittedId]['items'] ?? null) === '',
+        'F7 HTTP MySQL export emits one deterministic JSON cell and preserves historical static row');
+    $deleteRepeatable = $pdo->prepare('DELETE FROM bbf_submissions WHERE id = ?');
+    $deleteRepeatable->execute([$repeatableId]);
+    $deleteRepeatable = null;
+    file_put_contents("$root/forms/persist.json", bbf_storage_json($form));
+    mysql_access_check(count($snapshot()) === 2, 'F7 repeatable probe cleanup restores prior MySQL fixture cardinality');
+
     $before = $snapshot();
     $r = $http('submit.php?form=persist', $post(['answer' => "\xff", 'new_field' => 'must not persist']));
     mysql_access_check($r['code'] === 500 && ($r['json']['status'] ?? '') === 'error' && $snapshot() === $before,
@@ -1052,6 +1119,83 @@ PHP);
     }
     mysql_access_check($unsafeEngineRejected,
         'G9 real MySQL retention fails closed before planning against a nontransactional primary table');
+
+    mysql_access_verify($db);
+    $backupForm = ['id' => 'backup-mysql', 'name' => 'Backup MySQL', 'storage' => 'mysql',
+        'fields' => [['name' => 'answer', 'type' => 'text']]];
+    $backupHistoricalForm = ['id' => 'backup-mysql', 'name' => 'Historical Backup MySQL', 'storage' => 'mysql',
+        'fields' => [['name' => 'answer', 'type' => 'text'], ['name' => 'retired_answer', 'type' => 'text']]];
+    file_put_contents("$root/forms/backup-mysql.json", bbf_storage_json($backupForm));
+    $backupRecord = ['id' => 'bbf_backup', 'form' => 'backup-mysql',
+        'data' => ['answer' => 'mysql-private', 'retired_answer' => 'historical-only'],
+        'meta' => ['submitted' => '2026-09-09T03:04:05Z',
+            'definition_version' => bbf_version_id($backupHistoricalForm), 'form_definition' => $backupHistoricalForm]];
+    $backupInsert = $pdo->prepare('INSERT INTO bbf_submissions (id,form_id,data,meta,created_at) VALUES (?,?,?,?,?)');
+    $backupInsert->execute([$backupRecord['id'], $backupRecord['form'], bbf_storage_json($backupRecord['data']),
+        bbf_storage_json($backupRecord['meta']), '2026-09-09 03:04:05']);
+    $backupInsert->execute(['bbf_backup_alias', 'BACKUP-MYSQL', bbf_storage_json(['answer' => 'alias-private']),
+        bbf_storage_json($backupRecord['meta']), '2026-09-09 03:04:05']);
+    $backupInsert = null;
+    $backupDirectory = dirname($root) . '/bbf mysql backups ' . bin2hex(random_bytes(8));
+    $GLOBALS['bbf_test_roots'][$backupDirectory] = true;
+    register_shutdown_function(static function () use ($backupDirectory): void { bbf_test_cleanup($backupDirectory); });
+    $backupConfig = $config; $backupConfig['storage'] = 'mysql';
+    $backupConfig['backup'] = ['directory' => $backupDirectory];
+    bbf_version_state($backupConfig, 'backup-mysql');
+    $backupReview = bbf_review_update($backupConfig, 'backup-mysql', 'bbf_backup', 'mysql-reviewer',
+        ['notes' => 'mysql backup note'], 0);
+    $backupFilter = bbf_review_filter_save($backupConfig, 'backup-mysql', 'mysql-reviewer', 'mine',
+        'Mine', ['status' => 'new'], 0);
+    $backupTombstone = bbf_review_delete_records($backupConfig, 'backup-mysql', ['bbf_deleted']);
+    $backupOutboxPath = bbf_outbox_path($backupConfig, 'backup-mysql', 'bbf_backup');
+    bbf_outbox_init($backupOutboxPath, 'backup-mysql:bbf_backup', [], 3, 10);
+    bbf_audit_write($backupConfig, ['id' => 'fixture'], 'viewer_read', 'backup-mysql', ['bbf_backup'], 'allowed', 'completed', 1);
+    $mysqlBundle = bbf_backup_create($backupConfig, 'backup-mysql', strtotime('2026-09-09T12:00:00Z'));
+    $mysqlDocument = bbf_backup_bundle_read($backupConfig, $mysqlBundle['path']);
+    mysql_access_check(($backupReview['ok'] ?? false) && ($backupFilter['ok'] ?? false) && ($backupTombstone['ok'] ?? false)
+        && array_keys($mysqlDocument['payload']['records']) === ['bbf_backup'],
+        'G9 real MySQL backup preserves exact-form records and review relationships while excluding case aliases');
+
+    $pdo->exec('CREATE DATABASE bbf_restore_fixture CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci');
+    foreach (["$root/backup-target", "$root/backup-target/forms", "$root/backup-target/submissions", "$root/backup-target/logs"] as $dir) {
+        if (!mkdir($dir, 0700)) throw new RuntimeException('Cannot create MySQL restore target directory.');
+    }
+    $restoreConfig = $backupConfig;
+    $restoreConfig['mysql']['database'] = 'bbf_restore_fixture';
+    $restoreConfig['api_token'] = bin2hex(random_bytes(24));
+    $restoreConfig['forms_dir'] = "$root/backup-target/forms";
+    $restoreConfig['submissions_dir'] = "$root/backup-target/submissions";
+    $restoreConfig['logs_dir'] = "$root/backup-target/logs";
+    $mysqlPlan = bbf_backup_restore_plan($restoreConfig, $mysqlBundle['path']);
+    mysql_access_check(($mysqlPlan['empty'] ?? false) === true && is_string($mysqlPlan['confirmation'])
+        && !$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='bbf_restore_fixture'")->fetchColumn(),
+        'G9 real MySQL restore dry-run proves an empty target without creating schema');
+    mkdir("$root/backup-target/logs/access-audit.php", 0700);
+    $mysqlFaulted = bbf_backup_restore($restoreConfig, $mysqlBundle['path'], $mysqlPlan['confirmation']);
+    $restorePdo = bbf_read_db_connect($restoreConfig);
+    $restoredSqlRows = 0;
+    foreach (['bbf_submissions', 'bbf_submission_review', 'bbf_review_filter'] as $table) {
+        $restoredSqlRows += (int)$restorePdo->query("SELECT COUNT(*) FROM $table")->fetchColumn();
+    }
+    $restorePdo = null;
+    mysql_access_check(($mysqlFaulted['reason'] ?? null) === 'storage' && $restoredSqlRows === 0
+        && !is_file("$root/backup-target/forms/backup-mysql.json")
+        && !file_exists("$root/backup-target/forms/.versions/backup-mysql")
+        && !file_exists("$root/backup-target/submissions/.delivery/backup-mysql")
+        && is_dir("$root/backup-target/logs/access-audit.php"),
+        'G9 real MySQL late publication failure compensates committed SQL and removes created relationship files');
+    rmdir("$root/backup-target/logs/access-audit.php");
+    $mysqlRestored = bbf_backup_restore($restoreConfig, $mysqlBundle['path'], $mysqlPlan['confirmation']);
+    $mysqlRows = iterator_to_array(bbf_read_export('backup-mysql', $restoreConfig, PHP_INT_MAX, 0, null, null), false);
+    mysql_access_check(($mysqlRestored['ok'] ?? false) === true && $mysqlRows === [$backupRecord]
+        && bbf_backup_review_capture($restoreConfig, 'backup-mysql') === $mysqlDocument['payload']['review']
+        && (bbf_outbox_read(bbf_outbox_existing_path($restoreConfig, 'backup-mysql', 'bbf_backup'))['ledger'] ?? null)
+            === ($mysqlDocument['payload']['delivery']['bbf_backup']['ledger'] ?? null),
+        'G9 real MySQL confirmed restore preserves submission, review/filter/tombstone and delivery relationships');
+    $mysqlOccupied = bbf_backup_restore_plan($restoreConfig, $mysqlBundle['path']);
+    mysql_access_check(($mysqlOccupied['empty'] ?? true) === false && ($mysqlOccupied['confirmation'] ?? null) === null,
+        'G9 real MySQL restore refuses its populated exact-form target');
+    bbf_test_cleanup($backupDirectory);
     print 'G9 MySQL additions: ' . ($checks - $g9Start) . " passed.\n";
 } catch (Throwable $error) {
     $exitCode = 1;

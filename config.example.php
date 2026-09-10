@@ -119,6 +119,11 @@ return [
         'batch_limit' => 100,
         'archive_dir' => dirname(__DIR__) . '/barebonesforms-private/retention',
     ],
+    // Logical backups are form-scoped, integrity checked and contain no access credentials.
+    // Keep this directory private. Restore is a dry run unless --apply and its exact confirmation are supplied.
+    'backup' => [
+        'directory' => dirname(__DIR__) . '/barebonesforms-private/backups',
+    ],
 
     // ─── Sandbox ─────────────────────────────────────────────────
     // Enable sandbox mode for testing forms without side effects.

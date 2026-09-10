@@ -60,3 +60,21 @@ jobs:
           node-version: '20'
       - name: Run focused local-mock orchestration
         run: php tests/review-ci-test.php
+
+  mysql:
+    name: Disposable MariaDB regression gate
+    runs-on: windows-latest
+    needs: syntax
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql
+      - name: Install reviewed MariaDB runtime
+        shell: powershell
+        run: choco install mariadb --version=12.1.2 --yes --no-progress
+      - name: Run owned disposable MariaDB matrix
+        shell: powershell
+        run: php tests/review-access-mysql-test.php

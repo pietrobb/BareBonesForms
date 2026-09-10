@@ -599,10 +599,21 @@ function collectData(array $fields, array $input): array {
     $data = [];
     foreach ($fields as $field) {
         $type = $field['type'] ?? 'text';
-        // Skip non-data fields
-        if (in_array($type, ['section', 'page_break', 'group'], true)) continue;
+        // Skip non-data fields; repeatable groups preserve structured rows.
+        if (in_array($type, ['section', 'page_break'], true)) continue;
 
         $name = $field['name'];
+        if ($type === 'group') {
+            if (empty($field['repeatable'])) continue;
+            if (!empty($field['show_if']) && !evalCondition($field['show_if'], $input)) continue;
+            $childFields = flattenFields($field['fields'] ?? []);
+            $rows = [];
+            foreach ($input[$name] ?? [] as $row) {
+                $rows[] = collectData($childFields, bbfRepeatableRowInput($childFields, $input, $row));
+            }
+            $data[$name] = $rows;
+            continue;
+        }
 
         // Skip conditionally hidden fields — evaluate the condition server-side
         if (!empty($field['show_if']) && !evalCondition($field['show_if'], $input)) {
@@ -752,19 +763,26 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
     $versionCols = isset($submission['meta']['definition_version'], $submission['meta']['form_definition'])
         ? ['__bbf:definition_version', '__bbf:form_definition', '__bbf:csv_escaped_fields'] : [];
     $fieldNames = [];
+    $structuredFields = [];
     foreach (flattenFields($formFields) as $field) {
-        if (in_array($field['type'] ?? 'text', ['section', 'page_break', 'group'], true)) continue;
+        $type = $field['type'] ?? 'text';
+        if ($type === 'group' && !empty($field['repeatable']) && isset($field['name'])) {
+            $structuredFields[$field['name']] = true;
+        }
+        if (in_array($type, ['section', 'page_break', 'group'], true)) continue;
         if (isset($field['name'])) $fieldNames[] = $field['name'];
     }
+    if ($structuredFields !== []) $versionCols[] = '__bbf:structured_fields';
     $fieldNames = array_values(array_unique(array_merge($fieldNames, array_keys($submission['data']))));
     $escapedFields = [];
     foreach ($submission['data'] as $name => $value) {
-        $cell = is_array($value) ? implode('; ', $value) : (string)$value;
+        $cell = isset($structuredFields[$name]) ? bbf_storage_json($value)
+            : (is_array($value) ? implode('; ', $value) : (string)$value);
         if (csvNeedsSanitize($cell)) $escapedFields[] = $name;
     }
     // Reserved metadata columns cannot also represent respondent values.
     if (array_intersect(array_merge($metaCols, $versionCols), $fieldNames)) return false;
-    return bbf_storage_locked($file, static function () use ($file, $submission, $metaCols, $versionCols, $fieldNames, $escapedFields): bool {
+    return bbf_storage_locked($file, static function () use ($file, $submission, $metaCols, $versionCols, $fieldNames, $escapedFields, $structuredFields): bool {
         $source = null;
         try {
             $headers = $metaCols;
@@ -782,7 +800,7 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
             }
             // Preserve historical order, including deleted/renamed fields; only append new names.
             $union = array_values(array_unique(array_merge($headers, $fieldNames, $versionCols)));
-            return bbf_storage_replace($file, static function ($out) use ($source, $headers, $union, $submission, $escapedFields): bool {
+            return bbf_storage_replace($file, static function ($out) use ($source, $headers, $union, $submission, $escapedFields, $structuredFields): bool {
                 if (!bbf_storage_write_csv($out, $union)) return false;
                 if ($source) {
                     while (($old = fgetcsv($source, 0, ',', '"', '')) !== false) {
@@ -808,10 +826,13 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
                             ? bbf_storage_json($submission['meta']['form_definition']) : '';
                     } elseif ($name === '__bbf:csv_escaped_fields') {
                         $value = bbf_storage_json($escapedFields);
+                    } elseif ($name === '__bbf:structured_fields') {
+                        $value = bbf_storage_json(array_keys($structuredFields));
                     } else {
                         $value = $submission['data'][$name] ?? '';
                     }
-                    $row[] = csvSanitize(is_array($value) ? implode('; ', $value) : (string)$value);
+                    $row[] = csvSanitize(isset($structuredFields[$name]) ? bbf_storage_json($value)
+                        : (is_array($value) ? implode('; ', $value) : (string)$value));
                 }
                 return bbf_storage_write_csv($out, $row);
             });

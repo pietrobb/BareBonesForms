@@ -141,7 +141,7 @@ function bench_install(string $storage, int $n, string $day): array {
     $GLOBALS['bbf_test_roots'][$root] = true;
     register_shutdown_function(static function () use ($root): void { bbf_test_cleanup($root); });
     foreach (['tests', 'forms', 'submissions', 'logs', 'sessions', 'tmp'] as $dir) mkdir($root . '/' . $dir, 0700);
-    foreach (['viewer.php', 'submissions.php', 'bbf_auth.php', 'bbf_functions.php', 'bbf_storage.php', 'bbf_delivery.php', 'bbf_outbox.php', 'bbf_read.php', 'bbf_export.php', 'bbf_review.php'] as $file) {
+    foreach (['viewer.php', 'submissions.php', 'bbf_auth.php', 'bbf_functions.php', 'bbf_storage.php', 'bbf_delivery.php', 'bbf_outbox.php', 'bbf_read.php', 'bbf_export.php', 'bbf_review.php', 'bbf_versions.php'] as $file) {
         bbf_test_copy(dirname(__DIR__) . '/' . $file, $root . '/' . $file);
     }
     bbf_test_copy(__FILE__, $root . '/tests/review-storage-benchmark.php');

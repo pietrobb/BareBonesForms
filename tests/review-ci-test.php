@@ -47,23 +47,99 @@ function bbf_ci_process(array $command, string $cwd, bool $capture = false): arr
     return ['code' => proc_close($process), 'stdout' => $stdout, 'stderr' => $stderr];
 }
 
-/** Every child runs, every nonzero result is counted, and any failure makes the gate nonzero. */
-function bbf_ci_suites(array $suites, string $root, string $summaryLabel): array
-{
+/** Every child runs, every nonzero/timeout result is counted, and any failure makes the gate nonzero. */
+function bbf_ci_suites(
+    array $suites,
+    string $root,
+    string $summaryLabel,
+    int $maxParallel = 1,
+    float $timeoutSeconds = 600.0
+): array {
+    if ($maxParallel < 1 || $timeoutSeconds <= 0) {
+        throw new InvalidArgumentException('CI concurrency and timeout must be positive.');
+    }
+
+    $environment = getenv();
+    if (!is_array($environment)) {
+        $environment = [];
+    }
+    unset(
+        $environment['BBF_TEST_LEASE'],
+        $environment['BBF_TEST_LEASE_KEY'],
+        $environment['BBF_TEST_FIXTURE_ROOT'],
+        $environment['BBF_TEST_IDENTITY'],
+        $environment['PHP_CLI_SERVER_WORKERS']
+    );
+
+    $queue = [];
+    foreach ($suites as $label => $command) {
+        $queue[] = ['label' => $label, 'command' => $command];
+    }
+    $running = [];
     $passed = 0;
     $failed = 0;
-    foreach ($suites as $label => $command) {
-        print "\n=== $label ===\n";
-        $result = bbf_ci_process($command, $root);
-        if ($result['code'] === 0) {
-            ++$passed;
-            print "PASS suite: $label\n";
-            continue;
+
+    while ($queue !== [] || $running !== []) {
+        while ($queue !== [] && count($running) < $maxParallel) {
+            $suite = array_shift($queue);
+            $label = $suite['label'];
+            $pipes = [];
+            $process = proc_open(
+                $suite['command'],
+                [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['redirect', 1]],
+                $pipes,
+                $root,
+                $environment
+            );
+            if (!is_resource($process)) {
+                ++$failed;
+                fwrite(STDERR, "\n=== $label ===\nFAIL suite: $label could not start\n");
+                continue;
+            }
+            fclose($pipes[0]);
+            stream_set_blocking($pipes[1], false);
+            $running[] = [
+                'label' => $label,
+                'process' => $process,
+                'output' => $pipes[1],
+                'buffer' => '',
+                'started' => microtime(true),
+            ];
         }
 
-        ++$failed;
-        $exit = $result['code'] === null ? 'not started' : (string)$result['code'];
-        fwrite(STDERR, "FAIL suite: $label exited $exit\n");
+        foreach ($running as $index => $child) {
+            $running[$index]['buffer'] .= stream_get_contents($child['output']);
+            $status = proc_get_status($child['process']);
+            $timedOut = $status['running'] && microtime(true) - $child['started'] > $timeoutSeconds;
+            if ($status['running'] && !$timedOut) {
+                continue;
+            }
+            if ($timedOut) {
+                proc_terminate($child['process']);
+            }
+            $running[$index]['buffer'] .= stream_get_contents($child['output']);
+            fclose($child['output']);
+            $closed = proc_close($child['process']);
+            $code = $timedOut ? null : ($status['exitcode'] === -1 ? $closed : $status['exitcode']);
+            print "\n=== {$child['label']} ===\n";
+            print $running[$index]['buffer'];
+            if ($running[$index]['buffer'] !== '' && !str_ends_with($running[$index]['buffer'], "\n")) {
+                print "\n";
+            }
+            if ($code === 0) {
+                ++$passed;
+                print "PASS suite: {$child['label']}\n";
+            } else {
+                ++$failed;
+                $exit = $timedOut ? 'timeout' : ($code === null ? 'not started' : (string)$code);
+                print "FAIL suite: {$child['label']} exited $exit\n";
+            }
+            unset($running[$index]);
+        }
+        $running = array_values($running);
+        if ($running !== []) {
+            usleep(50000);
+        }
     }
 
     $total = count($suites);
@@ -91,7 +167,11 @@ function bbf_ci_verify_workflow(string $root): void
         'contents: read' => 'read-only repository permission',
         "php-version: '8.2'" => 'supported PHP runtime',
         "node-version: '20'" => 'Node test runtime',
-        'extensions: mbstring, pdo_sqlite, sqlite3' => 'PHP regression extensions',
+        'extensions: mbstring, pdo_sqlite, sqlite3' => 'portable PHP regression extensions',
+        'runs-on: windows-latest' => 'Windows MariaDB runner',
+        'extensions: mbstring, pdo_mysql' => 'real MySQL regression extension',
+        'choco install mariadb --version=12.1.2 --yes --no-progress' => 'reviewed MariaDB runtime installation',
+        'run: php tests/review-access-mysql-test.php' => 'owned disposable MariaDB regression gate',
         'run: php tests/review-ci-test.php' => 'failure-propagating G6 gate',
     ] as $needle => $label) {
         if (!str_contains($workflow, $needle)) {
@@ -113,12 +193,33 @@ function bbf_ci_verify_workflow(string $root): void
 function bbf_ci_verify_failure_propagation(string $root): void
 {
     $result = bbf_ci_process([PHP_BINARY, __FILE__, '--self-test-runner'], $root, true);
-    $expectedSummary = 'G6 failure propagation probe: 0/1 suites passed; 1 failed.';
+    $expectedSummary = 'G6 failure propagation probe: 2/3 suites passed; 1 failed.';
     $expectedFailure = 'FAIL suite: Deliberate failure probe exited ' . BBF_CI_FAILURE_PROBE_EXIT;
+    $intactOutputBlocks = true;
+    foreach (['A', 'B'] as $marker) {
+        $header = "=== Output probe $marker ===";
+        $nextHeader = null;
+        $headerOffset = strpos($result['stdout'], $header);
+        if ($headerOffset !== false) {
+            $nextHeader = strpos($result['stdout'], "\n=== ", $headerOffset + strlen($header));
+        }
+        $block = $headerOffset === false ? '' : substr(
+            $result['stdout'],
+            $headerOffset,
+            $nextHeader === false ? null : $nextHeader - $headerOffset
+        );
+        $intactOutputBlocks = $intactOutputBlocks
+            && substr_count($result['stdout'], $header) === 1
+            && substr_count($block, "OUTPUT PROBE $marker START") === 1
+            && substr_count($block, "OUTPUT PROBE $marker STDERR") === 1
+            && substr_count($block, "OUTPUT PROBE $marker END") === 1
+            && substr_count($block, "PASS suite: Output probe $marker") === 1;
+    }
     if ($result['code'] !== 1
+        || !$intactOutputBlocks
         || !str_contains($result['stdout'], $expectedSummary)
-        || !str_contains($result['stderr'], $expectedFailure)
-        || !str_contains($result['stderr'], 'DELIBERATE G6 FAILURE PROBE')) {
+        || !str_contains($result['stdout'], $expectedFailure)
+        || !str_contains($result['stdout'], 'DELIBERATE G6 FAILURE PROBE')) {
         fwrite(STDERR, "FAIL failure propagation self-test\n");
         fwrite(STDERR, "self-test stdout:\n" . $result['stdout']);
         fwrite(STDERR, "self-test stderr:\n" . $result['stderr']);
@@ -130,6 +231,17 @@ function bbf_ci_verify_failure_propagation(string $root): void
 $root = dirname(__DIR__);
 $arguments = array_slice($argv, 1);
 
+if (count($arguments) === 1 && preg_match('/^--output-probe=([AB])$/', $arguments[0], $probe)) {
+    $marker = $probe[1];
+    print "OUTPUT PROBE $marker START\n";
+    for ($line = 0; $line < 256; ++$line) {
+        print "$marker:" . str_pad((string)$line, 3, '0', STR_PAD_LEFT) . ':' . str_repeat($marker, 64) . "\n";
+    }
+    fwrite(STDERR, "OUTPUT PROBE $marker STDERR\n");
+    print "OUTPUT PROBE $marker END\n";
+    exit(0);
+}
+
 if ($arguments === ['--failure-probe']) {
     fwrite(STDERR, "DELIBERATE G6 FAILURE PROBE\n");
     exit(BBF_CI_FAILURE_PROBE_EXIT);
@@ -137,9 +249,21 @@ if ($arguments === ['--failure-probe']) {
 
 if ($arguments === ['--self-test-runner']) {
     $result = bbf_ci_suites(
-        ['Deliberate failure probe' => [PHP_BINARY, __FILE__, '--failure-probe']],
+        [
+            'Output probe A' => [PHP_BINARY, __FILE__, '--output-probe=A'],
+            'Output probe B' => ['node', '-e', <<<'JS'
+console.log('OUTPUT PROBE B START');
+for (let line = 0; line < 256; ++line) {
+    console.log(`B:${String(line).padStart(3, '0')}:${'B'.repeat(64)}`);
+}
+console.error('OUTPUT PROBE B STDERR');
+console.log('OUTPUT PROBE B END');
+JS],
+            'Deliberate failure probe' => [PHP_BINARY, __FILE__, '--failure-probe'],
+        ],
         $root,
-        'G6 failure propagation probe'
+        'G6 failure propagation probe',
+        3
     );
     exit($result['code']);
 }
@@ -163,18 +287,37 @@ try {
     bbf_ci_verify_workflow($root);
     $required = [
         'Isolated PHP integration and mutation safety' => [__DIR__ . '/review-test-isolation.php', [PHP_BINARY, __DIR__ . '/review-test-isolation.php']],
+        'Typed validation and forwarded values' => [__DIR__ . '/review-validation-test.php', [PHP_BINARY, __DIR__ . '/review-validation-test.php']],
         'Storage error handling' => [__DIR__ . '/review-storage-test.php', [PHP_BINARY, __DIR__ . '/review-storage-test.php']],
+        'Effective per-form storage routing' => [__DIR__ . '/review-storage-routing-test.php', [PHP_BINARY, __DIR__ . '/review-storage-routing-test.php']],
+        'Read consistency and invalid records' => [__DIR__ . '/review-read-consistency-test.php', [PHP_BINARY, __DIR__ . '/review-read-consistency-test.php']],
+        'Expanded and historical exports' => [__DIR__ . '/review-export-test.php', [PHP_BINARY, __DIR__ . '/review-export-test.php']],
+        'Storage pagination benchmark' => [__DIR__ . '/review-storage-benchmark.php', [PHP_BINARY, __DIR__ . '/review-storage-benchmark.php']],
         'Token revocation' => [__DIR__ . '/review-access-core-test.php', [PHP_BINARY, __DIR__ . '/review-access-core-test.php']],
+        'Portable backend authorization' => [__DIR__ . '/review-access-storage-test.php', [PHP_BINARY, __DIR__ . '/review-access-storage-test.php']],
+        'Sandbox submit authorization' => [__DIR__ . '/review-sandbox-test.php', [PHP_BINARY, __DIR__ . '/review-sandbox-test.php']],
+        'Diagnostic target isolation' => [__DIR__ . '/review-diagnostics-test.php', [PHP_BINARY, __DIR__ . '/review-diagnostics-test.php']],
         'Payment duplicate and out-of-order events' => [__DIR__ . '/review-payment-test.php', [PHP_BINARY, __DIR__ . '/review-payment-test.php']],
         'Delivery protocol rejection' => [__DIR__ . '/review-delivery-test.php', [PHP_BINARY, __DIR__ . '/review-delivery-test.php']],
+        'Submit delivery failure propagation' => [__DIR__ . '/review-submit-delivery-test.php', [PHP_BINARY, __DIR__ . '/review-submit-delivery-test.php']],
         'Viewer navigation' => [__DIR__ . '/viewer-navigation.test.js', ['node', '--test', __DIR__ . '/viewer-navigation.test.js']],
         'Real-browser security' => [__DIR__ . '/review-security.test.js', ['node', '--test', __DIR__ . '/review-security.test.js']],
-        'Renderer stale requests' => [__DIR__ . '/review-renderer.test.js', ['node', '--test', __DIR__ . '/review-renderer.test.js']],
+        'Editor save and keyboard behavior' => [__DIR__ . '/editor-save.test.js', ['node', '--test', __DIR__ . '/editor-save.test.js']],
+        'Renderer stale requests and conditions' => [__DIR__ . '/review-renderer.test.js', ['node', '--test', __DIR__ . '/review-renderer.test.js']],
+        'Server condition parity' => [__DIR__ . '/review-conditions-test.php', [PHP_BINARY, __DIR__ . '/review-conditions-test.php']],
+        'Permission-aware viewer UI' => [__DIR__ . '/review-access-ui.test.js', ['node', '--test', __DIR__ . '/review-access-ui.test.js']],
+        'Sandbox browser boundary' => [__DIR__ . '/review-sandbox-ui.test.js', ['node', '--test', __DIR__ . '/review-sandbox-ui.test.js']],
         'Viewer inbox API and portable backends' => [__DIR__ . '/review-inbox-test.php', [PHP_BINARY, __DIR__ . '/review-inbox-test.php']],
         'Real-browser viewer inbox' => [__DIR__ . '/review-inbox.test.js', ['node', '--test', __DIR__ . '/review-inbox.test.js']],
         'Form version compatibility and concurrency' => [__DIR__ . '/review-versions-test.php', [PHP_BINARY, __DIR__ . '/review-versions-test.php']],
         'Respondent draft privacy, expiry and isolation' => [__DIR__ . '/review-drafts-test.php', [PHP_BINARY, __DIR__ . '/review-drafts-test.php']],
         'Real-browser respondent drafts' => [__DIR__ . '/review-drafts.test.js', ['node', '--test', __DIR__ . '/review-drafts.test.js']],
+        'Delivery outbox durability and concurrency' => [__DIR__ . '/review-outbox-test.php', [PHP_BINARY, __DIR__ . '/review-outbox-test.php']],
+        'Retention and archival relationships' => [__DIR__ . '/review-retention-test.php', [PHP_BINARY, __DIR__ . '/review-retention-test.php']],
+        'Protected logical backup and restore' => [__DIR__ . '/review-backup-test.php', [PHP_BINARY, __DIR__ . '/review-backup-test.php']],
+        'Bounded repeatable group integration' => [__DIR__ . '/review-repeatable-test.php', [PHP_BINARY, __DIR__ . '/review-repeatable-test.php']],
+        'Repeatable group client behavior' => [__DIR__ . '/review-repeatable.test.js', ['node', '--test', __DIR__ . '/review-repeatable.test.js']],
+        'Finding-to-test acceptance inventory' => [__DIR__ . '/review-acceptance-test.php', [PHP_BINARY, __DIR__ . '/review-acceptance-test.php']],
         'Deployment parity' => [__DIR__ . '/review-deploy-parity-test.php', [PHP_BINARY, __DIR__ . '/review-deploy-parity-test.php']],
     ];
 
@@ -192,7 +335,7 @@ try {
     }
     print trim($selfTest['stdout']) . "\n";
 
-    $result = bbf_ci_suites($suites, $root, 'G6 CI regression orchestration');
+    $result = bbf_ci_suites($suites, $root, 'G6 CI regression orchestration', 5, 600.0);
     print "G6 required suite count: {$result['total']}.\n";
     exit($result['code']);
 } catch (Throwable $error) {

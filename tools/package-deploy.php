@@ -40,6 +40,7 @@ function bbf_deploy_manifest(string $root): array
         'bbf.css',
         'bbf.js',
         'bbf_auth.php',
+        'bbf_backup.php',
         'bbf_delivery.php',
         'bbf_diagnostics.php',
         'bbf_drafts.php',

@@ -88,6 +88,12 @@
             draftDeleting:    'Deleting draft…',
             draftDeleted:     'Saved progress deleted.',
             draftFailed:      'Draft request failed.',
+            repeatableAdd:    'Add item',
+            repeatableRemove: 'Remove item',
+            repeatableItem:   '{label} item {index}',
+            repeatableCount:  '{label}: {count} items.',
+            repeatableMin:    '{label} requires at least {min} items.',
+            repeatableMax:    '{label} allows at most {max} items.',
         },
 
         // Registered language packs: { de: {...}, sk: {...}, ... }
@@ -164,7 +170,7 @@
                 }
 
                 // Fetch dynamic options (options_from) before building the form
-                const allFields = this._flattenFields(form.fields || []);
+                const allFields = this._flattenFields(form.fields || [], true);
                 const optionsFetches = [];
                 allFields.forEach(field => {
                     if (field.options_from) {
@@ -223,15 +229,103 @@
         // ─── Field helpers ──────────────────────────────────
 
         // Flatten nested group fields into a flat array
-        _flattenFields: function(fields) {
+        _flattenFields: function(fields, includeRepeatableChildren) {
             const result = [];
             (fields || []).forEach(f => {
                 result.push(f);
-                if (f.type === 'group' && f.fields) {
-                    this._flattenFields(f.fields).forEach(child => result.push(child));
+                if (f.type === 'group' && f.fields && (!f.repeatable || includeRepeatableChildren)) {
+                    this._flattenFields(f.fields, includeRepeatableChildren).forEach(child => result.push(child));
                 }
             });
             return result;
+        },
+
+        _repeatableGroups: function(fields) {
+            return this._flattenFields(fields || []).filter(field => field.type === 'group' && field.repeatable);
+        },
+
+        _scopeRepeatableFields: function(fields, prefix) {
+            const names = {};
+            this._flattenFields(fields || [], true).forEach(field => { if (field.name) names[field.name] = true; });
+            return this._prefixFields(fields || [], prefix, names);
+        },
+
+        _repeatableRows: function(group) {
+            return (group._bbfRows || []).filter(row => row.parentElement === group._bbfRowsContainer);
+        },
+
+        _validateRepeatableGroups: function(fields, formEl, langCode) {
+            const errors = {};
+            this._repeatableGroups(fields).forEach(field => {
+                const group = formEl.querySelector(`[data-field="${field.name}"]`);
+                if (!group || this._isHidden(group)) return;
+                const rows = this._repeatableRows(group);
+                const min = field.min_items === undefined ? 1 : field.min_items;
+                const max = field.max_items === undefined ? 10 : field.max_items;
+                const label = field.label || field.title || field.name;
+                if (rows.length < min) {
+                    errors[field.name] = this._t('repeatableMin', { label, min }, langCode);
+                    return;
+                }
+                if (rows.length > max) {
+                    errors[field.name] = this._t('repeatableMax', { label, max }, langCode);
+                    return;
+                }
+                rows.forEach(row => {
+                    const rowFields = this._flattenFields(row._bbfFields || []).filter(child =>
+                        !['section', 'page_break', 'group'].includes(child.type));
+                    Object.assign(errors, this._validate(rowFields, row, langCode));
+                });
+            });
+            return errors;
+        },
+
+        _collectRepeatableRows: function(field, group) {
+            const childFields = this._flattenFields(field.fields || []).filter(child =>
+                !['section', 'page_break', 'group'].includes(child.type));
+            return this._repeatableRows(group).map(row => {
+                const result = {};
+                childFields.forEach(child => {
+                    const scopedName = row._bbfPrefix + child.name;
+                    const wrap = row.querySelector(`[data-field="${scopedName}"]`);
+                    if (wrap && this._isHidden(wrap)) return;
+                    const inputs = row.querySelectorAll(`[name="${scopedName}"]`);
+                    if (child.type === 'checkbox') {
+                        result[child.name] = Array.from(inputs).filter(input => input.checked).map(input => input.value);
+                    } else if (child.type === 'radio') {
+                        const checked = Array.from(inputs).find(input => input.checked);
+                        result[child.name] = checked ? checked.value : '';
+                    } else {
+                        result[child.name] = inputs[0] ? inputs[0].value : '';
+                    }
+                    if (child.other) {
+                        const other = row.querySelector(`[name="${scopedName}_other"]`);
+                        result[child.name + '_other'] = other ? other.value : '';
+                    }
+                    if (child.type === 'email' && child.confirm) {
+                        const confirm = row.querySelector(`[name="${scopedName}_confirm"]`);
+                        result[child.name + '_confirm'] = confirm ? confirm.value : '';
+                    }
+                });
+                return result;
+            });
+        },
+
+        _collectRepeatableGroups: function(fields, formEl, body) {
+            this._repeatableGroups(fields).forEach(field => {
+                const group = formEl.querySelector(`[data-field="${field.name}"]`);
+                if (!group) return;
+                this._repeatableRows(group).forEach(row => {
+                    row.querySelectorAll('[name]').forEach(input => { delete body[input.name]; });
+                });
+                body[field.name] = this._collectRepeatableRows(field, group);
+            });
+        },
+
+        _resetRepeatableGroups: function(formEl) {
+            formEl.querySelectorAll('.bbf-repeatable-group').forEach(group => {
+                if (group._bbfResetRows) group._bbfResetRows();
+            });
         },
 
         // Check if element or any ancestor is conditionally hidden
@@ -323,12 +417,13 @@
         },
 
         // Apply show_if on individual options within radio/checkbox/select
-        _applyOptionConditions: function(formEl) {
+        _applyOptionConditions: function(fieldRoot, valueRoot) {
             var self = this;
             var valueChanged = false;
-            formEl.querySelectorAll('[data-option-show-if]').forEach(function(optEl) {
+            valueRoot = valueRoot || fieldRoot;
+            fieldRoot.querySelectorAll('[data-option-show-if]').forEach(function(optEl) {
                 var cond = JSON.parse(optEl.getAttribute('data-option-show-if'));
-                var visible = self._evalCondition(cond, formEl);
+                var visible = self._evalCondition(cond, valueRoot);
                 optEl.style.display = visible ? '' : 'none';
                 if (optEl.tagName === 'OPTION') {
                     optEl.hidden = !visible;
@@ -347,9 +442,9 @@
             return valueChanged;
         },
 
-        _stabilizeOptionConditions: function(formEl) {
-            var remainingPasses = formEl.querySelectorAll('[data-option-show-if]').length + 1;
-            while (remainingPasses-- > 0 && this._applyOptionConditions(formEl)) {}
+        _stabilizeOptionConditions: function(fieldRoot, valueRoot) {
+            var remainingPasses = fieldRoot.querySelectorAll('[data-option-show-if]').length + 1;
+            while (remainingPasses-- > 0 && this._applyOptionConditions(fieldRoot, valueRoot)) {}
         },
 
         _resetCustomFields: function(formEl) {
@@ -367,16 +462,17 @@
             return sources;
         },
 
-        _applyConditions: function(formEl, fields, animate) {
+        _applyConditions: function(fieldRoot, fields, animate, valueRoot) {
+            valueRoot = valueRoot || fieldRoot;
             fields.forEach(field => {
                 if (!field.show_if) return;
-                const wrap = formEl.querySelector(`[data-field="${field.name}"]`);
+                const wrap = fieldRoot.querySelector(`[data-field="${field.name}"]`);
                 if (!wrap) return;
 
                 const generation = (wrap._bbfConditionGeneration || 0) + 1;
                 wrap._bbfConditionGeneration = generation;
                 const isCurrent = () => wrap._bbfConditionGeneration === generation;
-                const visible = this._evalCondition(field.show_if, formEl);
+                const visible = this._evalCondition(field.show_if, valueRoot);
                 const wasHidden = wrap.getAttribute('data-conditional-hidden') === 'true';
 
                 if (!animate || (visible && !wasHidden) || (!visible && wasHidden)) {
@@ -439,8 +535,9 @@
             });
         },
 
-        _bindConditions: function(formEl, fields, animate) {
+        _bindConditions: function(valueRoot, fields, animate, fieldRoot) {
             const self = this;
+            fieldRoot = fieldRoot || valueRoot;
             const sources = new Set();
             fields.forEach(f => {
                 if (f.show_if) this._collectSources(f.show_if).forEach(s => sources.add(s));
@@ -450,19 +547,27 @@
                 });
             });
             var handler = function() {
-                self._stabilizeOptionConditions(formEl);
-                self._applyConditions(formEl, fields, animate);
+                self._stabilizeOptionConditions(fieldRoot, valueRoot);
+                self._applyConditions(fieldRoot, fields, animate, valueRoot);
             };
+            const boundInputs = [];
             sources.forEach(srcName => {
-                const inputs = formEl.querySelectorAll(`[name="${srcName}"]`);
+                const inputs = valueRoot.querySelectorAll(`[name="${srcName}"]`);
                 inputs.forEach(inp => {
                     inp.addEventListener('change', handler);
                     inp.addEventListener('input', handler);
+                    boundInputs.push(inp);
                 });
             });
             // Initial state (always instant, no animation)
-            this._stabilizeOptionConditions(formEl);
-            this._applyConditions(formEl, fields, false);
+            this._stabilizeOptionConditions(fieldRoot, valueRoot);
+            this._applyConditions(fieldRoot, fields, false, valueRoot);
+            return function() {
+                boundInputs.forEach(inp => {
+                    inp.removeEventListener('change', handler);
+                    inp.removeEventListener('input', handler);
+                });
+            };
         },
 
         // ─── Respondent drafts ───────────────────────────────
@@ -664,8 +769,13 @@
                 });
             }
 
+            el.querySelectorAll('.bbf-repeatable-group').forEach(group => {
+                if (group._bbfBindRows) group._bbfBindRows();
+            });
+
             el.addEventListener('reset', () => {
                 setTimeout(() => {
+                    this._resetRepeatableGroups(el);
                     this._resetCustomFields(el);
                     this._stabilizeOptionConditions(el);
                     this._applyConditions(el, allFlat, false);
@@ -730,6 +840,7 @@
                     const pageFlat = self._flattenFields(pages[currentPage.value]);
                     const pageFields = pageFlat.filter(f => f.type !== 'section' && f.type !== 'group');
                     const errors = self._validate(pageFields, el, langCode);
+                    Object.assign(errors, self._validateRepeatableGroups(pages[currentPage.value], el, langCode));
                     self._showErrors(el, errors);
                     if (Object.keys(errors).length > 0) return;
 
@@ -768,6 +879,7 @@
                 // Validate ALL data fields (flatten groups, skip non-data types)
                 const allFields = allFlat.filter(f => f.type !== 'page_break' && f.type !== 'section' && f.type !== 'group');
                 const errors = this._validate(allFields, el, langCode);
+                Object.assign(errors, this._validateRepeatableGroups(form.fields || [], el, langCode));
                 // Cross-field validations
                 const crossErrors = this._validateCrossField(form.validations, el, langCode);
                 Object.assign(errors, crossErrors);
@@ -788,6 +900,7 @@
                             body[k] = v;
                         }
                     });
+                    this._collectRepeatableGroups(form.fields || [], el, body);
 
                     // Remove conditionally hidden fields (and group children) from submission
                     el.querySelectorAll('[data-conditional-hidden="true"]').forEach(hiddenWrap => {
@@ -959,6 +1072,137 @@
 
         // ─── Build single field ──────────────────────────────
 
+        _buildRepeatableGroup: function(field, langCode) {
+            const group = document.createElement('div');
+            group.className = 'bbf-field bbf-group bbf-repeatable-group';
+            if (field.css_class) group.className += ' ' + field.css_class;
+            group.setAttribute('data-field', field.name);
+            const label = field.title || field.label || field.name;
+            const titleId = `bbf-${field.name}-title`;
+            if (label) {
+                const title = document.createElement('h3');
+                title.className = 'bbf-group-title';
+                title.id = titleId;
+                title.textContent = label;
+                group.appendChild(title);
+                group.setAttribute('role', 'group');
+                group.setAttribute('aria-labelledby', titleId);
+            }
+            if (field.description) {
+                const description = document.createElement('p');
+                description.className = 'bbf-group-desc';
+                description.textContent = field.description;
+                group.appendChild(description);
+            }
+            const error = document.createElement('div');
+            error.className = 'bbf-field-error bbf-repeatable-error';
+            error.id = `bbf-${field.name}-error`;
+            error.setAttribute('role', 'alert');
+            group.setAttribute('aria-describedby', error.id);
+            group.appendChild(error);
+
+            const rows = document.createElement('div');
+            rows.className = 'bbf-repeatable-rows';
+            rows.id = `bbf-${field.name}-rows`;
+            group.appendChild(rows);
+            const controls = document.createElement('div');
+            controls.className = 'bbf-repeatable-controls';
+            const add = document.createElement('button');
+            add.type = 'button';
+            add.className = 'bbf-repeatable-add';
+            add.textContent = field.add_label || this._t('repeatableAdd', {}, langCode);
+            add.setAttribute('aria-controls', rows.id);
+            controls.appendChild(add);
+            const status = document.createElement('span');
+            status.className = 'bbf-repeatable-status';
+            status.setAttribute('role', 'status');
+            status.setAttribute('aria-live', 'polite');
+            controls.appendChild(status);
+            group.appendChild(controls);
+
+            const min = field.min_items === undefined ? 1 : field.min_items;
+            const max = field.max_items === undefined ? 10 : field.max_items;
+            let nextRowId = 1;
+            group._bbfRows = [];
+            group._bbfRowsContainer = rows;
+
+            const bindRowConditions = row => {
+                if (row._bbfConditionsBound) return;
+                const valueRoot = group.closest('.bbf-form');
+                if (!valueRoot) return;
+                const rowFlat = this._flattenFields(row._bbfFields);
+                const hasConditions = rowFlat.some(child => child.show_if
+                    || (child.options || []).some(option => typeof option === 'object' && option.show_if));
+                if (hasConditions) row._bbfConditionCleanup = this._bindConditions(valueRoot, rowFlat, false, row);
+                row._bbfConditionsBound = true;
+            };
+
+            const update = announce => {
+                const activeRows = this._repeatableRows(group);
+                activeRows.forEach((row, index) => {
+                    const itemLabel = this._t('repeatableItem', { label, index: index + 1 }, langCode);
+                    row.querySelector('.bbf-repeatable-row-title').textContent = itemLabel;
+                    const remove = row.querySelector('.bbf-repeatable-remove');
+                    remove.disabled = activeRows.length <= min;
+                    remove.setAttribute('aria-label', (field.remove_label || this._t('repeatableRemove', {}, langCode)) + ': ' + itemLabel);
+                });
+                add.disabled = activeRows.length >= max;
+                if (announce) status.textContent = this._t('repeatableCount', { label, count: activeRows.length }, langCode);
+            };
+
+            const addRow = focus => {
+                if (this._repeatableRows(group).length >= max) return null;
+                const rowId = nextRowId++;
+                const prefix = `${field.name}__${rowId}__`;
+                const row = document.createElement('fieldset');
+                row.className = 'bbf-repeatable-row';
+                row.setAttribute('data-bbf-row-id', rowId);
+                row._bbfPrefix = prefix;
+                const legend = document.createElement('legend');
+                legend.className = 'bbf-repeatable-row-title';
+                row.appendChild(legend);
+                let children = field.fields || [];
+                if (field.shuffle) children = this._shuffle(children);
+                row._bbfFields = this._scopeRepeatableFields(children, prefix);
+                row._bbfFields.forEach(child => { row.appendChild(this._buildField(child, langCode)); });
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'bbf-repeatable-remove';
+                remove.textContent = field.remove_label || this._t('repeatableRemove', {}, langCode);
+                remove.addEventListener('click', () => {
+                    if (this._repeatableRows(group).length <= min) return;
+                    if (row._bbfConditionCleanup) row._bbfConditionCleanup();
+                    row.remove();
+                    update(true);
+                });
+                row.appendChild(remove);
+                rows.appendChild(row);
+                group._bbfRows.push(row);
+                bindRowConditions(row);
+                update(focus);
+                if (focus) {
+                    const input = row.querySelector('input, select, textarea');
+                    if (input) input.focus();
+                }
+                return row;
+            };
+
+            add.addEventListener('click', () => { addRow(true); });
+            group._bbfResetRows = () => {
+                this._repeatableRows(group).forEach(row => {
+                    if (row._bbfConditionCleanup) row._bbfConditionCleanup();
+                    row.remove();
+                });
+                for (let index = 0; index < min; index++) addRow(false);
+                status.textContent = '';
+                update(false);
+            };
+            group._bbfAddRow = addRow;
+            group._bbfBindRows = () => { this._repeatableRows(group).forEach(bindRowConditions); };
+            group._bbfResetRows();
+            return group;
+        },
+
         _buildField: function(field, langCode) {
             const type = field.type || 'text';
 
@@ -986,6 +1230,7 @@
 
             // Group container (nested fields with optional show_if)
             if (type === 'group') {
+                if (field.repeatable) return this._buildRepeatableGroup(field, langCode);
                 const group = document.createElement('div');
                 group.className = 'bbf-field bbf-group';
                 if (field.css_class) group.className += ' ' + field.css_class;
@@ -1818,11 +2063,22 @@
             return errors;
         },
 
+        _errorWrap: function(formEl, name) {
+            const direct = formEl.querySelector(`[data-field="${name}"]`);
+            if (direct) return direct;
+            const match = /^([^.]+)\.(\d+)\.(.+)$/.exec(name);
+            if (!match) return null;
+            const group = formEl.querySelector(`[data-field="${match[1]}"]`);
+            if (!group) return null;
+            const row = this._repeatableRows(group)[Number(match[2])];
+            return row ? row.querySelector(`[data-field="${row._bbfPrefix + match[3]}"]`) : null;
+        },
+
         _showErrors: function(formEl, errors) {
             this._clearErrors(formEl);
             let firstInput = null;
             Object.entries(errors).forEach(([name, msg]) => {
-                const wrap = formEl.querySelector(`[data-field="${name}"]`);
+                const wrap = this._errorWrap(formEl, name);
                 if (wrap) {
                     wrap.classList.add('bbf-has-error');
                     const errEl = wrap.querySelector('.bbf-field-error');

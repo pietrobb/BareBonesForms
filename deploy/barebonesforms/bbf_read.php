@@ -102,16 +102,28 @@ function bbf_read_csv_record(array $headers, array $row, string $formId): ?array
     $mapped = array_combine($headers, array_pad($row, count($headers), ''));
     if (($mapped['_id'] ?? '') === '') return null;
     $data = array_diff_key($mapped, array_flip(['_id', '_submitted', '_ip', '_user_agent',
-        '__bbf:definition_version', '__bbf:form_definition', '__bbf:csv_escaped_fields']));
+        '__bbf:definition_version', '__bbf:form_definition', '__bbf:csv_escaped_fields', '__bbf:structured_fields']));
     $escapedFields = null;
     if (($mapped['__bbf:csv_escaped_fields'] ?? '') !== '') {
         $decoded = json_decode($mapped['__bbf:csv_escaped_fields'], true);
         if (is_array($decoded) && array_is_list($decoded)
             && count(array_filter($decoded, 'is_string')) === count($decoded)) $escapedFields = $decoded;
     }
+    $structuredFields = [];
+    if (($mapped['__bbf:structured_fields'] ?? '') !== '') {
+        $decoded = json_decode($mapped['__bbf:structured_fields'], true);
+        if (!is_array($decoded) || !array_is_list($decoded)
+            || count(array_filter($decoded, 'is_string')) !== count($decoded)) return null;
+        $structuredFields = array_fill_keys($decoded, true);
+    }
     foreach ($data as $name => &$value) {
         if (isset($value[1]) && $value[0] === "'" && in_array($value[1], ['=', '+', '-', '@', "\t", "\r"], true)
             && ($escapedFields === null || in_array($name, $escapedFields, true))) $value = substr($value, 1);
+        if (isset($structuredFields[$name])) {
+            $decoded = json_decode($value, true);
+            if (!is_array($decoded) || !array_is_list($decoded)) return null;
+            $value = $decoded;
+        }
     }
     unset($value);
     $meta = ['submitted' => $mapped['_submitted'] ?? '', 'ip' => $mapped['_ip'] ?? '',

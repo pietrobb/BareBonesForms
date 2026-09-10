@@ -19,4 +19,6 @@ return [
     'dateMin'       => '{label} must be on or after {min}.',
     'dateMax'       => '{label} must be on or before {max}.',
     'invalidFormat'  => '{label} has invalid format.',
+    'repeatableMin'  => '{label} requires at least {min} items.',
+    'repeatableMax'  => '{label} allows at most {max} items.',
 ];

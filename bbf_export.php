@@ -27,7 +27,8 @@ function bbf_export_field_keys(?array $form, iterable $submissions): array {
     }
     $fields = resolveTemplates($form['fields'] ?? [], $form['templates'] ?? []);
     foreach (flattenFields($fields) as $field) {
-        if (in_array($field['type'] ?? 'text', ['group', 'section', 'page_break'], true)) continue;
+        $type = $field['type'] ?? 'text';
+        if (in_array($type, ['section', 'page_break'], true) || ($type === 'group' && empty($field['repeatable']))) continue;
         $name = $field['name'] ?? '';
         if (is_string($name) && $name !== '') $keys[$name] = true;
     }
@@ -37,8 +38,27 @@ function bbf_export_field_keys(?array $form, iterable $submissions): array {
     return array_keys($keys);
 }
 
-function bbf_export_cell($value): string {
-    $value = is_array($value) ? implode(', ', array_map(static fn($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) : (string)$v, $value)) : (string)$value;
+function bbf_export_repeatable_keys(?array $form): array {
+    if ($form === null) return [];
+    $fields = resolveTemplates($form['fields'] ?? [], $form['templates'] ?? []);
+    $keys = [];
+    foreach (flattenFields($fields) as $field) {
+        if (($field['type'] ?? '') !== 'group' || empty($field['repeatable'])) continue;
+        $name = $field['name'] ?? '';
+        if (is_string($name) && $name !== '') $keys[$name] = true;
+    }
+    return $keys;
+}
+
+function bbf_export_cell($value, bool $structured = false): string {
+    if (is_array($value)) {
+        $nested = $structured || array_filter($value, 'is_array') !== [];
+        $value = $nested
+            ? json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)
+            : implode(', ', array_map('strval', $value));
+    } else {
+        $value = (string)$value;
+    }
     if ($value !== '' && in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true)) $value = "'" . $value;
     return $value;
 }
@@ -73,6 +93,7 @@ function bbf_export_csv_record(array $cells): string {
 // Only release a prepared CSV after every read/encoding/write and rewind has succeeded.
 function bbf_export_prepare(?array $form, iterable $submissions): array {
     $keys = array_fill_keys(bbf_export_field_keys($form, []), true);
+    $repeatableKeys = bbf_export_repeatable_keys($form);
     $records = tmpfile();
     if ($records === false) throw new RuntimeException('Cannot prepare export snapshot.');
     $out = null;
@@ -94,9 +115,11 @@ function bbf_export_prepare(?array $form, iterable $submissions): array {
             if (!bbf_storage_write_all($out, bbf_export_csv_record($headers))) throw new RuntimeException('Cannot write CSV headers.');
             while (($line = fgets($records)) !== false) {
                 $sub = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
-                $row = [$sub['id'], $sub['meta']['submitted'] ?? ''];
-                foreach ($fieldKeys as $key) $row[] = $sub['data'][$key] ?? '';
-                if (!bbf_storage_write_all($out, bbf_export_csv_record(array_map('bbf_export_cell', $row)))) throw new RuntimeException('Cannot write CSV row.');
+                $row = [bbf_export_cell($sub['id']), bbf_export_cell($sub['meta']['submitted'] ?? '')];
+                foreach ($fieldKeys as $key) {
+                    $row[] = bbf_export_cell($sub['data'][$key] ?? '', isset($repeatableKeys[$key]));
+                }
+                if (!bbf_storage_write_all($out, bbf_export_csv_record($row))) throw new RuntimeException('Cannot write CSV row.');
             }
             if (!feof($records)) throw new RuntimeException('Cannot finish export snapshot.');
         }

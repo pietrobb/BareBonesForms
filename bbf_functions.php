@@ -82,7 +82,7 @@ function flattenFields(array $fields, ?array $parentShowIf = null): array {
             $f['show_if'] = $parentShowIf;
         }
         $result[] = $f;
-        if (($f['type'] ?? '') === 'group' && !empty($f['fields'])) {
+        if (($f['type'] ?? '') === 'group' && empty($f['repeatable']) && !empty($f['fields'])) {
             $groupShowIf = !empty($f['show_if']) ? $f['show_if'] : null;
             foreach (flattenFields($f['fields'], $groupShowIf) as $child) {
                 $result[] = $child;
@@ -300,9 +300,19 @@ function buildSummaryRows(array $fields, array $data): string {
         $type = $field['type'] ?? 'text';
         // Skip non-data fields
         if (in_array($type, ['section', 'page_break', 'hidden'])) continue;
-        // Recurse into groups — show children, not the group itself
+        // Recurse into static groups; repeatable groups remain one structured value.
         if ($type === 'group' && !empty($field['fields'])) {
-            $lines[] = buildSummaryRows($field['fields'], $data);
+            if (!empty($field['repeatable'])) {
+                $value = $data[$field['name']] ?? [];
+                if ($value === []) continue;
+                $label = $field['label'] ?? $field['title'] ?? $field['name'];
+                $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+                $lines[] = "<tr><td style='padding:4px 12px 4px 0;font-weight:bold;vertical-align:top'>"
+                    . htmlspecialchars($label) . "</td><td style='padding:4px 0'>"
+                    . htmlspecialchars($encoded) . "</td></tr>";
+            } else {
+                $lines[] = buildSummaryRows($field['fields'], $data);
+            }
             continue;
         }
         $label = $field['label'] ?? $field['name'];
@@ -1318,7 +1328,7 @@ function validateFormDefinition(array $form): array {
     return $errors;
 }
 
-function validateFieldList(array $fields, string $path, array &$errors, array &$fieldNames): void {
+function validateFieldList(array $fields, string $path, array &$errors, array &$fieldNames, bool $insideRepeatable = false): void {
     $validTypes = ['text', 'email', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkbox', 'hidden', 'password', 'section', 'page_break', 'rating', 'group'];
 
     foreach ($fields as $i => $field) {
@@ -1349,12 +1359,47 @@ function validateFieldList(array $fields, string $path, array &$errors, array &$
         // Layout-only types — skip further validation
         if (in_array($type, ['section', 'page_break'], true)) continue;
 
-        // Group — recurse into children
+        // Group — recurse into children and validate bounded repeatable rows.
         if ($type === 'group') {
-            if (!empty($field['fields']) && is_array($field['fields'])) {
-                validateFieldList($field['fields'], "$prefix.fields", $errors, $fieldNames);
+            $repeatable = $field['repeatable'] ?? false;
+            if (!is_bool($repeatable)) {
+                $errors[] = "$prefix.repeatable: Expected boolean.";
+                $repeatable = false;
+            }
+            if ($repeatable && $insideRepeatable) {
+                $errors[] = "$prefix.repeatable: Nested repeatable groups are not supported.";
+            }
+            if ($repeatable) {
+                $minItems = $field['min_items'] ?? 1;
+                $maxItems = $field['max_items'] ?? 10;
+                if (!is_int($minItems) || $minItems < 0 || $minItems > 100) {
+                    $errors[] = "$prefix.min_items: Expected an integer from 0 through 100.";
+                }
+                if (!is_int($maxItems) || $maxItems < 1 || $maxItems > 100) {
+                    $errors[] = "$prefix.max_items: Expected an integer from 1 through 100.";
+                }
+                if (is_int($minItems) && is_int($maxItems) && $minItems > $maxItems) {
+                    $errors[] = "$prefix: min_items cannot exceed max_items.";
+                }
+            } elseif (array_key_exists('min_items', $field) || array_key_exists('max_items', $field)
+                || array_key_exists('add_label', $field) || array_key_exists('remove_label', $field)) {
+                $errors[] = "$prefix: Repeatable controls require repeatable: true.";
+            }
+            foreach (['add_label', 'remove_label'] as $labelKey) {
+                if (isset($field[$labelKey]) && !is_string($field[$labelKey])) {
+                    $errors[] = "$prefix.$labelKey: Expected string.";
+                }
+            }
+            if ($repeatable && (empty($field['fields']) || !is_array($field['fields']))) {
+                $errors[] = "$prefix: Repeatable group requires non-empty fields.";
+            } elseif (!empty($field['fields']) && is_array($field['fields'])) {
+                validateFieldList($field['fields'], "$prefix.fields", $errors, $fieldNames, $insideRepeatable || $repeatable);
             }
             continue;
+        }
+        if (array_key_exists('repeatable', $field) || array_key_exists('min_items', $field) || array_key_exists('max_items', $field)
+            || array_key_exists('add_label', $field) || array_key_exists('remove_label', $field)) {
+            $errors[] = "$prefix: Repeatable properties require type 'group'.";
         }
 
         if (in_array($type, ['select', 'radio', 'checkbox'], true) && empty($field['options']) && empty($field['options_from'])) {
@@ -1370,13 +1415,54 @@ function validateFieldList(array $fields, string $path, array &$errors, array &$
     }
 }
 
+function bbfRepeatableRowInput(array $fields, array $input, array $row): array {
+    foreach ($fields as $field) {
+        $type = $field['type'] ?? 'text';
+        if (in_array($type, ['section', 'page_break', 'group'], true)) continue;
+        $name = $field['name'] ?? '';
+        if (!is_string($name) || $name === '') continue;
+        unset($input[$name]);
+        if (!empty($field['other'])) unset($input[$name . '_other']);
+        if ($type === 'email' && !empty($field['confirm'])) unset($input[$name . '_confirm']);
+    }
+    return array_replace($input, $row);
+}
+
 function validateFieldShapes(array $fields, array $input): array {
     $errors = [];
     foreach ($fields as $field) {
         $type = $field['type'] ?? 'text';
-        if (in_array($type, ['section', 'page_break', 'group'], true)) continue;
+        if (in_array($type, ['section', 'page_break'], true)) continue;
 
         $name = $field['name'];
+        if ($type === 'group') {
+            if (empty($field['repeatable'])) continue;
+            $rows = $input[$name] ?? [];
+            $valid = is_array($rows) && array_is_list($rows);
+            $childFields = flattenFields(is_array($field['fields'] ?? null) ? $field['fields'] : []);
+            $allowedKeys = [];
+            foreach ($childFields as $child) {
+                $childType = $child['type'] ?? 'text';
+                if (in_array($childType, ['section', 'page_break', 'group'], true)) continue;
+                $childName = $child['name'] ?? '';
+                if (!is_string($childName) || $childName === '') continue;
+                $allowedKeys[$childName] = true;
+                if (!empty($child['other'])) $allowedKeys[$childName . '_other'] = true;
+                if ($childType === 'email' && !empty($child['confirm'])) $allowedKeys[$childName . '_confirm'] = true;
+            }
+            if ($valid) {
+                foreach ($rows as $row) {
+                    if (!is_array($row) || ($row !== [] && array_is_list($row))
+                        || array_diff_key($row, $allowedKeys)
+                        || validateFieldShapes($childFields, bbfRepeatableRowInput($childFields, $input, $row))) {
+                        $valid = false;
+                        break;
+                    }
+                }
+            }
+            if (!$valid) $errors[$name] = msg('invalidFormat', ['label' => $field['label'] ?? $name]);
+            continue;
+        }
         // The client sends a single selection as a scalar, repeated selections as an array.
         $multi = $type === 'checkbox' || ($type === 'select' && !empty($field['multiple']));
         $inputs = [$name => $multi];
@@ -1410,10 +1496,34 @@ function validate(array $fields, array $input): array {
     foreach ($fields as $field) {
         $type = $field['type'] ?? 'text';
 
-        // Skip non-data field types
-        if (in_array($type, ['section', 'page_break', 'group'], true)) continue;
+        // Skip non-data field types; repeatable groups are structured data fields.
+        if (in_array($type, ['section', 'page_break'], true)) continue;
 
         $name  = $field['name'];
+        if ($type === 'group') {
+            if (empty($field['repeatable'])) continue;
+            if (!empty($field['show_if']) && !evalCondition($field['show_if'], $input)) continue;
+            $rows = $input[$name] ?? [];
+            $count = count($rows);
+            $minItems = $field['min_items'] ?? 1;
+            $maxItems = $field['max_items'] ?? 10;
+            $label = $field['label'] ?? $field['title'] ?? $name;
+            if ($count < $minItems) {
+                $errors[$name] = msg('repeatableMin', ['label' => $label, 'min' => $minItems]);
+                continue;
+            }
+            if ($count > $maxItems) {
+                $errors[$name] = msg('repeatableMax', ['label' => $label, 'max' => $maxItems]);
+                continue;
+            }
+            $childFields = flattenFields($field['fields'] ?? []);
+            foreach ($rows as $index => $row) {
+                foreach (validate($childFields, bbfRepeatableRowInput($childFields, $input, $row)) as $childName => $message) {
+                    $errors[$name . '.' . $index . '.' . $childName] = $message;
+                }
+            }
+            continue;
+        }
 
         // Skip conditionally hidden fields — evaluate the condition server-side
         if (!empty($field['show_if']) && !evalCondition($field['show_if'], $input)) {

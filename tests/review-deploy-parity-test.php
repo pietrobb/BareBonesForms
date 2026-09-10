@@ -113,7 +113,7 @@ function deploy_test_expected_files(): array
 {
     $files = [
         '.bbf-package', '.gitignore', '.htaccess', 'LICENSE', 'README.md', 'actions/README.md',
-        'api-psc.php', 'bbf-theme.css', 'bbf.css', 'bbf.js', 'bbf_auth.php',
+        'api-psc.php', 'bbf-theme.css', 'bbf.css', 'bbf.js', 'bbf_auth.php', 'bbf_backup.php',
         'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php', 'bbf_functions.php',
         'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_versions.php', 'check.php', 'config.example.php',
         'data/city-to-psc.json', 'data/psc-to-city.json', 'demo.css', 'demo.html',
@@ -174,10 +174,10 @@ try {
     $expected = deploy_test_expected_files();
     $actual = deploy_test_files($destination);
     deploy_test_check($actual === $expected, 'package has the exact independently specified sorted file set');
-    deploy_test_check(count($actual) === 129, 'package manifest contains exactly 129 files');
+    deploy_test_check(count($actual) === 130, 'package manifest contains exactly 130 files');
 
     foreach ([
-        'bbf_auth.php', 'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php',
+        'bbf_auth.php', 'bbf_backup.php', 'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php',
         'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_versions.php', 'maintenance.php', 'api-psc.php', 'demo9.html',
         'forms/demo-psc.json', 'data/city-to-psc.json', 'data/psc-to-city.json',
     ] as $required) {

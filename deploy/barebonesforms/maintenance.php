@@ -1,5 +1,5 @@
 <?php
-/** Local maintenance entrypoint. Retention is always dry-run unless --apply and the exact plan digest are both supplied. */
+/** Local maintenance entrypoint. Destructive operations require --apply and the exact dry-run digest. */
 if (PHP_SAPI !== 'cli') {
     http_response_code(403);
     exit('CLI only.');
@@ -11,45 +11,64 @@ if (!is_file(__DIR__ . '/config.php')) {
 }
 require_once __DIR__ . '/bbf_auth.php';
 require_once __DIR__ . '/bbf_retention.php';
+require_once __DIR__ . '/bbf_backup.php';
 
 function bbf_maintenance_fail(string $message, int $code = 2): never {
     fwrite(STDERR, $message . "\n");
     exit($code);
 }
 
+$usage = 'Usage: php maintenance.php retention --form=<id> [--apply --confirm=<retention-digest>]'
+    . "\n       php maintenance.php backup --form=<id>"
+    . "\n       php maintenance.php restore --bundle=<path> [--apply --confirm=<restore-digest>]";
 $arguments = $argv;
 array_shift($arguments);
 $command = array_shift($arguments);
-if ($command !== 'retention') {
-    bbf_maintenance_fail('Usage: php maintenance.php retention --form=<id> [--apply --confirm=<retention-digest>]');
-}
+$allowed = match ($command) {
+    'retention' => ['form', 'confirm'],
+    'backup' => ['form'],
+    'restore' => ['bundle', 'confirm'],
+    default => bbf_maintenance_fail($usage),
+};
 $options = ['apply' => false];
 foreach ($arguments as $argument) {
     if ($argument === '--apply') {
-        if ($options['apply']) bbf_maintenance_fail('Duplicate --apply option.');
+        if ($options['apply'] || $command === 'backup') bbf_maintenance_fail('Unknown or duplicate maintenance option.');
         $options['apply'] = true;
         continue;
     }
-    if (!preg_match('/\A--(form|confirm)=(.*)\z/D', $argument, $match)
-        || array_key_exists($match[1], $options)) {
+    if (!preg_match('/\A--([a-z]+)=(.*)\z/D', $argument, $match)
+        || !in_array($match[1], $allowed, true) || array_key_exists($match[1], $options)) {
         bbf_maintenance_fail('Unknown or duplicate maintenance option.');
     }
     $options[$match[1]] = $match[2];
 }
-$formId = bbf_auth_id($options['form'] ?? null);
-if ($formId === '') bbf_maintenance_fail('A valid --form is required.');
-if ($options['apply'] !== array_key_exists('confirm', $options)) {
+if (in_array($command, ['retention', 'backup'], true)) {
+    $formId = bbf_auth_id($options['form'] ?? null);
+    if ($formId === '') bbf_maintenance_fail('A valid --form is required.');
+}
+if ($command === 'restore' && !is_string($options['bundle'] ?? null)) {
+    bbf_maintenance_fail('A --bundle path is required.');
+}
+if ($command !== 'backup' && $options['apply'] !== array_key_exists('confirm', $options)) {
     bbf_maintenance_fail('--apply and --confirm must be supplied together.');
 }
 $config = bbf_auth_load_config(__DIR__ . '/config.php');
 try {
-    $result = $options['apply']
-        ? bbf_retention_apply($config, $formId, $options['confirm'])
-        : bbf_retention_plan($config, $formId);
+    $result = match ($command) {
+        'retention' => $options['apply']
+            ? bbf_retention_apply($config, $formId, $options['confirm'])
+            : bbf_retention_plan($config, $formId),
+        'backup' => bbf_backup_create($config, $formId),
+        'restore' => $options['apply']
+            ? bbf_backup_restore($config, $options['bundle'], $options['confirm'])
+            : bbf_backup_restore_plan($config, $options['bundle']),
+    };
 } catch (Throwable $error) {
     error_log('BareBonesForms maintenance: ' . $error->getMessage());
     bbf_maintenance_fail('Maintenance operation failed.', 1);
 }
 $json = json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 fwrite(STDOUT, $json . "\n");
-exit(($options['apply'] && !($result['ok'] ?? false)) ? 1 : 0);
+$appliedFailure = $options['apply'] && !($result['ok'] ?? false);
+exit(($command === 'backup' && !($result['ok'] ?? false)) || $appliedFailure ? 1 : 0);
