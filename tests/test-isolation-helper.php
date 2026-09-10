@@ -200,7 +200,7 @@ function bbf_test_verify_server(array $server, bool $wait = false): int {
         } finally {
             restore_error_handler();
         }
-        $body = false;
+        $body = false; $statusCode = 0;
         if ($socket !== false) {
             try {
                 stream_set_timeout($socket, 1);
@@ -212,7 +212,9 @@ function bbf_test_verify_server(array $server, bool $wait = false): int {
                 }
                 $response = $request === '' ? stream_get_contents($socket) : false;
                 if (is_string($response) && !stream_get_meta_data($socket)['timed_out']) {
-                    [, $body] = array_pad(explode("\r\n\r\n", $response, 2), 2, '');
+                    [$headers, $body] = array_pad(explode("\r\n\r\n", $response, 2), 2, '');
+                    preg_match('/^HTTP\/\d\.\d (\d{3})/', $headers, $statusMatch);
+                    $statusCode = (int)($statusMatch[1] ?? 0);
                 }
             } finally {
                 fclose($socket);
@@ -221,7 +223,9 @@ function bbf_test_verify_server(array $server, bool $wait = false): int {
         if ($body !== false) {
             [$identity, $pid] = array_pad(explode(':', $body, 2), 2, '');
             if (!hash_equals($server['id'], $identity)) {
-                throw new RuntimeException('Foreign listener / port collision: identity mismatch; refusing HTTP.');
+                $prefix = str_starts_with($body, $server['id']) ? 'yes' : 'no';
+                throw new RuntimeException("Foreign listener / port collision: identity mismatch (HTTP $statusCode, bytes "
+                    . strlen($body) . ', expected-prefix ' . $prefix . ', sha256 ' . hash('sha256', $body) . '); refusing HTTP.');
             }
             if (!ctype_digit($pid) || (int)$pid < 1) {
                 throw new RuntimeException('Foreign listener / port collision: invalid child PID; refusing HTTP.');

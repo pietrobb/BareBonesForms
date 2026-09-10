@@ -1207,7 +1207,7 @@ PHP);
 } catch (Throwable $error) {
     $exitCode = 1;
     fwrite(STDERR, 'FAIL MariaDB access suite: ' . $error->getMessage() . "\n");
-    if ($root !== null) foreach (['bootstrap.err', 'database.err', 'mariadb.log', 'php-error.log'] as $log) {
+    if ($root !== null) foreach (['bootstrap.err', 'database.err', 'mariadb.log', 'php-error.log', 'server-output.log', 'server-error.log'] as $log) {
         $path = "$root/logs/$log";
         if (is_file($path)) fwrite(STDERR, "$log\n" . file_get_contents($path) . "\n");
     }
