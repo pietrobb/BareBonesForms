@@ -142,14 +142,14 @@ function bbf_test_start_server(string $root, string $host, int $port, bool $allo
     if (!is_resource($proc)) throw new RuntimeException('Cannot start owned PHP server.');
     fclose($pipes[0]);
     $server = ['proc' => $proc, 'root' => $root, 'port' => $port,
-        'id' => $env['BBF_TEST_IDENTITY'], 'pid' => proc_get_status($proc)['pid']];
-    $GLOBALS['bbf_test_processes'][$root][$server['id']] = $server;
+        'id' => $env['BBF_TEST_IDENTITY']];
     try {
-        bbf_test_verify_server($server, true);
+        $server['pid'] = bbf_test_verify_server($server, true);
     } catch (Throwable $error) {
         bbf_test_stop_server($server);
         throw $error;
     }
+    $GLOBALS['bbf_test_processes'][$root][$server['id']] = $server;
     return $server;
 }
 
@@ -173,7 +173,7 @@ function bbf_test_stop_server(?array $server): void {
     unset($GLOBALS['bbf_test_processes'][$server['root']][$server['id']]);
 }
 
-function bbf_test_verify_server(array $server, bool $wait = false): void {
+function bbf_test_verify_server(array $server, bool $wait = false): int {
     $deadline = microtime(true) + ($wait ? 5 : 0);
     do {
         if (!bbf_test_server_alive($server)) throw new RuntimeException('Owned test server is not alive; refusing HTTP.');
@@ -185,11 +185,13 @@ function bbf_test_verify_server(array $server, bool $wait = false): void {
             restore_error_handler();
         }
         if ($body !== false) {
-            if (!hash_equals($server['id'] . ':' . $server['pid'], $body)) {
+            [$identity, $pid] = array_pad(explode(':', $body, 2), 2, '');
+            if (!hash_equals($server['id'], $identity) || !ctype_digit($pid) || (int)$pid < 1
+                || (isset($server['pid']) && (int)$pid !== $server['pid'])) {
                 throw new RuntimeException('Foreign listener / port collision; refusing HTTP.');
             }
             if (!bbf_test_server_alive($server)) throw new RuntimeException('Owned test server exited during probe.');
-            return;
+            return (int)$pid;
         }
         if (!$wait) break;
         usleep(50000);

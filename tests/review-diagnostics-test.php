@@ -61,10 +61,10 @@ function diagnostic_start_server(string $root, bool $streams): array {
     if (!is_resource($proc)) throw new RuntimeException('Cannot start owned diagnostic HTTP server.');
     fclose($pipes[0]);
     $server = ['proc' => $proc, 'root' => $root, 'port' => $port,
-        'id' => $env['BBF_TEST_IDENTITY'], 'pid' => proc_get_status($proc)['pid']];
-    $GLOBALS['bbf_test_processes'][$root][$server['id']] = $server;
-    try { bbf_test_verify_server($server, true); }
+        'id' => $env['BBF_TEST_IDENTITY']];
+    try { $server['pid'] = bbf_test_verify_server($server, true); }
     catch (Throwable $error) { bbf_test_stop_server($server); throw $error; }
+    $GLOBALS['bbf_test_processes'][$root][$server['id']] = $server;
     return $server;
 }
 function diagnostic_count(string $file): int {
