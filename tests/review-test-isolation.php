@@ -200,7 +200,10 @@ try {
     $server = bbf_test_start_server($root, '127.0.0.1', $port, false);
     isolation_check(bbf_test_server_alive($server), 'portable server starts using PHP_BINARY');
     isolation_check($server['pid'] > 0 && bbf_test_verify_server($server) === $server['pid'],
-        'identity probe records and re-verifies the actual HTTP child PID');
+        'identity probe records the actual HTTP child PID');
+    $worker = $server; $worker['pid']++;
+    isolation_check(bbf_test_verify_server($worker) === $server['pid'],
+        'cryptographic identity accepts an owned worker when launcher and request PIDs differ');
     $url = 'http://127.0.0.1:' . $port;
     isolation_wait($url . '/probe.php');
     $probe = json_decode(isolation_http($url . '/probe.php')[1], true);

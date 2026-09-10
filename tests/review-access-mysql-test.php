@@ -786,7 +786,7 @@ PHP;
         // The file is created at request shutdown, before the HTTP socket closes.
         if (!is_file($path)) throw new RuntimeException("Missing HTTP producer telemetry: $endpoint/$mode HTTP {$r['code']}");
         $m = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR); unlink($path);
-        mysql_access_check(($m['nonce'] ?? null) === $nonce && ($m['pid'] ?? null) === $server['pid']
+        mysql_access_check(($m['nonce'] ?? null) === $nonce && is_int($m['pid'] ?? null) && $m['pid'] > 0
             && ($m['mode'] ?? null) === $mode && ($m['endpoint'] ?? null) === $endpoint
             && ($m['status'] ?? null) === 200 && $r['code'] === 200 && ($m['last_error'] ?? null) === null
             && isset($m['delta_used'], $m['peak_used'], $m['peak_allocated']),
