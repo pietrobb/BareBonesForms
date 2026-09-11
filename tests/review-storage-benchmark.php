@@ -42,7 +42,9 @@ if (($argv[1] ?? '') === '--child') {
     error_reporting(E_ALL);
     http_response_code(200);
     gc_collect_cycles();
-    memory_reset_peak_usage();
+    if (function_exists('memory_reset_peak_usage')) {
+        memory_reset_peak_usage();
+    }
     $baseUsed = memory_get_usage(false); $baseAllocated = memory_get_usage(true);
     $started = hrtime(true);
     register_shutdown_function(static function () use ($root, $baseUsed, $baseAllocated, $started): void {
@@ -66,8 +68,8 @@ foreach (array_slice($argv, 1) as $arg) {
     }
     $repeats = (int)$match[1];
 }
-if (PHP_VERSION_ID < 80200 || !function_exists('proc_open') || !extension_loaded('mbstring')) {
-    fwrite(STDERR, "Required: PHP >= 8.2, proc_open and mbstring; not silently skipped.\n"); exit(2);
+if (PHP_VERSION_ID < 80100 || !function_exists('proc_open') || !extension_loaded('mbstring')) {
+    fwrite(STDERR, "Required: PHP >= 8.1, proc_open and mbstring; not silently skipped.\n"); exit(2);
 }
 $checks = 0; $failures = []; $measurements = []; $eagerMeasurements = []; $requests = 0;
 $day = gmdate('Y-m-d');
