@@ -167,7 +167,9 @@ function bbf_draft_load(array $config, array $form, string $handle, ?int $now = 
             $result = ['ok' => false, 'reason' => 'expired'];
             return true;
         }
-        $result = ['ok' => true, 'expires_at' => gmdate('c', $record['expires_at']), 'data' => $record['data']];
+        $flatFields = flattenFields($form['fields'] ?? []);
+        $result = ['ok' => true, 'expires_at' => gmdate('c', $record['expires_at']),
+            'data' => bbf_draft_filter($form, $flatFields, $record['data'])];
         return true;
     });
     return $locked ? $result : ['ok' => false, 'reason' => 'storage'];

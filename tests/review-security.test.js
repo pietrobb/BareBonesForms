@@ -7,9 +7,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'viewer.php'), 'utf8');
+const editorSource = fs.readFileSync(path.join(__dirname, '..', 'editor.php'), 'utf8');
 
 function browserExecutable() {
     const candidates = [process.env.CHROME_BIN, process.env.CHROMIUM_BIN,
@@ -167,9 +168,11 @@ test('viewer HTML sinks are inert in real Chromium and preserve copy/title/searc
 test('forward email escapes multivalue answers using the actual PHP rendering block', () => {
     const start = source.indexOf("    foreach ($sub['data'] as $k => $v) {", source.indexOf("if ($action === 'forward')"));
     const end = source.indexOf("    $h .= '</table></body></html>';", start);
-    assert.ok(start > 0 && end > start);
-    const data = { answer: ['<img src=x onerror=alert(1)>', '"quoted" & text'], scalar: '<b>literal</b>' };
-    const code = "$sub = ['data' => json_decode(stream_get_contents(STDIN), true)]; $labelMap = []; $h = '';\n"
+    const helper = source.match(/function viewerValueText\(mixed \$value\): string \{[\s\S]*?\r?\n\}/)?.[0];
+    assert.ok(start > 0 && end > start && helper);
+    const data = { answer: ['<img src=x onerror=alert(1)>', '"quoted" & text'], scalar: '<b>literal</b>',
+        items: [{ sku: '<row>' }] };
+    const code = helper + "\n$sub = ['data' => json_decode(stream_get_contents(STDIN), true)]; $labelMap = []; $h = '';\n"
         + source.slice(start, end) + '\necho $h;';
     const result = spawnSync(process.env.PHP_BINARY || 'php', ['-r', code], {
         input: JSON.stringify(data), encoding: 'utf8', timeout: 10000, windowsHide: true,
@@ -180,4 +183,134 @@ test('forward email escapes multivalue answers using the actual PHP rendering bl
     assert.match(result.stdout, /&lt;img src=x onerror=alert\(1\)&gt;/);
     assert.match(result.stdout, /&quot;quoted&quot; &amp; text/);
     assert.match(result.stdout, /&lt;b&gt;literal&lt;\/b&gt;/);
+    assert.match(result.stdout, /&quot;sku&quot;: &quot;&lt;row&gt;&quot;/);
+    assert.doesNotMatch(result.stdout, />Array(?:<|\s)|\[object Object\]/);
+});
+
+test('editor preview renders hostile errors as text inside an opaque-origin sandbox', () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'bbf-editor-preview-security-'));
+    let server = null;
+    try {
+        const sandbox = editorSource.match(/<iframe[^>]+id="preview-frame"[^>]+sandbox="([^"]+)"/i)?.[1];
+        assert.equal(sandbox, 'allow-scripts', 'Preview must not combine scripts with the administration origin');
+
+        const previewScript = [...editorSource.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+            .map(match => match[1]).find(text => text.includes("e.data.type !== 'bbf-render'"));
+        assert.ok(previewScript, 'Extract the actual editor preview message handler');
+        const executablePreview = previewScript.replace(
+            /<\?php if \(\$formId\): \?>[\s\S]*?<\?php endif; \?>/,
+            ''
+        );
+        assert.ok(!executablePreview.includes('<?'), 'Remove only the standalone PHP render fixture');
+
+        const attack = '<img src="missing" onerror="parent.postMessage({type:\'bbf-xss\'}, \'*\')">';
+        const preview = path.join(temporary, 'preview.html');
+        fs.writeFileSync(preview, '<!doctype html><meta charset="utf-8">'
+            + '<div id="bbf-preview"></div>'
+            + '<script>parent.postMessage({type:"bbf-boot"},"*");window.onerror=m=>parent.postMessage({type:"bbf-error",message:String(m)},"*");<\/script>'
+            + '<script>window.BBF={baseUrl:"",_buildForm(){throw new Error(' + JSON.stringify(attack) + ')}};parent.postMessage({type:"bbf-stub"},"*");<\/script>'
+            + '<script>' + executablePreview.replace(/<\/script/gi, '<\\/script') + '<\/script>'
+            + '<script>parent.postMessage({type:"bbf-handler"},"*");window.addEventListener("message",()=>parent.postMessage({'
+            + 'type:"bbf-preview-result",text:document.getElementById("bbf-preview").textContent,'
+            + 'elements:document.getElementById("bbf-preview").querySelectorAll("img,script").length},"*"));<\/script>');
+
+        const page = path.join(temporary, 'parent.html');
+        fs.writeFileSync(page, '<!doctype html><meta charset="utf-8">'
+            + '<iframe id="preview" sandbox="allow-scripts"></iframe><pre id="security-result"></pre>'
+            + '<script>let xss=false;const events=[];const frame=document.getElementById("preview");'
+            + 'window.addEventListener("message",event=>{if(event.source!==frame.contentWindow)return;events.push(event.data);'
+            + 'if(event.data?.type==="bbf-handler"){events.push({type:"bbf-sent"});event.source.postMessage({type:"bbf-render",json:"{}"},"*");return}'
+            + 'if(event.data?.type==="bbf-xss"){xss=true;return}if(event.data?.type==="bbf-preview-result")'
+            + 'document.getElementById("security-result").textContent=JSON.stringify({...event.data,xss,events});});'
+            + 'frame.src="preview.html";setTimeout(()=>{const out=document.getElementById("security-result");if(!out.textContent)'
+            + 'out.textContent=JSON.stringify({timeout:true,xss,events});},500);<\/script>');
+
+        const portFile = path.join(temporary, 'port.txt');
+        const serverCode = `
+            const http = require('node:http');
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const root = process.argv[1];
+            const portFile = process.argv[2];
+            const allowed = new Set(['parent.html', 'preview.html']);
+            const server = http.createServer((request, response) => {
+                const name = path.basename(new URL(request.url, 'http://localhost').pathname);
+                if (!allowed.has(name)) { response.writeHead(404); response.end(); return; }
+                response.setHeader('Content-Type', 'text/html; charset=utf-8');
+                fs.createReadStream(path.join(root, name)).pipe(response);
+            });
+            server.listen(0, '127.0.0.1', () => fs.writeFileSync(portFile, String(server.address().port)));
+        `;
+        server = spawn(process.execPath, ['-e', serverCode, temporary, portFile], {
+            stdio: 'ignore', windowsHide: true,
+        });
+        const deadline = Date.now() + 5000;
+        while (!fs.existsSync(portFile) && Date.now() < deadline) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+        }
+        assert.ok(fs.existsSync(portFile), 'Owned preview fixture server did not start');
+        const pageUrl = 'http://127.0.0.1:' + fs.readFileSync(portFile, 'utf8').trim() + '/parent.html';
+
+        const args = ['--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+            '--disable-background-networking', '--disable-extensions', '--virtual-time-budget=1000',
+            '--user-data-dir=' + path.join(temporary, 'profile'), '--dump-dom', pageUrl];
+        if (process.platform !== 'win32' && process.getuid?.() === 0) args.unshift('--no-sandbox');
+        const result = spawnSync(browserExecutable(), args, { encoding: 'utf8', timeout: 45000,
+            maxBuffer: 4 * 1024 * 1024, windowsHide: true });
+        assert.ifError(result.error);
+        assert.equal(result.status, 0, result.stderr);
+        const encoded = result.stdout.match(/<pre id="security-result">([\s\S]*?)<\/pre>/)?.[1];
+        assert.ok(encoded, 'Opaque preview did not return a result: ' + result.stderr);
+        const check = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+        assert.equal(check.text, attack, JSON.stringify(check));
+        assert.equal(check.elements, 0, 'Hostile markup must remain inert text');
+        assert.equal(check.xss, false, 'Preview payload must not execute');
+    } finally {
+        if (server && server.exitCode === null) server.kill();
+        fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+});
+
+test('renderer and sandbox load failures keep hostile messages inert in real Chromium', () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'bbf-load-error-security-'));
+    try {
+        const bbfSource = fs.readFileSync(path.join(__dirname, '..', 'bbf.js'), 'utf8');
+        const sandboxSource = fs.readFileSync(path.join(__dirname, '..', 'sandbox.php'), 'utf8');
+        const loadForm = sandboxSource.match(/    window\.loadForm = async function\(formId\) \{[\s\S]*?\n    \};/)?.[0];
+        assert.ok(loadForm, 'Extract the actual sandbox load function');
+        const attack = '<img src=x onerror="window.__xss++">';
+        const page = path.join(temporary, 'load-errors.html');
+        fs.writeFileSync(page, '<!doctype html><meta charset="utf-8">'
+            + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'">'
+            + '<div id="renderer"></div><div id="form-container"></div><div id="results"></div>'
+            + '<div id="result-placeholder"></div><div id="form-json"></div><div id="form-meta"></div>'
+            + '<pre id="security-result"></pre><script>' + bbfSource.replace(/<\/script/gi, '<\\/script') + '<\/script>'
+            + '<script>let currentFormId=null,currentFormDef=null,loadRequest=0;const sandboxCsrf="csrf";'
+            + 'async function sandboxSubmit(){};' + loadForm.replace(/<\/script/gi, '<\\/script')
+            + ';(async()=>{window.__xss=0;const attack=' + JSON.stringify(attack) + ';'
+            + 'window.fetch=async()=>({ok:false,status:500});await BBF.render(attack,document.getElementById("renderer"),{baseUrl:"./"});'
+            + 'const renderer=document.getElementById("renderer");window.fetch=async()=>{throw new Error(attack)};'
+            + 'await window.loadForm("sandbox");const sandbox=document.getElementById("form-container");'
+            + 'setTimeout(()=>{document.getElementById("security-result").textContent=JSON.stringify({'
+            + 'rendererText:renderer.textContent,rendererElements:renderer.querySelectorAll("img,script").length,'
+            + 'sandboxText:sandbox.textContent,sandboxElements:sandbox.querySelectorAll("img,script").length,xss:window.__xss});},50);})();<\/script>');
+        const args = ['--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+            '--disable-background-networking', '--disable-extensions', '--virtual-time-budget=500',
+            '--user-data-dir=' + path.join(temporary, 'profile'), '--dump-dom', pathToFileURL(page).href];
+        if (process.platform !== 'win32' && process.getuid?.() === 0) args.unshift('--no-sandbox');
+        const result = spawnSync(browserExecutable(), args, { encoding: 'utf8', timeout: 45000,
+            maxBuffer: 4 * 1024 * 1024, windowsHide: true });
+        assert.ifError(result.error);
+        assert.equal(result.status, 0, result.stderr);
+        const encoded = result.stdout.match(/<pre id="security-result">([\s\S]*?)<\/pre>/)?.[1];
+        assert.ok(encoded, 'Browser did not complete load-error assertions: ' + result.stderr);
+        const check = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+        assert.match(check.rendererText, /<img src=x/);
+        assert.match(check.sandboxText, /<img src=x/);
+        assert.equal(check.rendererElements, 0);
+        assert.equal(check.sandboxElements, 0);
+        assert.equal(check.xss, 0);
+    } finally {
+        fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
 });

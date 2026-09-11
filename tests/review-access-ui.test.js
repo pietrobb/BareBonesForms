@@ -74,9 +74,12 @@ async function browserChecks(profile) {
     const formId = profile.form || 'alpha';
     const formDef = { id: formId, name: formId === 'alpha' ? 'Alpha applications' : 'Beta applications',
         fields: [{ name: 'answer', label: 'Answer', type: 'text' },
-            { name: 'email', label: 'Email', type: 'email' }] };
+            { name: 'email', label: 'Email', type: 'email' },
+            { name: 'items', label: 'Items', type: 'group', repeatable: true,
+                fields: [{ name: 'sku', label: 'SKU', type: 'text' }] }] };
     const subs = [1, 2].map(n => ({ id: 'bbf_one_' + n, form: formId,
-        data: { answer: `Application ${n}`, email: `person${n}@example.invalid` },
+        data: { answer: `Application ${n}`, email: `person${n}@example.invalid`,
+            items: [{ sku: `A-${n}` }, { sku: `<row-${n}>` }] },
         meta: { submitted: '2026-09-08T10:00:00Z', ip: '192.0.2.1', user_agent: 'Fixture browser' } }));
     const reset = mode => Object.assign(v.state, { view: 'form', formId, formDef,
         labelMap: { answer: 'Answer', email: 'Email' }, subs, total: 2, page: 1,
@@ -159,7 +162,10 @@ async function browserChecks(profile) {
     check('detail content, forward and delete operations render correctly', () => {
         reset('table'); v.renderDetailView(subs[0], formDef);
         equal(panel.querySelector('.detail-value').textContent, 'Application 1', 'detail response');
-        equal(count('.btn-copy'), 2, 'copy controls');
+        equal(count('.btn-copy'), 3, 'copy controls');
+        equal(panel.textContent.includes('[object Object]'), false, 'nested detail never stringifies objects implicitly');
+        equal(panel.textContent.includes('<row-1>'), true, 'nested detail remains readable escaped text');
+        equal(count('.detail-value img, .detail-value script'), 0, 'nested detail cannot create active markup');
         button('#btn-back', true);
         button('#btn-forward', profile.csv);
         button('#btn-del', profile.del);
@@ -268,8 +274,9 @@ async function browserChecks(profile) {
             equal(popup.document.body.textContent, '', 'no cached content while authorization pending');
             equal(prints, 0, 'never print before authorization');
             if (outcome === 'closed') popup.close();
-            const fresh = { submission: { ...subs[0], data: { answer: 'Fresh server response' } },
-                form_def: { ...formDef, name: 'Fresh server definition' } };
+            const fresh = { submission: { ...subs[0], data: {
+                    answer: 'Fresh server response', items: [{ sku: '<fresh-row>' }],
+                } }, form_def: { ...formDef, name: 'Fresh server definition' } };
             if (outcome === 'wrong-id') fresh.submission.id = 'another-id';
             if (outcome === 'wrong-form') fresh.submission.form = 'another-form';
             if (outcome === 'network') settle.reject(new Error('Explicit offline response stub'));
@@ -286,6 +293,11 @@ async function browserChecks(profile) {
             if (outcome === 'current') {
                 equal(popup.document.querySelector('td + td').textContent, 'Fresh server response', 'fresh not cached record');
                 equal(popup.document.querySelector('h1').textContent, 'Fresh server definition', 'fresh not cached definition');
+                equal(popup.document.body.textContent.includes('<fresh-row>'), true, 'nested print value is readable text');
+                equal(popup.document.body.textContent.includes('[object Object]'), false, 'nested print never stringifies objects implicitly');
+                equal(popup.document.querySelector('.pre-wrap').style.whiteSpace,
+                    'pre-wrap', 'nested print preserves JSON whitespace');
+                equal(popup.document.querySelectorAll('img, script').length, 0, 'nested print cannot create active markup');
                 equal(popup.opener, null, 'popup opener detached');
             } else {
                 equal(popup.document.body.textContent, '', outcome + ' no output, even if denied response contains data');

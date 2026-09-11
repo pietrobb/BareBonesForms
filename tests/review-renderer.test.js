@@ -138,6 +138,94 @@ async function settle() {
     for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
 }
 
+test('latest render request owns its container when an older request fails late', async () => {
+    const requests = new Map();
+    const { BBF } = loadBBF({ fetch: url => {
+        const gate = deferred(); requests.set(url, gate); return gate.promise;
+    } });
+    const container = new MiniElement('div');
+    const oldRender = BBF.render('old', container, { baseUrl: 'https://api.test/' });
+    const newRender = BBF.render('new', container, { baseUrl: 'https://api.test/' });
+    requests.get('https://api.test/submit.php?form=new&action=definition').resolve({
+        ok: true, json: async () => ({ id: 'new', name: 'Newest', fields: [] }),
+    });
+    await newRender;
+    requests.get('https://api.test/submit.php?form=old&action=definition').resolve({
+        ok: false, status: 500, json: async () => ({}),
+    });
+    await oldRender;
+    assert.equal(container.querySelector('[data-form-id="new"]')?.getAttribute('data-form-id'), 'new');
+    assert.equal(container.innerHTML.includes('bbf-error'), false);
+});
+
+test('sandbox submit serializes repeatable rows with the production collector', async () => {
+    const { BBF } = loadBBF();
+    const definition = { fields: [{
+        name: 'items', type: 'group', repeatable: true, min_items: 1, max_items: 1,
+        fields: [{ name: 'sku', type: 'text' }],
+    }] };
+    const form = BBF._buildForm(definition, 'orders', 'https://example.test/', {}, null, null, true);
+    form.querySelector('[name="items__1__sku"]').value = 'A-1';
+    let submitted = null;
+    class SandboxFormData {
+        forEach(callback) { callback('A-1', 'items__1__sku'); callback('trap', '_bbf_hp'); }
+    }
+    const sandboxSource = fs.readFileSync(path.join(__dirname, '..', 'sandbox.php'), 'utf8');
+    const sandboxSubmit = sandboxSource.match(/    async function sandboxSubmit\(formEl, formId\) \{[\s\S]*?\r?\n    \}(?=\r?\n\r?\n    function showResults)/)?.[0];
+    assert.ok(sandboxSubmit, 'extract actual sandbox submit function');
+    const runtime = vm.createContext({
+        BBF, FormData: SandboxFormData, currentFormDef: definition, sandboxCsrf: 'csrf',
+        fetch: async (url, options) => {
+            submitted = JSON.parse(options.body);
+            return { json: async () => ({ status: 'ok' }) };
+        },
+        showResults() {}, showError() {},
+    });
+    vm.runInContext(sandboxSubmit + '\nthis.runSandboxSubmit = sandboxSubmit;', runtime);
+    await runtime.runSandboxSubmit(form, 'orders');
+    assert.deepEqual(submitted, { items: [{ sku: 'A-1' }] });
+});
+
+test('sandbox latest form load wins when the older definition resolves last', async () => {
+    const requests = new Map();
+    const { BBF } = loadBBF();
+    const elements = new Map(['form-container', 'results', 'result-placeholder', 'form-json', 'form-meta']
+        .map(id => [id, new MiniElement('div')]));
+    const document = { getElementById: id => elements.get(id) };
+    const sandboxSource = fs.readFileSync(path.join(__dirname, '..', 'sandbox.php'), 'utf8');
+    const loadForm = sandboxSource.match(/    window\.loadForm = async function\(formId\) \{[\s\S]*?\n    \};/)?.[0];
+    assert.ok(loadForm, 'extract actual sandbox load function');
+    const runtime = vm.createContext({
+        BBF, document, window: {}, sandboxSubmit() {}, encodeURIComponent,
+        fetch: url => { const gate = deferred(); requests.set(url, gate); return gate.promise; },
+    });
+    vm.runInContext("let currentFormId = ''; let currentFormDef = null; let loadRequest = 0;\n"
+        + loadForm + '\nthis.loadForm = window.loadForm; this.currentDefinition = () => currentFormDef;', runtime);
+    const oldLoad = runtime.loadForm('old');
+    const newLoad = runtime.loadForm('new');
+    requests.get('sandbox.php?action=definition&form=new').resolve({
+        json: async () => ({ id: 'new', name: 'Newest', fields: [] }),
+    });
+    await newLoad;
+    requests.get('sandbox.php?action=definition&form=old').resolve({
+        json: async () => ({ id: 'old', name: 'Stale', fields: [] }),
+    });
+    await oldLoad;
+    assert.equal(runtime.currentDefinition().id, 'new');
+    assert.equal(elements.get('form-container').querySelector('[data-form-id="new"]')?.getAttribute('data-form-id'), 'new');
+    assert.match(elements.get('form-json').textContent, /"id": "new"/);
+});
+
+test('sandbox payment preview consumes amount_minor and currency exponent contract', () => {
+    const { BBF } = loadBBF();
+    const base = { validation: { passed: true }, on_submit_preview: { payment: {
+        provider: 'stripe', amount_minor: 1000, minor_units: 0, currency: 'JPY', product_name: 'Order',
+    } } };
+    assert.match(BBF._renderSandboxPreview(base), /1000 JPY/);
+    base.on_submit_preview.payment = { provider: 'stripe', amount_minor: 1250, minor_units: 3, currency: 'KWD', product_name: 'Order' };
+    assert.match(BBF._renderSandboxPreview(base), /1\.250 KWD/);
+});
+
 test('option-only show_if binds and cleared choices immediately hide dependents', () => {
     const { BBF } = loadBBF();
     const form = new MiniElement('form');
@@ -230,6 +318,31 @@ test('rating updates dispatch input and change for dependent conditions', () => 
     assert.equal(changeEvents, 1);
 });
 
+test('draft restore applies all values before conditions and synchronizes rating accessibility', () => {
+    const { BBF } = loadBBF();
+    const fields = [
+        { name: 'gate', type: 'text' },
+        { name: 'choice', type: 'checkbox', options: [
+            { value: 'kept', label: 'Kept', show_if: { field: 'gate', value: 'yes' } },
+        ] },
+        { name: 'optional', type: 'radio', options: [{ value: 'undefined', label: 'Undefined literal' }] },
+        { name: 'score', type: 'rating', max: 3 },
+    ];
+    const form = BBF._buildForm({ fields }, 'draft-atomic', 'https://example.test/', {}, null, null, true);
+    const optional = form.querySelector('[name="optional"]'); optional.checked = true;
+    BBF._draftApply(form, fields, { choice: ['kept'], gate: 'yes', score: '5' },
+        ['gate', 'choice', 'optional', 'score']);
+    const choice = form.querySelector('[name="choice"]');
+    const stars = form.querySelectorAll('.bbf-star');
+    assert.equal(choice.checked, true);
+    assert.equal(choice.parentElement.style.display, '');
+    assert.equal(optional.checked, false);
+    assert.equal(form.querySelector('[name="score"]').value, '3');
+    assert.equal(stars[2].getAttribute('aria-checked'), 'true');
+    assert.equal(stars[2].getAttribute('tabindex'), '0');
+    assert.equal(stars.filter(star => star.classList.contains('bbf-star-active')).length, 3);
+});
+
 test('rating validation reveals its page and focuses an operable star', () => {
     const { BBF } = loadBBF();
     const form = new MiniElement('form');
@@ -288,6 +401,45 @@ test('latest lookup query wins even when the older response resolves last', asyn
     requests.get('/lookup?q=old').resolve({ ok: true, json: async () => ({ name: 'Stale' }) });
     await settle();
     assert.equal(target.value, 'Newest');
+});
+
+test('repeatable lookup and autocomplete mappings stay inside their originating row', async () => {
+    const requests = new Map();
+    const timers = [];
+    const { BBF, context } = loadBBF({
+        fetch: url => { const gate = deferred(); requests.set(url, gate); return gate.promise; },
+        setTimeout: fn => { timers.push(fn); return fn; },
+        clearTimeout: fn => { const index = timers.indexOf(fn); if (index >= 0) timers.splice(index, 1); },
+    });
+    const form = new MiniElement('form'); form.className = 'bbf-form';
+    const outerCity = form.appendChild(new MiniElement('input')); outerCity.name = 'city'; outerCity.setAttribute('name', 'city');
+    const outerPrice = form.appendChild(new MiniElement('input')); outerPrice.name = 'price'; outerPrice.setAttribute('name', 'price');
+    const group = form.appendChild(BBF._buildField({
+        name: 'items', type: 'group', repeatable: true, min_items: 1, max_items: 1,
+        fields: [
+            { name: 'postal', type: 'text', lookup: { url: '/postal?q={{value}}', trigger: 1, map: { city: 'city' } } },
+            { name: 'city', type: 'text' },
+            { name: 'product', type: 'text', autocomplete_from: { url: '/products?q={{value}}', min_length: 1, debounce: 0, map: { price: 'price' } } },
+            { name: 'price', type: 'text' },
+        ],
+    }));
+    group._bbfBindRows();
+    const row = group.querySelector('.bbf-repeatable-row');
+    const postal = row.querySelector('[name="items__1__postal"]');
+    postal.value = '100'; postal.dispatchEvent(new context.Event('input'));
+    requests.get('/postal?q=100').resolve({ ok: true, json: async () => ({ city: 'Row city' }) });
+    await settle();
+    assert.equal(row.querySelector('[name="items__1__city"]').value, 'Row city');
+    assert.equal(outerCity.value, '');
+
+    const product = row.querySelector('[name="items__1__product"]');
+    product.value = 'w'; product.dispatchEvent(new context.Event('input', { isTrusted: true }));
+    timers.shift()(); await settle();
+    requests.get('/products?q=w').resolve({ ok: true, json: async () => [{ label: 'Widget', value: 'widget', price: '9.50' }] });
+    await settle();
+    row.querySelector('.bbf-autocomplete-item').dispatchEvent(new context.Event('mousedown'));
+    assert.equal(row.querySelector('[name="items__1__price"]').value, '9.50');
+    assert.equal(outerPrice.value, '');
 });
 
 test('autocomplete keeps newest results and shortening invalidates in-flight work', async () => {
@@ -540,7 +692,7 @@ test('submit emits structured repeatable rows and maps dotted server errors to c
 
 test('schema permits option-level show_if', () => {
     const schema = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'forms', 'form.schema.json'), 'utf8'));
-    assert.deepEqual(schema.$defs.field.properties.options.items.properties.show_if, { $ref: '#/$defs/condition' });
+    assert.deepEqual(schema.$defs.field.properties.options.items.oneOf[1].properties.show_if, { $ref: '#/$defs/condition' });
 });
 
 test('demo5 renders once, scores the submitted payload, and handles no-match success', () => {

@@ -2,11 +2,17 @@
 # These rules work on Apache with mod_rewrite and AllowOverride All.
 #
 # ─── Nginx equivalent (add to your server block) ──────────────
-# location ~ ^/(config|bbf_functions\.php) { deny all; return 403; }
-# location ~ ^/(submissions|logs|templates|actions|backups|tests|lang)/ { deny all; return 403; }
-# location ~ /forms/.*\.json$ { deny all; return 403; }
-# location ~ /\.(git|env|htaccess|htpasswd) { deny all; return 403; }
+# Replace BBF_BASE/ with the exact installation path relative to the domain root
+# (for /bbf use ^/bbf/; for a root install remove BBF_BASE/ and keep ^/).
+# location ~ ^/BBF_BASE/config { deny all; }
+# location = /BBF_BASE/bbf_functions.php { deny all; }
+# location ~ ^/BBF_BASE/(submissions|logs|templates|actions|backups|tests|data)/ { deny all; }
+# location ~ ^/BBF_BASE/forms/.*\.json$ { deny all; }
+# location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
+# location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak-|~$|/#[^/]*#$)" { deny all; }
+# location ~ /\. { deny all; }
 # autoindex off;
+# Keep lang/*.js public: browser translations load these files directly.
 # ───────────────────────────────────────────────────────────────
 
 # Disable directory listing globally

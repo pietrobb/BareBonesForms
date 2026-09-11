@@ -117,6 +117,8 @@ try {
             'min_quantity' => 1, 'max_quantity' => 10, 'unit_amount_minor' => 250,
             'options' => ['size' => ['small' => ['active' => true, 'multiplier_bps' => 10000]]]]]]];
     payment_check(payment_schema_errors($fixed, $matrixFields) === [], 'fixed mode definition accepted');
+    payment_check(payment_schema_errors(array_diff_key($fixed, ['provider' => true]), $matrixFields) === [],
+        'omitted provider preserves the historical Stripe default');
     payment_check(payment_schema_errors($donation, $matrixFields) === [], 'donation mode definition accepted');
     payment_check(payment_schema_errors($smallCatalog, $matrixFields) === [], 'catalog mode definition accepted');
     foreach ([
@@ -127,6 +129,7 @@ try {
         'donation missing minimum' => array_diff_key($donation, ['min_amount_minor' => true]),
         'donation reversed range' => array_replace($donation, ['min_amount_minor' => 60000]),
         'invalid currency' => array_replace($fixed, ['currency' => 'EURO']),
+        'unsupported lowercase currency' => array_replace($fixed, ['currency' => 'xxx']),
         'catalog unknown product field' => array_replace_recursive($smallCatalog, ['catalog' => ['product_field' => 'missing']]),
     ] as $label => $badPayment) {
         payment_check(payment_schema_errors($badPayment, $matrixFields) !== [], "$label definition rejected");
@@ -134,6 +137,24 @@ try {
 
     $fixedQuote = $hasResolver ? bbfResolvePaymentQuote($fixed, []) : null;
     payment_check(($fixedQuote['amount_minor'] ?? null) === 1250 && ($fixedQuote['mode'] ?? null) === 'fixed', 'fixed mode quote uses integer minor units');
+    $fixedJpy = bbfResolvePaymentQuote(array_replace($fixed, ['currency' => 'jpy', 'amount_minor' => 1000]), []);
+    $catalogKwd = bbfResolvePaymentQuote(array_replace($smallCatalog, ['currency' => 'kwd']),
+        ['product' => 'one', 'qty' => '1', 'size' => 'small']);
+    payment_check($fixedJpy['minor_units'] === 0 && bbfPaymentFormatMinor($fixedJpy['amount_minor'], $fixedJpy['minor_units']) === '1000',
+        'fixed JPY quote uses the verified zero-decimal exponent');
+    payment_check($catalogKwd['minor_units'] === 3 && bbfPaymentFormatMinor($catalogKwd['amount_minor'], $catalogKwd['minor_units']) === '0.250',
+        'catalog KWD quote uses the verified three-decimal exponent');
+    $fixedMga = bbfResolvePaymentQuote(array_replace($fixed, ['currency' => 'mga', 'amount_minor' => 10]), []);
+    $fixedUgx = bbfResolvePaymentQuote(array_replace($fixed, ['currency' => 'ugx', 'amount_minor' => 500]), []);
+    payment_check($fixedMga['minor_units'] === 0 && bbfPaymentFormatMinor(10, 0) === '10',
+        'fixed MGA quote uses the verified zero-decimal exponent');
+    payment_check($fixedUgx['minor_units'] === 2 && bbfPaymentFormatMinor(500, 2) === '5.00',
+        'fixed UGX quote preserves the Stripe two-decimal compatibility representation');
+    payment_check(payment_schema_errors(array_replace($fixed, ['currency' => 'ugx', 'amount_minor' => 501]), $matrixFields) !== []
+        && payment_throws(static fn() => bbfResolvePaymentQuote(array_replace($fixed, ['currency' => 'isk', 'amount_minor' => 501]), [])),
+        'UGX and ISK fixed charges reject fractional whole-unit amounts');
+    payment_check(payment_schema_errors(array_replace($donation, ['currency' => 'jpy']), $matrixFields) !== [],
+        'explicit donation minor units must match the currency exponent');
     foreach (['10.05' => 1005, '1' => 100, '1.2' => 120, '500.00' => 50000] as $decimal => $minor) {
         $donationQuote = null;
         if ($hasResolver) { try { $donationQuote = bbfResolvePaymentQuote($donation, ['amount' => $decimal]); } catch (Throwable $error) {} }
@@ -154,6 +175,19 @@ try {
         && bbfPaymentFormatMinor(500, 0) === '500', 'zero-decimal trusted quote and display preserve 500 JPY');
     payment_check(($threeQuote['amount_minor'] ?? null) === 1250 && ($threeQuote['snapshot']['minor_units'] ?? null) === 3
         && bbfPaymentFormatMinor(1250, 3) === '1.250', 'three-decimal trusted quote and display preserve 1.250 KWD');
+    $ugxDonation = array_replace($donation, ['currency' => 'ugx', 'minor_units' => 2]);
+    $ugxDonationQuote = bbfResolvePaymentQuote($ugxDonation, ['amount' => '5.00']);
+    payment_check($ugxDonationQuote['amount_minor'] === 500
+        && payment_throws(static fn() => bbfResolvePaymentQuote($ugxDonation, ['amount' => '5.01'])),
+        'UGX donation accepts whole units and rejects fractional charge amounts');
+    $ugxCatalog = $smallCatalog;
+    $ugxCatalog['currency'] = 'ugx';
+    $ugxCatalog['catalog']['products']['one']['unit_amount_minor'] = 500;
+    $ugxCatalogQuote = bbfResolvePaymentQuote($ugxCatalog, ['product' => 'one', 'qty' => '1', 'size' => 'small']);
+    $ugxCatalog['catalog']['products']['one']['unit_amount_minor'] = 501;
+    payment_check($ugxCatalogQuote['amount_minor'] === 500
+        && payment_throws(static fn() => bbfResolvePaymentQuote($ugxCatalog, ['product' => 'one', 'qty' => '1', 'size' => 'small'])),
+        'UGX catalog accepts whole units and rejects fractional calculated amounts');
 
     $minorForm = ['id' => 'minor-format', 'storage' => 'file', 'fields' => [], 'on_submit' => ['store' => true]];
     file_put_contents("$root/forms/minor-format.json", bbf_storage_json($minorForm));
@@ -194,6 +228,7 @@ PHP);
         . "  return ['id'=>'cs_trusted_fixture','url'=>'https://checkout.local/session/cs_trusted_fixture'];\n"
         . "}]];";
     file_put_contents("$root/config.php", $configPhp);
+    $fixtureConfig = require "$root/config.php";
     file_put_contents("$root/tests/payment-transition-worker.php", <<<'PHP'
 <?php
 if (PHP_SAPI !== 'cli') exit(2);
@@ -232,11 +267,34 @@ PHP);
         'pricing mode version and quote snapshot persist before Checkout');
     payment_check(($stored['meta']['payment_checkout_session_id'] ?? null) === 'cs_trusted_fixture',
         'trusted Checkout session identity persists before redirect');
+    $outboxPath = bbf_outbox_path(['submissions_dir' => "$root/submissions"], 'demo-order', $submissionId);
+    $submittedOutboxRaw = is_file($outboxPath) ? file_get_contents($outboxPath) : '';
+    $submittedLedger = $submittedOutboxRaw !== ''
+        ? json_decode($submittedOutboxRaw, true, 512, JSON_THROW_ON_ERROR)
+        : null;
+    payment_check(is_array($submittedLedger) && ($submittedLedger['context'] ?? null) === ['storage' => 'file']
+        && array_keys($submittedLedger['jobs'] ?? []) === ['action:0'],
+        'real payment submit persists its complete immutable delivery plan and original backend before redirect');
 
     $baseSession = ['id' => 'cs_trusted_fixture', 'payment_intent' => 'pi_fixture', 'amount_total' => 1125,
         'currency' => 'eur', 'payment_status' => 'paid',
         'metadata' => ['bbf_submission_id' => $submissionId, 'bbf_form_id' => 'demo-order']];
     $pending = $stored;
+    $signaturePayload = json_encode(['id' => 'evt_signature_rotation', 'type' => 'customer.created', 'data' => ['object' => []]], JSON_THROW_ON_ERROR);
+    $signatureTime = time();
+    $validSignature = hash_hmac('sha256', $signatureTime . '.' . $signaturePayload, 'fixture-webhook-secret');
+    foreach ([
+        "t=$signatureTime,v1=$validSignature,v1=" . str_repeat('0', 64),
+        "t=$signatureTime,v1=" . str_repeat('0', 64) . ",v1=$validSignature",
+    ] as $position => $signatureHeader) {
+        $signed = bbf_test_http($server, $base . 'payment.php', null, ['raw' => $signaturePayload,
+            'headers' => ['Content-Type' => 'application/json', 'Stripe-Signature' => $signatureHeader]]);
+        payment_check($signed['code'] === 200, "Stripe rotation accepts valid v1 at position $position");
+    }
+    $invalidSignatureHeader = "t=$signatureTime,v1=" . str_repeat('0', 64) . ',v1=' . str_repeat('1', 64);
+    $invalidSigned = bbf_test_http($server, $base . 'payment.php', null, ['raw' => $signaturePayload,
+        'headers' => ['Content-Type' => 'application/json', 'Stripe-Signature' => $invalidSignatureHeader]]);
+    payment_check($invalidSigned['code'] === 400, 'Stripe rejects multiple invalid v1 signatures');
     foreach ([
         'amount' => array_replace($baseSession, ['amount_total' => 1]),
         'currency' => array_replace($baseSession, ['currency' => 'usd']),
@@ -251,9 +309,21 @@ PHP);
         payment_check(!is_file("$root/data/action.json"), "$mismatch mismatch runs no deferred action");
     }
 
+    // The actual submit-created plan must survive definition and routing drift before the callback.
+    file_put_contents("$root/forms/demo-order.json", '{"id":');
+    @unlink("$root/data/action.json");
+    $submitPlanCallback = payment_callback($server, $base, $baseSession, 'fixture-webhook-secret',
+        'checkout.session.async_payment_succeeded', 'evt_submit_plan_drift');
+    payment_check($submitPlanCallback['code'] === 200 && is_file("$root/data/action.json")
+        && (bbf_outbox_settlement($outboxPath)['settled'] ?? false),
+        'real submit plan settles after the current form becomes malformed without manual ledger seeding');
+    file_put_contents("$root/forms/demo-order.json", json_encode($demo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    if ($recordPath) file_put_contents($recordPath, json_encode($pending, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+    file_put_contents($outboxPath, $submittedOutboxRaw);
+    @unlink("$root/data/action.json");
+
     // A provider event is acknowledged only after every deferred job has a durable success checkpoint.
-    $outboxPath = bbf_outbox_path(['submissions_dir' => "$root/submissions"], 'demo-order', $submissionId);
-    $outbox = bbf_outbox_init($outboxPath, "demo-order:$submissionId", bbf_outbox_jobs($demo, $pending), 3);
+    $outbox = bbf_outbox_read($outboxPath);
     $runningClaim = bbf_outbox_claim($outboxPath, 'action:0');
     $runningCallback = payment_callback($server, $base, $baseSession, 'fixture-webhook-secret',
         'checkout.session.completed', 'evt_running_action');
@@ -265,13 +335,47 @@ PHP);
         'checkout.session.async_payment_succeeded', 'evt_ambiguous_action');
     payment_check($ambiguousCallback['code'] === 503 && !is_file("$root/data/action.json"),
         'ambiguous delivery checkpoint is not acknowledged or automatically replayed');
-    $changedForm = $demo;
-    unset($changedForm['on_submit']['actions']);
-    file_put_contents("$root/forms/demo-order.json", json_encode($changedForm, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
-    $orphanedCallback = payment_callback($server, $base, $baseSession, 'fixture-webhook-secret',
-        'checkout.session.async_payment_succeeded', 'evt_orphaned_action');
-    payment_check($orphanedCallback['code'] === 503,
-        'immutable unsettled ledger job blocks acknowledgement after form definition drift');
+    @unlink($outboxPath);
+    @unlink($outboxPath . '.lock');
+    @unlink("$root/data/action.json");
+    file_put_contents($outboxPath, $submittedOutboxRaw);
+    file_put_contents("$root/forms/demo-order.json", '{"id":');
+    $duplicateDbPath = "$root/submissions/bbf.sqlite";
+    $contextLedger = json_decode(file_get_contents($outboxPath), true, 512, JSON_THROW_ON_ERROR);
+    $contextLedger['context'] = ['unexpected' => 'file'];
+    file_put_contents($outboxPath, bbf_storage_json($contextLedger));
+    $invalidContextCallback = payment_callback($server, $base, $baseSession, 'fixture-webhook-secret',
+        'checkout.session.async_payment_succeeded', 'evt_invalid_context');
+    payment_check($invalidContextCallback['code'] === 500 && !is_file("$root/data/action.json"),
+        'invalid ledger context fails closed without legacy backend probing');
+    $contextLedger['context'] = ['storage' => 'sqlite'];
+    file_put_contents($outboxPath, bbf_storage_json($contextLedger));
+    $missingSqliteCallback = payment_callback($server, $base, $baseSession, 'fixture-webhook-secret',
+        'checkout.session.async_payment_succeeded', 'evt_missing_sqlite');
+    payment_check($missingSqliteCallback['code'] === 500 && !is_file($duplicateDbPath),
+        'context-directed SQLite lookup does not create a missing database');
+    unset($contextLedger['context']);
+    file_put_contents($outboxPath, bbf_storage_json($contextLedger));
+    $duplicateDb = new PDO('sqlite:' . $duplicateDbPath, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $duplicateDb->exec('CREATE TABLE bbf_submissions (id TEXT PRIMARY KEY, form_id TEXT NOT NULL, data TEXT NOT NULL, meta TEXT NOT NULL)');
+    $duplicateInsert = $duplicateDb->prepare('INSERT INTO bbf_submissions (id, form_id, data, meta) VALUES (?, ?, ?, ?)');
+    $duplicateInsert->execute([$submissionId, 'demo-order', bbf_storage_json($pending['data']), bbf_storage_json($pending['meta'])]);
+    $ambiguousBackendCallback = payment_callback($server, $base, $baseSession, 'fixture-webhook-secret',
+        'checkout.session.async_payment_succeeded', 'evt_ambiguous_backend');
+    payment_check($ambiguousBackendCallback['code'] === 500 && !is_file("$root/data/action.json"),
+        'context-free ledger fails closed when the submission exists in multiple backends');
+    $duplicateDb->exec('DELETE FROM bbf_submissions');
+    $duplicateInsert = null;
+    $duplicateDb = null;
+    $persistedPlanCallback = payment_callback($server, $base, $baseSession, 'fixture-webhook-secret',
+        'checkout.session.async_payment_succeeded', 'evt_persisted_action');
+    $persistedPlanOk = $persistedPlanCallback['code'] === 200 && is_file("$root/data/action.json")
+        && (bbf_outbox_settlement($outboxPath)['settled'] ?? false);
+    payment_check($persistedPlanOk,
+        'callback recovers and settles a context-free immutable plan after current form becomes malformed'
+        . ($persistedPlanOk ? '' : ' (HTTP ' . $persistedPlanCallback['code'] . ': ' . $persistedPlanCallback['body']
+        . '; action: ' . (is_file("$root/data/action.json") ? file_get_contents("$root/data/action.json") : 'missing')
+        . '; ledger: ' . (is_file($outboxPath) ? file_get_contents($outboxPath) : 'missing') . ')'));
     file_put_contents("$root/forms/demo-order.json", json_encode($demo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     @unlink($outboxPath);
     @unlink($outboxPath . '.lock');
@@ -304,6 +408,9 @@ PHP);
         && ($after['meta']['payment_amount_minor'] ?? null) === 1125, 'matching callback marks trusted payment paid'
         . ' (HTTP ' . $callback['code'] . ': ' . $callback['body'] . '; ledger: ' . file_get_contents($outboxPath) . ')');
     payment_check(is_file("$root/data/action.json"), 'matching callback runs deferred action after durable paid update');
+    $freshLedger = json_decode(file_get_contents($outboxPath), true, 512, JSON_THROW_ON_ERROR);
+    payment_check(($freshLedger['context'] ?? null) === ['storage' => 'file'],
+        'new payment ledger persists only its effective storage backend context');
     $firstAction = json_decode(file_get_contents("$root/data/action.json"), true);
     $replay = payment_callback($server, $base, $baseSession, 'fixture-webhook-secret');
     $afterReplay = json_decode(file_get_contents("$root/data/action.json"), true);

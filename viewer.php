@@ -168,6 +168,15 @@ function matchesSearch(array $data, string $q): bool {
     return bbf_read_search($data, $q);
 }
 
+function viewerValueText(mixed $value): string {
+    if (!is_array($value)) return (string)$value;
+    if (array_is_list($value) && array_reduce($value,
+        static fn(bool $flat, mixed $item): bool => $flat && (is_scalar($item) || $item === null), true)) {
+        return implode(', ', array_map(static fn(mixed $item): string => (string)$item, $value));
+    }
+    return json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+}
+
 function buildPhpLabelMap(?array $formDef): array {
     $map = [];
     if (!$formDef || empty($formDef['fields'])) return $map;
@@ -601,9 +610,9 @@ if ($action === 'forward') {
     $h .= '<table style="border-collapse:collapse;width:100%;margin-top:16px">';
     foreach ($sub['data'] as $k => $v) {
         $label = $labelMap[$k] ?? $k;
-        $val = htmlspecialchars(is_array($v) ? implode(', ', $v) : (string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $val = htmlspecialchars(viewerValueText($v), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $h .= '<tr><td style="padding:10px 12px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc;color:#475569;width:35%;font-size:13px">' . htmlspecialchars($label) . '</td>';
-        $h .= '<td style="padding:10px 12px;border:1px solid #e2e8f0;font-size:14px">' . ($val ?: '<span style="color:#94a3b8">-</span>') . '</td></tr>';
+        $h .= '<td style="padding:10px 12px;border:1px solid #e2e8f0;font-size:14px;white-space:pre-wrap">' . ($val ?: '<span style="color:#94a3b8">-</span>') . '</td></tr>';
     }
     $h .= '</table></body></html>';
     $subject = htmlspecialchars_decode($formName) . ' — ' . $sub['id'];
@@ -1466,7 +1475,7 @@ function renderDashboard(data) {
             previewKeys.forEach(k => {
                 const v = (sub.data || {})[k];
                 if (v === undefined || v === null) return;
-                const val = Array.isArray(v) ? v.join(', ') : String(v);
+                const val = valueText(v);
                 const display = val.length > 50 ? val.substring(0, 50) + '...' : val;
                 const label = labelMap[k] || k;
                 html += `<span class="sub-field"><strong>${esc(label)}:</strong> ${esc(display)}</span>`;
@@ -1684,7 +1693,7 @@ function renderCards(subs, opts) {
             `<span><span class="sub-id">${esc(sub.id)}</span>${formTag}</span></div>` +
             `<div class="sub-preview">` +
             preview.map(([k, v]) => {
-                const val = Array.isArray(v) ? v.join(', ') : String(v);
+                const val = valueText(v);
                 const display = val.length > 60 ? val.substring(0, 60) + '...' : val;
                 const label = labelMap[k] || k;
                 return `<span class="sub-field"><strong>${esc(label)}:</strong> ${esc(display)}</span>`;
@@ -1784,7 +1793,7 @@ function renderCardsGrid() {
             html += `<div class="grid-card-section">`;
             if (section.title) html += `<div class="grid-card-section-title">${esc(section.title)}</div>`;
             section.fields.forEach(f => {
-                const val = Array.isArray(f.value) ? f.value.join(', ') : String(f.value);
+                const val = valueText(f.value);
                 const display = val.length > 35 ? val.substring(0, 35) + '...' : val;
                 html += `<div class="grid-card-field"><strong>${esc(f.label)}:</strong> ${esc(display)}</div>`;
             });
@@ -1833,7 +1842,7 @@ function renderTable() {
         if (canReview(state.formId)) html += `<td>${renderReviewBadges(sub.review)}</td>`;
         cols.forEach(c => {
             const v = (sub.data || {})[c.key];
-            const val = v === undefined || v === null ? '' : (Array.isArray(v) ? v.join(', ') : String(v));
+            const val = valueText(v);
             const display = val.length > 40 ? val.substring(0, 40) + '...' : val;
             html += `<td title="${esc(val)}">${esc(display)}</td>`;
         });
@@ -1965,7 +1974,7 @@ function renderDetailView(sub, formDef, delivery, review) {
         html += '<div class="detail-card">';
         if (section.title) html += `<div class="detail-section-title">${esc(section.title)}</div>`;
         section.fields.forEach(f => {
-            const rawVal = Array.isArray(f.value) ? f.value.join(', ') : String(f.value ?? '');
+            const rawVal = valueText(f.value);
             html += `<div class="detail-field">`;
             html += `<div class="detail-label">${esc(f.label)}</div>`;
             html += `<div class="detail-value">${formatValue(f.value, f.type)}</div>`;
@@ -2144,6 +2153,7 @@ async function printSubmission(formId, subId) {
     table{width:100%;border-collapse:collapse;margin-top:8px}
     td{padding:10px 12px;border:1px solid #e2e8f0;font-size:0.9rem;vertical-align:top}
     td:first-child{font-weight:600;background:#f8fafc;color:#475569;width:35%}
+    .pre-wrap{white-space:pre-wrap}
     .footer{margin-top:30px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:0.75rem;color:#94a3b8}
     @media print{body{padding:20px}}</style></head><body>`;
     html += `<h1>${esc(formName)}</h1>`;
@@ -2151,8 +2161,8 @@ async function printSubmission(formId, subId) {
     html += '<table>';
     fields.forEach(([k, v]) => {
         const label = labelMap[k] || k;
-        const val = Array.isArray(v) ? v.join(', ') : String(v || '-');
-        html += `<tr><td>${esc(label)}</td><td>${esc(val)}</td></tr>`;
+        const val = valueText(v) || '-';
+        html += `<tr><td>${esc(label)}</td><td><div class="pre-wrap" style="white-space:pre-wrap">${esc(val)}</div></td></tr>`;
     });
     html += '</table>';
     html += `<div class="footer">${esc(t('generated'))} ${esc(SITE_NAME)}</div>`;
@@ -2180,16 +2190,23 @@ function copyToClipboard(text, btn) {
 }
 
 // ─── Value formatting ────────────────────────────────────────────
+function valueText(value) {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value) && value.every(item => item === null || typeof item !== 'object')) {
+        return value.map(item => String(item ?? '')).join(', ');
+    }
+    if (typeof value === 'object') return JSON.stringify(value, null, 2);
+    return String(value);
+}
+
 function formatValue(value, type) {
     if (value === null || value === undefined || value === '') {
         return '<span class="empty-val">-</span>';
     }
-    if (Array.isArray(value)) {
-        if (type === 'checkbox') {
-            return value.map(v => `<span class="tag">${esc(String(v))}</span>`).join('');
-        }
-        return esc(value.join(', '));
+    if (Array.isArray(value) && type === 'checkbox' && value.every(item => item === null || typeof item !== 'object')) {
+        return value.map(v => `<span class="tag">${esc(String(v))}</span>`).join('');
     }
+    if (typeof value === 'object') return `<div class="pre-wrap">${esc(valueText(value))}</div>`;
     const str = String(value);
     switch (type) {
         case 'rating': {

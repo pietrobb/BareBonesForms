@@ -75,7 +75,7 @@ function bbf_read_file(string $path, string $formId): ?array {
 /** O(N) filename/mtime metadata, O(one record) decoded payload. Equal mtimes retain
  * the original glob order. Each file is stable while read, not a directory-wide snapshot.
  */
-function bbf_read_files(string $formId, string $dir, ?string $from = null, ?string $to = null, ?string $q = null): Generator {
+function bbf_read_files(string $formId, string $dir, ?string $from = null, ?string $to = null, ?string $q = null, bool $strict = false): Generator {
     $paths = glob("$dir/$formId/bbf_*.json");
     if ($paths === false) throw new RuntimeException('Cannot enumerate submissions.');
     $index = [];
@@ -93,8 +93,26 @@ function bbf_read_files(string $formId, string $dir, ?string $from = null, ?stri
     $bounds = bbf_read_bounds($from, $to);
     foreach ($index as [$path]) {
         $sub = bbf_read_file($path, $formId);
+        if ($sub === null && $strict) throw new RuntimeException('Invalid stored submission.');
         if ($sub !== null && bbf_read_matches($sub, $bounds, $q)) yield $sub;
     }
+}
+
+function bbf_read_csv_record_syntax_valid($fp, int $start, int $end): bool {
+    if ($end < $start || fseek($fp, $start) !== 0) return false;
+    $raw = stream_get_contents($fp, $end - $start);
+    if ($raw === false || strlen($raw) !== $end - $start || fseek($fp, $end) !== 0) return false;
+    $quoted = false;
+    $length = strlen($raw);
+    for ($i = 0; $i < $length; $i++) {
+        if ($raw[$i] !== '"') continue;
+        if ($quoted && $i + 1 < $length && $raw[$i + 1] === '"') {
+            $i++;
+            continue;
+        }
+        $quoted = !$quoted;
+    }
+    return !$quoted;
 }
 
 function bbf_read_csv_record(array $headers, array $row, string $formId): ?array {
@@ -142,7 +160,7 @@ function bbf_read_csv_record(array $headers, array $row, string $formId): ?array
  * on-disk fixed-width offset index, never reverse physical lines or all-record arrays.
  * The sidecar is held across BOTH passes, including target/index close and early exit.
  */
-function bbf_read_csv(string $formId, string $dir, ?string $from = null, ?string $to = null, ?string $q = null, ?string $id = null): Generator {
+function bbf_read_csv(string $formId, string $dir, ?string $from = null, ?string $to = null, ?string $q = null, ?string $id = null, bool $strict = false): Generator {
     $path = "$dir/$formId.csv";
     if (!is_dir(dirname($path))) return;
     $lock = @fopen($path . '.lock', 'c');
@@ -172,7 +190,12 @@ function bbf_read_csv(string $formId, string $dir, ?string $from = null, ?string
             if ($position === false) throw new RuntimeException('Cannot locate CSV record.');
             $row = fgetcsv($fp, 0, ',', '"', '');
             if ($row === false) break;
+            $end = ftell($fp);
+            if ($end === false || ($strict && !bbf_read_csv_record_syntax_valid($fp, $position, $end))) {
+                throw new RuntimeException('Invalid stored CSV submission.');
+            }
             $sub = bbf_read_csv_record($headers, $row, $formId);
+            if ($sub === null && $strict) throw new RuntimeException('Invalid stored CSV submission.');
             if ($sub === null || ($id !== null && $sub['id'] !== $id) || !bbf_read_matches($sub, $bounds, $q)) continue;
             if ($id !== null) { yield $sub; return; }
             if (!bbf_storage_write_all($index, sprintf('%020d', $position))) throw new RuntimeException('Cannot write CSV read index.');
@@ -267,10 +290,10 @@ function bbf_read_db_sql_eligibility(PDO $pdo): bool {
     return true;
 }
 
-function bbf_read_db_where(PDO $pdo, string $formId, ?string $from, ?string $to, ?string $id = null): array {
+function bbf_read_db_where(PDO $pdo, string $formId, ?string $from, ?string $to, ?string $id = null, bool $strict = false): array {
     $where = [bbf_auth_form_sql($pdo)];
     $params = [$formId];
-    if (bbf_read_db_sql_eligibility($pdo)) $where[] = 'bbf_read_valid_record(data, meta) = 1';
+    if (!$strict && bbf_read_db_sql_eligibility($pdo)) $where[] = 'bbf_read_valid_record(data, meta) = 1';
     if ($id !== null) { $where[] = 'id = ?'; $params[] = $id; }
     // Identical wall-clock predicate for SQLite ISO timestamps and MySQL DATETIME.
     foreach (bbf_read_bounds($from, $to) as $i => $bound) {
@@ -286,8 +309,8 @@ function bbf_read_db_where(PDO $pdo, string $formId, ?string $from, ?string $to,
  * Only push pagination into SQL when both eligibility and search are SQL predicates.
  * Otherwise skip/count valid matches while streaming, retaining one decoded record.
  */
-function bbf_read_db(PDO $pdo, string $formId, ?string $from = null, ?string $to = null, ?string $q = null, ?string $id = null, ?int $limit = null, int $offset = 0): Generator {
-    [$where, $params] = bbf_read_db_where($pdo, $formId, $from, $to, $id);
+function bbf_read_db(PDO $pdo, string $formId, ?string $from = null, ?string $to = null, ?string $q = null, ?string $id = null, ?int $limit = null, int $offset = 0, bool $strict = false): Generator {
+    [$where, $params] = bbf_read_db_where($pdo, $formId, $from, $to, $id, $strict);
     $sql = "SELECT * FROM bbf_submissions WHERE $where ORDER BY created_at DESC";
     $sqlPage = bbf_read_db_sql_eligibility($pdo) && ($q === null || $q === '');
     if ($sqlPage && $limit !== null) { $sql .= ' LIMIT ? OFFSET ?'; $params[] = $limit; $params[] = $offset; }
@@ -302,6 +325,7 @@ function bbf_read_db(PDO $pdo, string $formId, ?string $from = null, ?string $to
         $stmt->execute();
         while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $sub = bbf_read_db_row($row);
+            if ($sub === null && $strict) throw new RuntimeException('Invalid stored database submission.');
             if ($sub === null || ($q !== null && !bbf_read_search($sub['data'], $q))) continue;
             if (!$sqlPage && $limit !== null) {
                 if ($seen++ < $offset) continue;
@@ -329,15 +353,15 @@ function bbf_read_db_page(PDO $pdo, string $formId, int $limit, int $offset, ?st
 }
 
 /** Config is resolved by the caller, preserving per-form routing and byte-exact scope. */
-function bbf_read_export(string $formId, array $config, int $limit, int $offset, ?string $from, ?string $to, ?string $q = null): Generator {
+function bbf_read_export(string $formId, array $config, int $limit, int $offset, ?string $from, ?string $to, ?string $q = null, bool $strict = false): Generator {
     $storage = $config['storage'] ?? 'file';
     $dir = $config['submissions_dir'] ?? __DIR__ . '/submissions';
-    if ($storage === 'file') $rows = bbf_read_files($formId, $dir, $from, $to, $q);
-    elseif ($storage === 'csv') $rows = bbf_read_csv($formId, $dir, $from, $to, $q);
+    if ($storage === 'file') $rows = bbf_read_files($formId, $dir, $from, $to, $q, $strict);
+    elseif ($storage === 'csv') $rows = bbf_read_csv($formId, $dir, $from, $to, $q, null, $strict);
     else {
         $pdo = bbf_read_db_connect($config);
         if (!$pdo) return;
-        $rows = bbf_read_db($pdo, $formId, $from, $to, $q);
+        $rows = bbf_read_db($pdo, $formId, $from, $to, $q, null, null, 0, $strict);
     }
     yield from bbf_read_slice($rows, $limit, $offset);
 }

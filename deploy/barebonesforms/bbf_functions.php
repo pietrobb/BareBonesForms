@@ -47,6 +47,14 @@ function prefixFields(array $fields, string $prefix, array $tplNames): array {
         if (!empty($field['show_if'])) {
             $field['show_if'] = prefixCondition($field['show_if'], $prefix, $tplNames);
         }
+        if (is_array($field['options'] ?? null)) {
+            foreach ($field['options'] as &$option) {
+                if (is_array($option) && !empty($option['show_if'])) {
+                    $option['show_if'] = prefixCondition($option['show_if'], $prefix, $tplNames);
+                }
+            }
+            unset($option);
+        }
         if (($field['type'] ?? '') === 'group' && !empty($field['fields'])) {
             $field['fields'] = prefixFields($field['fields'], $prefix, $tplNames);
         }
@@ -248,7 +256,8 @@ function renderTemplate(string $templateFile, array $vars): string {
         $out = "<h2>Form submission</h2>";
         foreach ($vars as $k => $v) {
             if (isset($trustedHtmlVars[$k])) continue;
-            $out .= "<p><strong>" . htmlspecialchars($k) . ":</strong> " . htmlspecialchars($v) . "</p>";
+            $text = is_array($v) ? bbf_storage_json($v) : (is_scalar($v) || $v === null ? (string)$v : '');
+            $out .= "<p><strong>" . htmlspecialchars($k) . ":</strong> " . htmlspecialchars($text) . "</p>";
         }
         return $out;
     }
@@ -414,6 +423,9 @@ function bbf_delivery_runtime_action(array $payload, array $config): array {
         || !is_array($persisted) || !is_string($expectedType) || !is_array($sensitivePaths)) {
         throw new RuntimeException('Invalid persisted action descriptor.');
     }
+    $discardedPaths = [];
+    $runtime = bbf_delivery_sanitize_action_config($persisted, $discardedPaths);
+    if ($sensitivePaths === []) return $runtime;
     $formsDir = rtrim((string)($config['forms_dir'] ?? __DIR__ . '/forms'), '/\\');
     $raw = @file_get_contents($formsDir . '/' . $formId . '.json');
     try {
@@ -427,8 +439,6 @@ function bbf_delivery_runtime_action(array $payload, array $config): array {
         || !hash_equals($expectedType, $trusted['type'])) {
         throw new RuntimeException('Trusted action source is missing or changed type.');
     }
-    $discardedPaths = [];
-    $runtime = bbf_delivery_sanitize_action_config($persisted, $discardedPaths);
     foreach ($sensitivePaths as $path) {
         if (!is_array($path) || $path === []) throw new RuntimeException('Invalid sensitive action path.');
         $found = false;
@@ -698,6 +708,28 @@ function bbfPaymentFieldOptions(array $field): array {
     return $values;
 }
 
+function bbfPaymentCurrencyMinorUnits(string $currency): int {
+    return match ($currency) {
+        'bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga', 'pyg', 'rwf', 'vnd', 'vuv', 'xaf', 'xof', 'xpf' => 0,
+        'bhd', 'jod', 'kwd', 'omr', 'tnd' => 3,
+        'aed', 'afn', 'all', 'amd', 'ang', 'aoa', 'ars', 'aud', 'awg', 'azn', 'bam', 'bbd', 'bdt', 'bmd', 'bnd',
+        'bob', 'brl', 'bsd', 'bwp', 'byn', 'bzd', 'cad', 'cdf', 'chf', 'cny', 'cop', 'crc', 'cve', 'czk', 'dkk',
+        'dop', 'dzd', 'egp', 'etb', 'eur', 'fjd', 'fkp', 'gbp', 'gel', 'gip', 'gmd', 'gtq', 'gyd', 'hkd', 'hnl',
+        'htg', 'huf', 'idr', 'ils', 'inr', 'isk', 'jmd', 'kes', 'kgs', 'khr', 'kyd', 'kzt', 'lak', 'lbp', 'lkr',
+        'lrd', 'lsl', 'mad', 'mdl', 'mkd', 'mmk', 'mnt', 'mop', 'mur', 'mvr', 'mwk', 'mxn', 'myr', 'mzn', 'nad',
+        'ngn', 'nio', 'nok', 'npr', 'nzd', 'pab', 'pen', 'pgk', 'php', 'pkr', 'pln', 'qar', 'ron', 'rsd', 'rub',
+        'sar', 'sbd', 'scr', 'sek', 'sgd', 'shp', 'sle', 'sos', 'srd', 'std', 'szl', 'thb', 'tjs', 'top', 'try',
+        'ttd', 'twd', 'tzs', 'uah', 'ugx', 'usd', 'uyu', 'uzs', 'wst', 'xcd', 'xcg', 'yer', 'zar', 'zmw' => 2,
+        default => throw new InvalidArgumentException('Unsupported payment currency.'),
+    };
+}
+
+function bbfPaymentValidateChargeAmount(string $currency, int $amountMinor): void {
+    if (in_array($currency, ['isk', 'ugx'], true) && $amountMinor % 100 !== 0) {
+        throw new InvalidArgumentException('Payment currency does not support fractional charge amounts.');
+    }
+}
+
 function bbfValidatePaymentDefinition(array $payment, array $fields): array {
     $errors = [];
     $prefix = 'on_submit.payment';
@@ -714,8 +746,20 @@ function bbfValidatePaymentDefinition(array $payment, array $fields): array {
         || (string)$payment['pricing_version'] === '') {
         $errors[] = "$prefix.pricing_version: A non-empty string or integer is required.";
     }
-    if (!is_string($payment['currency'] ?? null) || !preg_match('/\A[a-z]{3}\z/', $payment['currency'])) {
+    $currency = $payment['currency'] ?? null;
+    if (!is_string($currency) || !preg_match('/\A[a-z]{3}\z/', $currency)) {
         $errors[] = "$prefix.currency: Expected a lowercase three-letter currency code.";
+    } else {
+        try {
+            $currencyMinorUnits = bbfPaymentCurrencyMinorUnits($currency);
+        } catch (InvalidArgumentException $error) {
+            $currencyMinorUnits = null;
+            $errors[] = "$prefix.currency: Unsupported payment currency.";
+        }
+        if (array_key_exists('minor_units', $payment)
+            && (!is_int($payment['minor_units']) || $payment['minor_units'] !== $currencyMinorUnits)) {
+            $errors[] = "$prefix.minor_units: Must match the currency exponent.";
+        }
     }
     if ($mode !== 'donation' && array_key_exists('amount_field', $payment)) {
         $errors[] = "$prefix.amount_field: Allowed only in donation mode.";
@@ -727,6 +771,8 @@ function bbfValidatePaymentDefinition(array $payment, array $fields): array {
     if ($mode === 'fixed') {
         if (!is_int($payment['amount_minor'] ?? null) || $payment['amount_minor'] <= 0) {
             $errors[] = "$prefix.amount_minor: A positive integer is required in fixed mode.";
+        } elseif (in_array($currency, ['isk', 'ugx'], true) && $payment['amount_minor'] % 100 !== 0) {
+            $errors[] = "$prefix.amount_minor: This currency requires a whole-unit charge amount.";
         }
         if (isset($payment['catalog']) || isset($payment['min_amount_minor']) || isset($payment['max_amount_minor'])) {
             $errors[] = "$prefix: Fixed mode cannot contain catalog or donation bounds.";
@@ -895,17 +941,20 @@ function bbfResolvePaymentQuote(array $payment, array $data): array {
     if ($mode === 'fixed') {
         $amount = $payment['amount_minor'] ?? null;
         if (!is_int($amount) || $amount <= 0 || isset($payment['amount_field'])) throw new InvalidArgumentException('Invalid fixed payment definition.');
-        return ['amount_minor' => $amount, 'minor_units' => 2, 'currency' => $currency, 'mode' => $mode, 'version' => $version,
-            'snapshot' => ['mode' => $mode, 'version' => $version, 'amount_minor' => $amount, 'minor_units' => 2, 'currency' => $currency]];
+        $minorUnits = bbfPaymentCurrencyMinorUnits($currency);
+        bbfPaymentValidateChargeAmount($currency, $amount);
+        return ['amount_minor' => $amount, 'minor_units' => $minorUnits, 'currency' => $currency, 'mode' => $mode, 'version' => $version,
+            'snapshot' => ['mode' => $mode, 'version' => $version, 'amount_minor' => $amount, 'minor_units' => $minorUnits, 'currency' => $currency]];
     }
     if ($mode === 'donation') {
         if (!isset($payment['amount_field']) || !is_string($payment['amount_field']) || !is_int($payment['minor_units'] ?? null)
-            || $payment['minor_units'] < 0 || $payment['minor_units'] > 3
+            || $payment['minor_units'] !== bbfPaymentCurrencyMinorUnits($currency)
             || !is_int($payment['min_amount_minor'] ?? null) || !is_int($payment['max_amount_minor'] ?? null)) {
             throw new InvalidArgumentException('Invalid donation payment definition.');
         }
         $raw = $data[$payment['amount_field']] ?? null;
         $amount = bbfPaymentDecimalToMinor($raw, $payment['minor_units']);
+        bbfPaymentValidateChargeAmount($currency, $amount);
         if ($amount < $payment['min_amount_minor'] || $amount > $payment['max_amount_minor']) {
             throw new InvalidArgumentException('Donation amount is outside the configured range.');
         }
@@ -973,10 +1022,12 @@ function bbfResolvePaymentQuote(array $payment, array $data): array {
     if ($feesMinor > intdiv(PHP_INT_MAX - $numerator, max(1, $denominator))) throw new InvalidArgumentException('Calculated payment amount is too large.');
     $amount = bbfPaymentRoundFraction($numerator + ($feesMinor * $denominator), $denominator);
     if ($amount <= 0) throw new InvalidArgumentException('Calculated payment amount must be positive.');
-    $snapshot = ['mode' => $mode, 'version' => $version, 'currency' => $currency, 'minor_units' => 2, 'product' => $productValue,
+    bbfPaymentValidateChargeAmount($currency, $amount);
+    $minorUnits = bbfPaymentCurrencyMinorUnits($currency);
+    $snapshot = ['mode' => $mode, 'version' => $version, 'currency' => $currency, 'minor_units' => $minorUnits, 'product' => $productValue,
         'quantity_field' => $product['quantity_field'], 'quantity' => $quantity, 'unit_amount_minor' => $product['unit_amount_minor'],
         'options' => $selectedOptions, 'discount_bps' => $discountBps, 'fees' => $selectedFees, 'amount_minor' => $amount];
-    return ['amount_minor' => $amount, 'minor_units' => 2, 'currency' => $currency, 'mode' => $mode, 'version' => $version, 'snapshot' => $snapshot];
+    return ['amount_minor' => $amount, 'minor_units' => $minorUnits, 'currency' => $currency, 'mode' => $mode, 'version' => $version, 'snapshot' => $snapshot];
 }
 
 function bbfPaymentSessionMatches(array $submission, array $session, bool $requirePaid = true): bool {
@@ -1127,7 +1178,7 @@ function updateSubmissionPayment(string $submissionId, string $formId, string $s
 
 /** Atomically update payment state and return the effective monotonic status. */
 function transitionSubmissionPayment(string $submissionId, string $formId, string $status, array $stripeData, array $config,
-    int $minorUnits = 2): array {
+    int $minorUnits = 2, ?array $form = null): array {
     $amountMinor = $stripeData['amount_total'] ?? 0;
     if ($minorUnits < 0 || $minorUnits > 3) return ['ok' => false, 'reason' => 'minor_units'];
     $payment = [
@@ -1141,7 +1192,7 @@ function transitionSubmissionPayment(string $submissionId, string $formId, strin
     ];
     try {
         bbf_storage_json($payment);
-        $config = bbf_effective_storage_config($config, $formId);
+        $config = bbf_effective_storage_config($config, $formId, $form);
     } catch (Throwable $error) {
         return ['ok' => false, 'reason' => 'configuration'];
     }
@@ -1266,6 +1317,40 @@ function validateFormDefinition(array $form): array {
 
     $fieldNames = [];
     validateFieldList($fieldsToValidate, 'fields', $errors, $fieldNames);
+
+    if (isset($form['validations'])) {
+        if (!is_array($form['validations']) || !array_is_list($form['validations'])) {
+            $errors[] = 'validations: Expected a list.';
+        } else {
+            foreach ($form['validations'] as $index => $rule) {
+                $prefix = "validations[$index]";
+                if (!is_array($rule) || array_is_list($rule)) {
+                    $errors[] = "$prefix: Expected an object.";
+                    continue;
+                }
+                if (!in_array($rule['type'] ?? null, ['min_sum', 'min_filled'], true)) {
+                    $errors[] = "$prefix.type: Expected min_sum or min_filled.";
+                }
+                $names = $rule['fields'] ?? null;
+                if (!is_array($names) || !array_is_list($names) || $names === []) {
+                    $errors[] = "$prefix.fields: Expected a non-empty list.";
+                } else {
+                    foreach ($names as $fieldIndex => $name) {
+                        if (!is_string($name) || !in_array($name, $fieldNames, true)) {
+                            $errors[] = "$prefix.fields[$fieldIndex]: Unknown form field.";
+                        }
+                    }
+                }
+                $minimum = $rule['min'] ?? 1;
+                if (!is_int($minimum) && !is_float($minimum) || $minimum < 0) {
+                    $errors[] = "$prefix.min: Expected a non-negative number.";
+                }
+                if (isset($rule['message']) && !is_string($rule['message'])) {
+                    $errors[] = "$prefix.message: Expected string.";
+                }
+            }
+        }
+    }
 
     if (isset($form['drafts'])) {
         $drafts = $form['drafts'];
@@ -1584,6 +1669,11 @@ function validate(array $fields, array $input): array {
                     }
                     break;
                 case 'date':
+                    if (!preg_match('/\A(\d{4})-(\d{2})-(\d{2})\z/D', $value, $dateParts)
+                        || !checkdate((int)$dateParts[2], (int)$dateParts[3], (int)$dateParts[1])) {
+                        $errors[$name] = msg('invalidFormat', ['label' => $label]);
+                        break;
+                    }
                     if (!empty($field['min']) && $value < $field['min']) {
                         $errors[$name] = msg('dateMin', ['label' => $label, 'min' => $field['min']]);
                     }
@@ -1612,6 +1702,7 @@ function validate(array $fields, array $input): array {
             // Support both string options ["A","B"] and object options [{value:"a",label:"A"}]
             $validOptions = [];
             foreach ($field['options'] as $opt) {
+                if (is_array($opt) && !empty($opt['show_if']) && !evalCondition($opt['show_if'], $input)) continue;
                 $validOptions[] = is_array($opt) ? (string)($opt['value'] ?? '') : (string)$opt;
             }
             // Allow __other__ sentinel when field has "other": true
@@ -1624,6 +1715,43 @@ function validate(array $fields, array $input): array {
                     $errors[$name] = msg('invalidOption', ['label' => $label]);
                 }
             }
+        }
+    }
+    return $errors;
+}
+
+function bbfCrossFieldFilled($value): bool {
+    if (is_array($value)) {
+        foreach ($value as $item) if (bbfCrossFieldFilled($item)) return true;
+        return false;
+    }
+    return is_string($value) ? trim($value) !== '' : $value !== null;
+}
+
+function validateCrossFields(array $rules, array $data): array {
+    $errors = [];
+    foreach ($rules as $rule) {
+        $fields = is_array($rule['fields'] ?? null) ? $rule['fields'] : [];
+        $type = $rule['type'] ?? '';
+        $minimum = $rule['min'] ?? 1;
+        $valid = true;
+        if ($type === 'min_sum') {
+            $sum = 0.0;
+            foreach ($fields as $name) {
+                $value = $data[$name] ?? null;
+                if (is_scalar($value) && is_numeric($value)) $sum += (float)$value;
+            }
+            $valid = $sum >= $minimum;
+        } elseif ($type === 'min_filled') {
+            $filled = 0;
+            foreach ($fields as $name) {
+                $value = $data[$name] ?? null;
+                if (bbfCrossFieldFilled($value)) $filled++;
+            }
+            $valid = $filled >= $minimum;
+        }
+        if (!$valid) {
+            $errors['_cross_' . implode('_', $fields)] = $rule['message'] ?? 'Validation failed';
         }
     }
     return $errors;

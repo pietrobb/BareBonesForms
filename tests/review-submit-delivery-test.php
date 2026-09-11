@@ -148,6 +148,18 @@ PHP);
         && hash_equals($job['payload_hash'], bbf_delivery_payload_hash($job['payload']))
         && $job['idempotency_key'] === 'delivery-fixture:bbf_immutable:' . $job['key'];
     submit_delivery_check($hashesValid, 'every descriptor has an exact payload hash and stable idempotency key');
+    $formWithoutActions = $form;
+    unset($formWithoutActions['on_submit']['actions']);
+    file_put_contents("$root/forms/delivery-fixture.json", json_encode($formWithoutActions, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    $missingSensitiveSourceFails = false;
+    try {
+        bbf_delivery_runtime_action($byKey['action:0']['payload'], $config);
+    } catch (RuntimeException $error) {
+        $missingSensitiveSourceFails = true;
+    }
+    submit_delivery_check($missingSensitiveSourceFails,
+        'persisted actions with omitted secrets fail closed when the trusted source disappears');
+    file_put_contents("$root/forms/delivery-fixture.json", json_encode($form, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
 
     $observePath = bbf_outbox_path($config, 'delivery-fixture', 'bbf_observe');
     $observeSubmission = array_replace($submission, ['id' => 'bbf_observe']);

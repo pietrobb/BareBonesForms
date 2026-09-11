@@ -88,6 +88,28 @@ foreach ([
 }
 check('missing optional field', fn() => same([], validate([['name' => 'value']], [])));
 check('missing required field', fn() => same(['value' => 'required:value'], validate([['name' => 'value', 'required' => true]], [])));
+foreach (['not-a-date', '2026-02-30', '2026-2-03', '2026-02-03T00:00:00Z'] as $date) {
+    check("date rejects invalid calendar value $date", fn() => rejects(['type' => 'date'], $date));
+}
+foreach (['2024-02-29', '2026-12-31'] as $date) {
+    check("date accepts real calendar value $date", fn() => accepts(['type' => 'date'], $date));
+}
+check('form definition rejects malformed cross-field validation shapes', function () {
+    $base = ['id' => 'cross-rules', 'fields' => [['name' => 'amount', 'type' => 'number']]];
+    same(true, in_array('validations: Expected a list.', validateFormDefinition($base + ['validations' => 'bad-shape']), true));
+    $errors = validateFormDefinition($base + ['validations' => [[
+        'type' => 'unknown', 'fields' => ['missing'], 'min' => -1, 'message' => [],
+    ]]]);
+    foreach (['validations[0].type: Expected min_sum or min_filled.',
+        'validations[0].fields[0]: Unknown form field.',
+        'validations[0].min: Expected a non-negative number.',
+        'validations[0].message: Expected string.'] as $error) {
+        same(true, in_array($error, $errors, true));
+    }
+    same([], validateFormDefinition($base + ['validations' => [[
+        'type' => 'min_sum', 'fields' => ['amount'], 'min' => 0.5, 'message' => 'Need amount',
+    ]]]));
+});
 
 $multiFields = [
     'checkbox' => ['type' => 'checkbox', 'options' => ['a', ['value' => 'b', 'label' => 'Bee']]],
@@ -106,6 +128,37 @@ foreach ($multiFields as $name => $field) {
 check('checkbox checks every option', fn() => rejects($multiFields['checkbox'], ['a', 'wrong'], 'invalidOption'));
 check('multiple select checks every option', fn() => rejects($multiFields['multiple select'], ['a', 'wrong'], 'invalidOption'));
 check('numeric option scalar items', fn() => accepts(['type' => 'checkbox', 'options' => ['0', '1']], [0, 1]));
+check('conditionally hidden option is rejected', function () {
+    $field = ['name' => 'plan', 'type' => 'select', 'options' => [
+        'personal', ['value' => 'business', 'show_if' => ['field' => 'customer_type', 'value' => 'business']],
+    ]];
+    same(['plan' => 'invalidOption:plan'], validate([$field], ['customer_type' => 'personal', 'plan' => 'business']));
+    same([], validate([$field], ['customer_type' => 'business', 'plan' => 'business']));
+});
+check('template prefix rewrites option conditions without top-level collisions', function () {
+    $resolved = resolveTemplates([
+        ['name' => 'instance', 'type' => 'group', 'use' => 'choices', 'prefix' => 'p_'],
+    ], ['choices' => [
+        ['name' => 'gate'],
+        ['name' => 'choice', 'type' => 'select', 'options' => [
+            ['value' => 'conditional', 'show_if' => ['field' => 'gate', 'value' => 'yes']],
+        ]],
+    ]]);
+    $fields = flattenFields($resolved);
+    same([], validate($fields, ['gate' => 'no', 'p_gate' => 'yes', 'p_choice' => 'conditional']));
+    same(['p_choice' => 'invalidOption:p_choice'], validate($fields, ['gate' => 'yes', 'p_gate' => 'no', 'p_choice' => 'conditional']));
+});
+check('repeatable option condition uses its row context', function () {
+    $children = [
+        ['name' => 'kind', 'type' => 'select', 'options' => ['normal', 'special']],
+        ['name' => 'detail', 'type' => 'select', 'options' => [
+            'plain', ['value' => 'secret', 'show_if' => ['field' => 'kind', 'value' => 'special']],
+        ]],
+    ];
+    $group = ['name' => 'items', 'type' => 'group', 'repeatable' => true, 'min_items' => 1, 'max_items' => 2, 'fields' => $children];
+    same(['items.0.detail' => 'invalidOption:detail'], validate([$group], ['kind' => 'special', 'items' => [['kind' => 'normal', 'detail' => 'secret']]]));
+    same([], validate([$group], ['kind' => 'normal', 'items' => [['kind' => 'special', 'detail' => 'secret']]]));
+});
 
 foreach (['radio', 'select', 'checkbox'] as $type) {
     $field = ['name' => 'choice', 'type' => $type, 'options' => ['a'], 'other' => true];
@@ -167,20 +220,33 @@ check('valid multivalue summary safely escapes every item', function () {
     same(false, str_contains($html, '<script>'));
     same(true, str_contains($html, '&lt;script&gt;alert(1)&lt;/script&gt;'));
 });
+check('missing email template renders structured values as escaped text', function () {
+    $html = renderTemplate(__DIR__ . '/missing-template.html', [
+        'items' => [['name' => '<script>alert(1)</script>']],
+    ]);
+    same(false, str_contains($html, '<script>'));
+    same(true, str_contains($html, '&lt;script&gt;alert(1)&lt;\/script&gt;'));
+});
 
 // Execute the actual collection function and sandbox preview block, not copies of
 // their logic. Read source only: no submit bootstrap, config, storage or HTTP.
 $submitSource = file_get_contents(dirname(__DIR__) . '/submit.php');
+same(true, strpos($submitSource, 'validateCrossFields(') < strpos($submitSource, '// ─── Sandbox mode'));
+same(2, substr_count($submitSource, '$data = $normalizedData;'));
 same(1, preg_match('/^function collectData\(.*?^\}/ms', $submitSource, $collectionMatch));
 eval($collectionMatch[0]);
 same(1, preg_match('/^if \(\$isSandbox\) \{\R(    \$data = .*?^    \$sandboxResult\[\'on_submit_preview\'\] = \$preview;)/ms', $submitSource, $sandboxMatch));
 $sandboxPreviewSource = $sandboxMatch[1];
-function sandboxPreview(array $flatFields, array $input): array {
+function sandboxPreview(array $flatFields, array $input, array $validations = []): array {
     global $sandboxPreviewSource;
-    $errors = validate($flatFields, $input);
     // No email/templates, webhooks, actions or payment configured in this fixture.
     $formId = 'in-memory-validation';
-    $form = ['fields' => $flatFields, 'on_submit' => ['redirect' => '/preview/{{choice}}']];
+    $form = ['fields' => $flatFields, 'validations' => $validations,
+        'on_submit' => ['redirect' => '/preview/{{choice}}']];
+    $shapeErrors = validateFieldShapes($flatFields, $input);
+    $errors = validate($flatFields, $input);
+    $normalizedData = $shapeErrors ? [] : collectData($flatFields, $input);
+    if (!$shapeErrors) $errors = array_replace($errors, validateCrossFields($validations, $normalizedData));
     $config = ['storage' => 'file'];
     eval($sandboxPreviewSource);
     return json_decode(json_encode($sandboxResult, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
@@ -194,6 +260,35 @@ function sandboxRejects(array $fields, array $input, array $errors): void {
     same($errors, $result['validation']['errors']);
     same([], $result['data']);
 }
+check('cross-field rules use only normalized visible data', function () {
+    $fields = [
+        ['name' => 'customer_type', 'type' => 'select', 'options' => ['personal', 'business']],
+        ['name' => 'hidden_amount', 'type' => 'number', 'show_if' => ['field' => 'customer_type', 'value' => 'business']],
+        ['name' => 'visible_amount', 'type' => 'number'],
+        ['name' => 'note'],
+        ['name' => 'tags', 'type' => 'checkbox', 'options_from' => 'fixture'],
+    ];
+    $input = ['customer_type' => 'personal', 'hidden_amount' => '100', 'visible_amount' => '0', 'note' => '   ', 'tags' => ['   ']];
+    $data = collectData($fields, $input);
+    same(['customer_type' => 'personal', 'visible_amount' => '0', 'note' => '', 'tags' => ['   ']], $data);
+    same([
+        '_cross_hidden_amount_visible_amount' => 'Need fifty',
+        '_cross_note_hidden_amount' => 'Fill one',
+        '_cross_tags' => 'Select one',
+    ], validateCrossFields([
+        ['type' => 'min_sum', 'fields' => ['hidden_amount', 'visible_amount'], 'min' => 50, 'message' => 'Need fifty'],
+        ['type' => 'min_filled', 'fields' => ['note', 'hidden_amount'], 'min' => 1, 'message' => 'Fill one'],
+        ['type' => 'min_filled', 'fields' => ['tags'], 'min' => 1, 'message' => 'Select one'],
+    ], $data));
+});
+check('sandbox applies cross-field rules to the same normalized data', function () {
+    $fields = [['name' => 'amount', 'type' => 'number'], ['name' => 'note']];
+    $rules = [['type' => 'min_sum', 'fields' => ['amount'], 'min' => 5, 'message' => 'Need five']];
+    $result = sandboxPreview($fields, ['amount' => ' 2 ', 'note' => ' x '], $rules);
+    same('error', $result['status']);
+    same(['_cross_amount' => 'Need five'], $result['validation']['errors']);
+    same(['amount' => '2', 'note' => 'x'], $result['data']);
+});
 foreach ($scalarFields as $name => $field) {
     foreach ([[], ['bad'], ['key' => 'bad'], [['bad']]] as $i => $value) {
         check("sandbox $name rejects array $i safely", fn() => sandboxRejects(

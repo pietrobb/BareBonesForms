@@ -580,7 +580,9 @@ Blocked dotfiles:     .git/, .env, .htpasswd — everything starting with a dot
 Directory listing:    OFF globally (Options -Indexes)
 ```
 
-> **Apache only.** For Nginx, equivalent rules are documented as comments inside `.htaccess`. Copy them into your `server {}` block — fail to do so and your credentials will be visible to anyone who asks.
+> **Apache only.** For Nginx, copy the equivalent rules from `.htaccess` into your `server {}` block and replace `BBF_BASE/` with the exact installation prefix. For `/bbf`, use patterns beginning `^/bbf/`; for a domain-root installation, remove `BBF_BASE/`. Do not block `lang/*.js`—only `lang/*.php` is private.
+>
+> Verify the active server configuration, not merely the file: request a disposable sentinel below `submissions/`, `logs/`, `templates/`, `actions/`, `backups/`, `tests/`, and `data/`, plus a form JSON and `lang/en.php`; every request must return 403 or 404. Confirm that `lang/en.js` still returns 200, then remove the sentinels. `check.php` reports direct `config.php` and directory-URL responses when `diagnostic_base_url` is configured, but directory denial can come from `autoindex off`; it does not replace these sentinel-file probes.
 
 ### Daily security self-check
 
@@ -602,8 +604,8 @@ Run `check.php` after installation to verify your setup. It tests:
 - PHP version, extensions, and configuration
 - Storage backend connectivity (file/SQLite/MySQL/CSV)
 - Form JSON validity and field definitions
-- **Active HTTP probes** on 5 directories (submissions, logs, templates, actions, forms) to verify they're blocked
-- `config.php` accessibility via HTTP
+- HTTP status diagnostics for 6 directory URLs (submissions, logs, templates, actions, forms, tests); these detect exposed listings but do not prove that files below the directories are denied
+- `config.php` accessibility via HTTP; use the sentinel procedure above for complete denial verification
 - `BBF_LOADED` guard presence in `config.php`
 - `display_errors` state
 - Sandbox mode state
@@ -742,7 +744,9 @@ Collect payments via Stripe Checkout — no SDK, no build step. Card data never 
 "on_submit": {
     "payment": {
         "provider": "stripe",
-        "amount_field": "order_total",
+        "mode": "fixed",
+        "pricing_version": "order-v1",
+        "amount_minor": 4990,
         "currency": "eur",
         "product_name": "Order from {{customer_name}}",
         "success_url": "/thank-you.html",
@@ -750,6 +754,10 @@ Collect payments via Stripe Checkout — no SDK, no build step. Card data never 
     }
 }
 ```
+
+Amounts are server-owned integer minor units (`4990` = EUR 49.90). Use `mode: "catalog"` for trusted product/quantity/option pricing, or `mode: "donation"` with an allowlisted `amount_field`, matching `minor_units`, and server-side minimum/maximum bounds. Never restore the legacy client-authoritative `amount` contract.
+
+**Upgrade preflight:** Before replacing an existing installation, unpack the new release into a non-web-accessible staging directory, create a temporary `config.php` from the new `config.example.php` with no live credentials or data paths, and copy only the existing `forms/*.json` definitions into that staging copy. Run the new release's `php smoketest.php` there; dry mode validates the old definitions with the new runtime without storing submissions or sending email/webhooks. Migrate every payment error mentioning `mode`, `pricing_version`, `amount_minor`, `catalog`, or donation bounds before deployment—never bypass validation. Then back up the live installation, copy the validated release, and run dry mode once more after deployment.
 
 **Setup:** Add `stripe.secret_key` and `stripe.webhook_secret` to `config.php`. Register `payment.php` as a webhook endpoint in [Stripe Dashboard](https://dashboard.stripe.com/webhooks) (event: `checkout.session.completed`).
 
@@ -1155,7 +1163,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 ## Requirements
 
 - PHP 8.1+
-- Extensions: `json`, `session` (required), `mbstring` (recommended)
+- Extensions: `json`, `session` (required); `mbstring` recommended for complete Unicode case folding (the bundled PSČ demo has a Czech/Slovak fallback)
 - `pdo_sqlite` or `pdo_mysql` (depending on storage backend)
 - Any web hosting with PHP support
 

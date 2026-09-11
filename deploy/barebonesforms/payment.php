@@ -78,7 +78,38 @@ if (in_array($event['type'], $paymentEventTypes, true)) {
 
     // Shared functions (storage, trusted expectation verification, delivery actions).
     require_once __DIR__ . '/bbf_functions.php';
-    $expectedSubmission = loadSubmission($submissionId, $formId, $config);
+    $outboxPath = bbf_outbox_path($config, $formId, $submissionId);
+    $outbox = $outboxPath !== '' && is_file($outboxPath)
+        ? bbf_outbox_read($outboxPath)
+        : ['ok' => false, 'reason' => 'missing'];
+    $ledger = is_array($outbox['ledger'] ?? null) ? $outbox['ledger'] : [];
+    $contextPresent = array_key_exists('context', $ledger);
+    $context = $contextPresent && is_array($ledger['context']) ? $ledger['context'] : null;
+    $persistedStorage = is_array($context) ? ($context['storage'] ?? null) : null;
+    $contextValid = is_array($context) && array_keys($context) === ['storage']
+        && in_array($persistedStorage, ['file', 'sqlite', 'mysql'], true);
+    $storageForm = $contextValid ? ['storage' => $persistedStorage] : null;
+    $expectedSubmission = null;
+    if ($storageForm !== null) {
+        $expectedSubmission = loadSubmission($submissionId, $formId, $config, $storageForm);
+    } elseif (($outbox['ok'] ?? false) && !$contextPresent) {
+        $legacyBackends = ['file'];
+        $sqlitePath = $config['sqlite']['path'] ?? (($config['submissions_dir'] ?? __DIR__ . '/submissions') . '/bbf.sqlite');
+        if (is_string($sqlitePath) && is_file($sqlitePath)) $legacyBackends[] = 'sqlite';
+        if (is_array($config['mysql'] ?? null)) $legacyBackends[] = 'mysql';
+        $legacyMatches = [];
+        foreach ($legacyBackends as $backend) {
+            $candidate = loadSubmission($submissionId, $formId, $config, ['storage' => $backend]);
+            if ($candidate !== null) $legacyMatches[$backend] = $candidate;
+        }
+        if (count($legacyMatches) === 1) {
+            $persistedStorage = (string)array_key_first($legacyMatches);
+            $storageForm = ['storage' => $persistedStorage];
+            $expectedSubmission = $legacyMatches[$persistedStorage];
+        }
+    } elseif (!($outbox['ok'] ?? false) && ($outbox['reason'] ?? '') === 'missing') {
+        $expectedSubmission = loadSubmission($submissionId, $formId, $config);
+    }
     if (!$expectedSubmission) {
         http_response_code(500);
         echo json_encode(['received' => false, 'error' => 'submission unavailable']);
@@ -106,18 +137,6 @@ if (in_array($event['type'], $paymentEventTypes, true)) {
         exit;
     }
 
-    $formsDir = $config['forms_dir'] ?? __DIR__ . '/forms';
-    $formFile = $formsDir . '/' . $formId . '.json';
-    $formRaw = is_file($formFile) ? file_get_contents($formFile) : false;
-    $form = $formRaw !== false ? json_decode($formRaw, true) : null;
-    if (!is_array($form)) {
-        error_log("BareBonesForms: Form definition unavailable: $formId");
-        http_response_code(500);
-        echo json_encode(['received' => false, 'error' => 'form unavailable']);
-        exit;
-    }
-
-    $outboxPath = bbf_outbox_path($config, $formId, $submissionId);
     $eventOutboxPath = $outboxPath !== '' ? $outboxPath . '.events' : '';
     $maxAttempts = (int)($config['delivery']['max_attempts'] ?? 3);
     // Payment event deduplication must be durable before transition, but the final
@@ -139,7 +158,7 @@ if (in_array($event['type'], $paymentEventTypes, true)) {
         exit;
     }
 
-    $transition = transitionSubmissionPayment($submissionId, $formId, $targetStatus, $session, $config, $expectedMinorUnits);
+    $transition = transitionSubmissionPayment($submissionId, $formId, $targetStatus, $session, $config, $expectedMinorUnits, $storageForm);
     if (!($transition['ok'] ?? false)) {
         error_log("BareBonesForms: Failed to update payment status for $submissionId");
         http_response_code(500);
@@ -153,13 +172,7 @@ if (in_array($event['type'], $paymentEventTypes, true)) {
         exit;
     }
 
-    // Resolve templates in fields
-    if (!empty($form['templates']) && !empty($form['fields'])) {
-        $form['fields'] = resolveTemplates($form['fields'], $form['templates']);
-    }
-
-    // Load submission data
-    $submission = loadSubmission($submissionId, $formId, $config);
+    $submission = loadSubmission($submissionId, $formId, $config, $storageForm);
     if (!$submission) {
         error_log("BareBonesForms: Submission unavailable after payment update: $submissionId");
         http_response_code(500);
@@ -167,36 +180,38 @@ if (in_array($event['type'], $paymentEventTypes, true)) {
         exit;
     }
 
-    $data = $submission['data'] ?? [];
-    $onSubmit = $form['on_submit'] ?? [];
-    $timestamp = $submission['meta']['submitted'] ?? date('c');
-
-    // ─── Server-side i18n (for email templates) ─────────────────
-    $langCode = $config['lang'] ?? 'en';
-    $langFile = __DIR__ . '/lang/' . preg_replace('/[^a-z0-9-]/', '', $langCode) . '.php';
-    $messages = file_exists($langFile) ? require $langFile : [];
-
-    // ─── Resolve option labels for templates ────────────────────
-    $templateData = bbf_delivery_template_data($form, $submission);
-
-    // Add payment info to template data
-    $templateData['_payment_status'] = 'paid';
-    $templateData['_payment_id'] = $session['payment_intent'] ?? $session['id'] ?? '';
-    $templateData['_payment_amount'] = bbfPaymentFormatMinor((int)$expectedMeta['payment_expected_amount_minor'], $expectedMinorUnits);
-    $templateData['_payment_currency'] = strtoupper($session['currency'] ?? '');
-    // Only now is the final immutable effect plan complete. The event ledger above
-    // intentionally contains no delivery jobs and cannot freeze a coarse plan.
-    try {
-        $jobs = bbf_delivery_prepare_jobs($form, $submission, $config, $templateData);
-    } catch (Throwable $error) {
-        error_log("BareBonesForms: Failed to prepare paid delivery for $submissionId");
-        http_response_code(503);
-        echo json_encode(['received' => false, 'error' => 'delivery remains unsettled']);
-        exit;
+    if (!($outbox['ok'] ?? false) && ($outbox['reason'] ?? '') === 'missing') {
+        $formsDir = $config['forms_dir'] ?? __DIR__ . '/forms';
+        $formFile = $formsDir . '/' . $formId . '.json';
+        $formRaw = is_file($formFile) ? file_get_contents($formFile) : false;
+        $form = $formRaw !== false ? json_decode($formRaw, true) : null;
+        if (!is_array($form)) {
+            error_log("BareBonesForms: Form definition unavailable: $formId");
+            http_response_code(500);
+            echo json_encode(['received' => false, 'error' => 'form unavailable']);
+            exit;
+        }
+        $paymentStorage = bbf_effective_storage_config($config, $formId, $form)['storage'];
+        if (!empty($form['templates']) && !empty($form['fields'])) {
+            $form['fields'] = resolveTemplates($form['fields'], $form['templates']);
+        }
+        $templateData = bbf_delivery_template_data($form, $submission, [
+            '_payment_status' => 'paid',
+            '_payment_id' => $session['payment_intent'] ?? $session['id'] ?? '',
+            '_payment_amount' => bbfPaymentFormatMinor((int)$expectedMeta['payment_expected_amount_minor'], $expectedMinorUnits),
+            '_payment_currency' => strtoupper($session['currency'] ?? ''),
+        ]);
+        try {
+            $jobs = bbf_delivery_prepare_jobs($form, $submission, $config, $templateData);
+            $outbox = bbf_outbox_init($outboxPath, "$formId:$submissionId", $jobs, $maxAttempts, null,
+                ['storage' => $paymentStorage]);
+        } catch (Throwable $error) {
+            error_log("BareBonesForms: Failed to prepare paid delivery for $submissionId");
+            http_response_code(503);
+            echo json_encode(['received' => false, 'error' => 'delivery remains unsettled']);
+            exit;
+        }
     }
-    $outbox = $outboxPath !== ''
-        ? bbf_outbox_init($outboxPath, "$formId:$submissionId", $jobs, $maxAttempts)
-        : ['ok' => false];
     if (!($outbox['ok'] ?? false)) {
         http_response_code(503);
         echo json_encode(['received' => false, 'error' => 'delivery remains unsettled']);
@@ -210,8 +225,8 @@ if (in_array($event['type'], $paymentEventTypes, true)) {
     }
 
     $actionResponse = [];
-    foreach ($jobs as $job) {
-        bbf_delivery_run_job($outboxPath, (string)$job['key'], $config, $actionResponse);
+    foreach (array_keys($outbox['ledger']['jobs'] ?? []) as $jobKey) {
+        bbf_delivery_run_job($outboxPath, (string)$jobKey, $config, $actionResponse);
     }
 
     // Provider acknowledgement depends only on the durable ledger, never on an
@@ -240,29 +255,31 @@ exit;
  * Verify Stripe webhook signature (HMAC-SHA256).
  */
 function verifyStripeSignature(string $payload, string $sigHeader, string $secret): bool {
-    $parts = [];
+    $timestamps = [];
+    $signatures = [];
     foreach (explode(',', $sigHeader) as $item) {
-        $kv = explode('=', $item, 2);
-        if (count($kv) === 2) $parts[$kv[0]] = $kv[1];
+        $kv = explode('=', trim($item), 2);
+        if (count($kv) !== 2) continue;
+        if ($kv[0] === 't') $timestamps[$kv[1]] = true;
+        elseif ($kv[0] === 'v1') $signatures[] = $kv[1];
     }
 
-    $timestamp = $parts['t'] ?? '';
-    $signature = $parts['v1'] ?? '';
-    if ($timestamp === '' || $signature === '') return false;
+    if (count($timestamps) !== 1 || $signatures === []) return false;
+    $timestamp = (string)array_key_first($timestamps);
+    if (!preg_match('/\A[0-9]+\z/D', $timestamp) || abs(time() - (int)$timestamp) > 300) return false;
 
-    // Reject timestamps older than 5 minutes (replay protection)
-    if (abs(time() - (int)$timestamp) > 300) return false;
-
-    $signedPayload = "$timestamp.$payload";
-    $expected = hash_hmac('sha256', $signedPayload, $secret);
-    return hash_equals($expected, $signature);
+    $expected = hash_hmac('sha256', "$timestamp.$payload", $secret);
+    foreach ($signatures as $signature) {
+        if (hash_equals($expected, $signature)) return true;
+    }
+    return false;
 }
 
 /**
  * Load a submission from storage.
  */
-function loadSubmission(string $id, string $formId, array $config): ?array {
-    try { $config = bbf_effective_storage_config($config, $formId); } catch (Throwable $e) { return null; } $storage = $config['storage'];
+function loadSubmission(string $id, string $formId, array $config, ?array $form = null): ?array {
+    try { $config = bbf_effective_storage_config($config, $formId, $form); } catch (Throwable $e) { return null; } $storage = $config['storage'];
 
     switch ($storage) {
         case 'file':
@@ -273,6 +290,7 @@ function loadSubmission(string $id, string $formId, array $config): ?array {
         case 'sqlite':
             try {
                 $dbFile = $config['sqlite']['path'] ?? ($config['submissions_dir'] ?? __DIR__ . '/submissions') . '/bbf.sqlite';
+                if (!is_string($dbFile) || !is_file($dbFile)) return null;
                 $pdo = new PDO("sqlite:$dbFile");
                 $stmt = $pdo->prepare("SELECT * FROM bbf_submissions WHERE id = ? AND " . ($storage === 'mysql' ? 'BINARY form_id = BINARY ?' : 'form_id = ?'));
                 $stmt->execute([$id, $formId]);

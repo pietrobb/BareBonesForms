@@ -173,7 +173,7 @@ function bbf_backup_create(array $config, string $formId, ?int $now = null): arr
     $versions = bbf_backup_version_capture($config, $formId);
     $effective = bbf_effective_storage_config($config, $formId, $versions['active']);
     $records = [];
-    foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null) as $record) {
+    foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null, null, true) as $record) {
         if (!is_string($record['id'] ?? null) || isset($records[$record['id']])) {
             throw new RuntimeException('Invalid or duplicate backup submission.');
         }
@@ -188,7 +188,7 @@ function bbf_backup_create(array $config, string $formId, ?int $now = null): arr
         'delivery' => bbf_backup_delivery_capture($config, $formId, $records),
         'audit' => bbf_backup_audit_capture($config, $formId)];
     $verifiedRecords = [];
-    foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null) as $record) {
+    foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null, null, true) as $record) {
         if (!is_string($record['id'] ?? null) || isset($verifiedRecords[$record['id']])) {
             throw new RuntimeException('Invalid or duplicate backup submission.');
         }

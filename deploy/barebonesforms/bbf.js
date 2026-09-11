@@ -134,6 +134,9 @@
                 console.error(`BareBonesForms: container not found: ${containerSelector}`);
                 return;
             }
+            const renderRequest = (container._bbfRenderRequest || 0) + 1;
+            container._bbfRenderRequest = renderRequest;
+            const isCurrent = () => container._bbfRenderRequest === renderRequest;
 
             // Resolve language: options.lang > data-lang > global default
             const langCode = options.lang
@@ -153,6 +156,7 @@
                 const resp = await fetch(formUrl);
                 if (!resp.ok) throw new Error(this._t('formNotFound', { id: formId, status: resp.status }, langCode));
                 const form = await resp.json();
+                if (!isCurrent()) return;
 
                 // Fetch CSRF token for same-origin requests
                 let csrfToken = null;
@@ -167,6 +171,7 @@
                             csrfToken = csrfData.csrf_token || null;
                         }
                     } catch (e) { /* CSRF may be disabled */ }
+                    if (!isCurrent()) return;
                 }
 
                 // Fetch dynamic options (options_from) before building the form
@@ -185,6 +190,7 @@
                 if (optionsFetches.length > 0) {
                     await Promise.all(optionsFetches);
                 }
+                if (!isCurrent()) return;
 
                 container.innerHTML = '';
                 container.classList.remove('bbf-loading');
@@ -193,7 +199,12 @@
                 const formEl = this._buildForm(form, formId, baseUrl, options, csrfToken, langCode, isSameOrigin);
                 container.appendChild(formEl);
             } catch (err) {
-                container.innerHTML = `<div class="bbf-error">${this._t('loadError', { message: err.message }, langCode)}</div>`;
+                if (!isCurrent()) return;
+                container.innerHTML = '';
+                const error = document.createElement('div');
+                error.className = 'bbf-error';
+                error.textContent = this._t('loadError', { message: err.message }, langCode);
+                container.appendChild(error);
                 console.error('BareBonesForms:', err);
             }
         },
@@ -613,9 +624,11 @@
             return body;
         },
 
-        _draftApply: function(formEl, fields, data) {
+        _draftApply: function(formEl, fields, data, allowlist) {
             const fieldMap = new Map(fields.map(field => [field.name, field]));
-            Object.keys(data || {}).forEach(name => {
+            const changed = [];
+            const names = Array.isArray(allowlist) ? allowlist : Object.keys(data || {});
+            names.forEach(name => {
                 const field = fieldMap.get(name);
                 if (!field || field.sensitive || ['password', 'hidden'].includes(field.type)) return;
                 const inputs = formEl.querySelectorAll(`[name="${name}"]`);
@@ -623,15 +636,20 @@
                     const values = Array.isArray(data[name]) ? data[name].map(String) : [];
                     inputs.forEach(input => { input.checked = values.includes(String(input.value)); });
                 } else if (field.type === 'radio') {
-                    inputs.forEach(input => { input.checked = String(input.value) === String(data[name]); });
+                    const hasValue = Object.prototype.hasOwnProperty.call(data || {}, name) && data[name] !== null;
+                    inputs.forEach(input => { input.checked = hasValue && String(input.value) === String(data[name]); });
                 } else if (inputs[0]) {
-                    inputs[0].value = data[name] === null ? '' : String(data[name]);
+                    if (field.type === 'rating' && inputs[0]._bbfSetRating) inputs[0]._bbfSetRating(data[name]);
+                    else inputs[0].value = data[name] === null || data[name] === undefined ? '' : String(data[name]);
                 }
-                inputs.forEach(input => {
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                });
+                inputs.forEach(input => changed.push(input));
             });
+            changed.forEach(input => {
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            this._stabilizeOptionConditions(formEl);
+            this._applyConditions(formEl, fields, false);
         },
 
         _buildDraftControls: function(formEl, form, formId, baseUrl, csrfToken, langCode, isSameOrigin, fields) {
@@ -682,8 +700,7 @@
                 try {
                     const result = await this._draftRequest(baseUrl, formId, 'draft_load', { _bbf_csrf: csrfToken || '', _bbf_draft_handle: submittedHandle }, isSameOrigin);
                     if (current !== request || code.value.trim() !== submittedHandle) return;
-                    this._draftApply(formEl, fields, result.data);
-                    this._stabilizeOptionConditions(formEl); this._applyConditions(formEl, fields, false);
+                    this._draftApply(formEl, fields, result.data, policy.fields);
                     try { localStorage.setItem(storageKey, submittedHandle); } catch (error) {}
                     announce(this._t('draftLoaded', {}, langCode));
                 } catch (error) {
@@ -1036,6 +1053,20 @@
                         if (!option || typeof option !== 'object' || !option.show_if) return option;
                         return Object.assign({}, option, { show_if: self._prefixCondition(option.show_if, prefix, tplNames) });
                     });
+                }
+                if (f.lookup && f.lookup.map) {
+                    f.lookup = Object.assign({}, f.lookup, { map: Object.fromEntries(
+                        Object.entries(f.lookup.map).map(function(entry) {
+                            return [tplNames[entry[0]] ? prefix + entry[0] : entry[0], entry[1]];
+                        })
+                    ) });
+                }
+                if (f.autocomplete_from && typeof f.autocomplete_from === 'object' && f.autocomplete_from.map) {
+                    f.autocomplete_from = Object.assign({}, f.autocomplete_from, { map: Object.fromEntries(
+                        Object.entries(f.autocomplete_from.map).map(function(entry) {
+                            return [tplNames[entry[0]] ? prefix + entry[0] : entry[0], entry[1]];
+                        })
+                    ) });
                 }
                 if (f.type === 'group' && f.fields) {
                     f.fields = self._prefixFields(f.fields, prefix, tplNames);
@@ -1827,7 +1858,8 @@
             starsWrap.setAttribute('aria-describedby', (field.description ? `bbf-${field.name}-desc ` : '') + `bbf-${field.name}-error`);
 
             const updateRating = (value, focusStar = false, emitEvents = true) => {
-                const selected = Number(value) || 0;
+                const parsed = Number(value);
+                const selected = Number.isInteger(parsed) ? Math.min(maxRating, Math.max(0, parsed)) : 0;
                 hidden.value = selected ? String(selected) : '';
                 starsWrap.querySelectorAll('.bbf-star').forEach(s => {
                     const sv = parseInt(s.getAttribute('data-value'));
@@ -1843,6 +1875,7 @@
                 }
             };
             hidden.setAttribute('data-bbf-rating-reset', '');
+            hidden._bbfSetRating = value => updateRating(value, false, false);
             hidden._bbfResetRating = () => updateRating(0, false, false);
 
             for (let i = 1; i <= maxRating; i++) {
@@ -2143,9 +2176,11 @@
 
             // Payment
             if (p.payment) {
+                var minorUnits = Number.isInteger(p.payment.minor_units) ? p.payment.minor_units : 2;
+                var amount = Number(p.payment.amount_minor) / Math.pow(10, minorUnits);
                 h += '<div style="margin-bottom:6px"><strong>Payment:</strong> '
                     + p.payment.provider + ' &mdash; '
-                    + p.payment.amount.toFixed(2) + ' ' + p.payment.currency
+                    + amount.toFixed(minorUnits) + ' ' + p.payment.currency
                     + ' &mdash; &ldquo;' + this._esc(p.payment.product_name) + '&rdquo;</div>';
             }
 

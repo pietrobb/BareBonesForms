@@ -339,8 +339,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 (function() {
     let currentFormId = <?= json_encode($selectedForm, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>; const sandboxCsrf = <?= json_encode(bbf_auth_csrf()) ?>;
     let currentFormDef = null;
+    let loadRequest = 0;
 
     window.loadForm = async function(formId) {
+        const request = ++loadRequest;
         currentFormId = formId;
         const container = document.getElementById('form-container');
         container.innerHTML = '<div style="color:var(--text-muted);padding:24px;text-align:center"><span class="spinner"></span> Loading...</div>';
@@ -352,7 +354,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         try {
             // Fetch form definition
             const resp = await fetch(`sandbox.php?action=definition&form=${encodeURIComponent(formId)}`);
-            currentFormDef = await resp.json();
+            const formDef = await resp.json();
+            if (request !== loadRequest) return;
+            currentFormDef = formDef;
 
             // Show form JSON
             document.getElementById('form-json').textContent = JSON.stringify(currentFormDef, null, 2);
@@ -376,7 +380,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 await sandboxSubmit(formEl, formId);
             }, { capture: true });
         } catch (err) {
-            container.innerHTML = `<div style="color:var(--red);padding:24px">Failed to load form: ${err.message}</div>`;
+            if (request !== loadRequest) return;
+            container.innerHTML = '';
+            const error = document.createElement('div');
+            error.style.color = 'var(--red)';
+            error.style.padding = '24px';
+            error.textContent = 'Failed to load form: ' + err.message;
+            container.appendChild(error);
         }
     };
 
@@ -398,6 +408,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
                 body[k] = v;
             }
         });
+        BBF._collectRepeatableGroups(currentFormDef?.fields || [], formEl, body);
 
         try {
             const resp = await fetch(`submit.php?form=${encodeURIComponent(formId)}&sandbox=1`, {

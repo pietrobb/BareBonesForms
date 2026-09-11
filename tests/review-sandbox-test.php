@@ -95,7 +95,9 @@ try {
     sb_check(str_contains($s['response']['body'], 'e.preventDefault(); e.stopImmediatePropagation();')
         && str_contains($s['response']['body'], '}, { capture: true });')
         && str_contains($s['response']['body'], "'X-BBF-CSRF': sandboxCsrf")
-        && str_contains($s['response']['body'], 'submit.php?form=${encodeURIComponent(formId)}&sandbox=1'), 'UI suppresses real bubble handler and sends CSRF to sandbox-only URL (source contract)');
+        && str_contains($s['response']['body'], 'BBF._collectRepeatableGroups(currentFormDef?.fields || [], formEl, body);')
+        && str_contains($s['response']['body'], 'if (request !== loadRequest) return;')
+        && str_contains($s['response']['body'], 'submit.php?form=${encodeURIComponent(formId)}&sandbox=1'), 'UI suppresses real bubble handler, keeps latest load and sends structured repeatable data only to sandbox');
     foreach (['sandbox.php?action=forms', 'sandbox.php?action=definition&form=alpha'] as $path) {
         sb_check(sb_http($path, ['cookie' => $s['cookie']])['code'] === 200, "session GET $path");
         sb_check(sb_http($path, sb_post($s, false))['code'] === 403, "AJAX page POST missing CSRF $path");

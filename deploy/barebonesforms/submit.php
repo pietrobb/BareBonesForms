@@ -249,14 +249,19 @@ if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_de
     respond(500, 'Draft storage failed.', ['reason' => $reason]);
 }
 
-// ─── Validate ───────────────────────────────────────────────────
+// ─── Validate and normalize once for sandbox and production ─────
+$shapeErrors = validateFieldShapes($flatFields, $input);
 $errors = validate($flatFields, $input);
+$normalizedData = $shapeErrors ? [] : collectData($flatFields, $input);
+if (!$shapeErrors) {
+    $errors = array_replace($errors, validateCrossFields($form['validations'] ?? [], $normalizedData));
+}
 
 // ─── Sandbox mode ───────────────────────────────────────────────
 // Authorization and management CSRF were checked before any public processing.
 // Preview exits unconditionally; no storage, delivery, payment or action execution.
 if ($isSandbox) {
-    $data = validateFieldShapes($flatFields, $input) ? [] : collectData($flatFields, $input);
+    $data = $normalizedData;
     $submissionId = 'bbf_test_' . bin2hex(random_bytes(4));
     $timestamp = date('c');
     $onSubmit = $form['on_submit'] ?? [];
@@ -339,6 +344,7 @@ if ($isSandbox) {
             $preview['payment'] = [
                 'provider' => $onSubmit['payment']['provider'] ?? 'stripe',
                 'amount_minor' => $quote['amount_minor'],
+                'minor_units' => $quote['minor_units'],
                 'currency' => strtoupper($quote['currency']),
                 'pricing_mode' => $quote['mode'],
                 'pricing_version' => $quote['version'],
@@ -362,42 +368,13 @@ if ($isSandbox) {
     exit;
 }
 
-// ─── Cross-field validations ────────────────────────────────────
-if (!empty($form['validations'])) {
-    foreach ($form['validations'] as $rule) {
-        $ruleFields = $rule['fields'] ?? [];
-        $ruleType = $rule['type'] ?? '';
-        $ruleMin = $rule['min'] ?? 1;
-        $ruleMsg = $rule['message'] ?? 'Validation failed';
-
-        if ($ruleType === 'min_sum') {
-            $sum = 0;
-            foreach ($ruleFields as $fn) {
-                $sum += floatval($input[$fn] ?? 0);
-            }
-            if ($sum < $ruleMin) {
-                $errors['_cross_' . implode('_', $ruleFields)] = $ruleMsg;
-            }
-        } elseif ($ruleType === 'min_filled') {
-            $filled = 0;
-            foreach ($ruleFields as $fn) {
-                $v = $input[$fn] ?? '';
-                if ($v !== '' && $v !== null && !(is_array($v) && empty($v))) $filled++;
-            }
-            if ($filled < $ruleMin) {
-                $errors['_cross_' . implode('_', $ruleFields)] = $ruleMsg;
-            }
-        }
-    }
-}
-
 // ─── Production: reject invalid submissions ─────────────────────
 if (!empty($errors)) {
     respond(422, 'Validation failed.', ['errors' => $errors]);
 }
 
-// ─── Sanitize & collect data ────────────────────────────────────
-$data = collectData($flatFields, $input);
+// ─── Use the same normalized visible data validated above ────────
+$data = $normalizedData;
 $submissionId = 'bbf_' . bin2hex(random_bytes(8));
 $timestamp = date('c');
 
@@ -492,8 +469,32 @@ if (!empty($onSubmit['payment'])) {
             bbfNotifyError($formId, 'Payment persistence error', 'Checkout session ID could not be saved', $config);
             respond(500, 'Payment session could not be saved. Please try again later.');
         }
+        $submission['meta']['payment_checkout_session_id'] = $checkout['id'];
 
-        // Payment forms: emails/webhooks are deferred until payment confirmation (via payment.php webhook)
+        // Freeze the original delivery plan and backend before returning the Checkout redirect.
+        try {
+            $paymentTemplateData = bbf_delivery_template_data($form, $submission, [
+                '_payment_status' => 'paid',
+                '_payment_id' => $checkout['id'],
+                '_payment_amount' => bbfPaymentFormatMinor($paymentQuote['amount_minor'], $paymentQuote['minor_units']),
+                '_payment_currency' => strtoupper($paymentQuote['currency']),
+            ]);
+            $paymentJobs = bbf_delivery_prepare_jobs($form, $submission, $storeConfig, $paymentTemplateData);
+            $paymentOutboxPath = bbf_outbox_path($storeConfig, $formId, $submissionId);
+            $paymentOutbox = $paymentOutboxPath !== ''
+                ? bbf_outbox_init($paymentOutboxPath, "$formId:$submissionId", $paymentJobs,
+                    (int)($storeConfig['delivery']['max_attempts'] ?? 3), null,
+                    ['storage' => $storeConfig['storage']])
+                : ['ok' => false];
+        } catch (Throwable $error) {
+            $paymentOutbox = ['ok' => false];
+        }
+        if (!($paymentOutbox['ok'] ?? false)) {
+            bbfNotifyError($formId, 'Payment delivery error', 'Immutable paid-delivery plan could not be saved', $config);
+            respond(500, 'Payment delivery could not be prepared. Please try again later.');
+        }
+
+        // Payment forms: the persisted immutable plan runs only after payment confirmation.
         respond(200, 'OK', ['submission_id' => $submissionId, 'redirect' => $checkout['url']]);
     }
 

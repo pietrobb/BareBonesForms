@@ -292,9 +292,9 @@ function bbf_outbox_job(array $job, int $now, int $maxAttempts): array {
     return $normalized;
 }
 
-function bbf_outbox_init(string $path, string $submissionKey, array $jobs, int $maxAttempts = 3, ?int $now = null): array {
+function bbf_outbox_init(string $path, string $submissionKey, array $jobs, int $maxAttempts = 3, ?int $now = null, array $context = []): array {
     $now = bbf_outbox_now($now);
-    return bbf_outbox_transaction($path, static function($ledger) use ($submissionKey, $jobs, $maxAttempts, $now): array {
+    return bbf_outbox_transaction($path, static function($ledger) use ($submissionKey, $jobs, $maxAttempts, $now, $context): array {
         if (is_array($ledger)) {
             return ['result' => ['ok' => true, 'created' => false, 'ledger' => $ledger]];
         }
@@ -313,6 +313,7 @@ function bbf_outbox_init(string $path, string $submissionKey, array $jobs, int $
             'events' => [],
             'semantic_events' => [],
         ];
+        if ($context !== []) $ledger['context'] = $context;
         return ['ledger' => $ledger, 'result' => ['ok' => true, 'created' => true, 'ledger' => $ledger]];
     });
 }

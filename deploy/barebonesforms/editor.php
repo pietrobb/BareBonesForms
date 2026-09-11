@@ -311,7 +311,7 @@ body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont,
 (function() {
     const container = document.getElementById('bbf-preview');
     window.addEventListener('message', function(e) {
-        if (e.origin !== window.location.origin) return;
+        if (window === window.parent || e.source !== window.parent) return;
         if (!e.data || e.data.type !== 'bbf-render') return;
         try {
             const def = JSON.parse(e.data.json);
@@ -320,11 +320,15 @@ body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont,
             const formEl = BBF._buildForm(def, def.id || 'preview', BBF.baseUrl, {showTitle: true}, null, null, false);
             container.appendChild(formEl);
         } catch(ex) {
-            container.innerHTML = '<div class="preview-error">' + ex.message + '</div>';
+            container.replaceChildren();
+            const error = document.createElement('div');
+            error.className = 'preview-error';
+            error.textContent = ex instanceof Error ? ex.message : String(ex);
+            container.appendChild(error);
         }
     });
     <?php if ($formId): ?>
-    BBF.render('<?= $formId ?>', '#bbf-preview', {showTitle: true});
+    if (window === window.parent) BBF.render('<?= $formId ?>', '#bbf-preview', {showTitle: true});
     <?php endif; ?>
 })();
 </script>
@@ -538,7 +542,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <span>Live Preview</span>
             <button id="btn-preview-reload" style="padding:2px 8px;font-size:0.72rem;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);cursor:pointer;">Reload</button>
         </div>
-        <iframe class="preview-frame" id="preview-frame" src="about:blank" sandbox="allow-scripts allow-same-origin"></iframe>
+        <iframe class="preview-frame" id="preview-frame" src="about:blank" sandbox="allow-scripts"></iframe>
     </div>
 </div>
 
@@ -1039,7 +1043,7 @@ function updatePreview(hardReload) {
 
 function sendToPreview() {
     try {
-        iframe.contentWindow.postMessage({ type: 'bbf-render', json: textarea.value }, location.origin);
+        iframe.contentWindow.postMessage({ type: 'bbf-render', json: textarea.value }, '*');
     } catch(e) { /* cross-origin or iframe not ready */ }
 }
 

@@ -122,6 +122,12 @@ drafts_check($record['created_at'] === 1000 && $record['expires_at'] === 1300, '
 
 $loaded = bbf_draft_load($config, $form, $saved['handle'], 1100);
 drafts_check(($loaded['ok'] ?? false) && $loaded['data'] === $saved['data'], 'valid bearer resumes its exact draft');
+$tightenedForm = $form;
+$tightenedForm['drafts']['fields'] = ['name'];
+$tightenedForm['fields'][0]['sensitive'] = true;
+$tightened = bbf_draft_load($config, $tightenedForm, $saved['handle'], 1100);
+drafts_check(($tightened['ok'] ?? false) && $tightened['data'] === [],
+    'resume reapplies the current sensitive and allowlist policy to historical draft data');
 $otherForm = $form; $otherForm['id'] = 'other-form';
 drafts_check((bbf_draft_load($config, $otherForm, $saved['handle'], 1100)['reason'] ?? '') === 'not_found',
     'bearer cannot cross exact form identity');

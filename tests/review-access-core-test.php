@@ -573,6 +573,7 @@ PHP
     $forwardSub = ['id' => 'bbf_forward', 'form' => 'alpha', 'data' => [
         'answer' => ['<img src=x onerror=alert(1)>', '"quoted" & text'],
         'scalar' => '<b>literal</b>', 'email' => 'private-person@example.invalid',
+        'items' => [['sku' => '<row-one>'], ['sku' => 'row-two']],
     ], 'meta' => ['submitted' => '2026-09-08T10:00:00Z']];
     file_put_contents("$root/submissions/alpha/bbf_forward.json", json_encode($forwardSub));
     $forwardDef = json_decode(file_get_contents("$root/forms/alpha.json"), true);
@@ -619,6 +620,8 @@ PHP
             && str_contains($html, 'bbf_forward') && str_contains($html, '2026-09-08T10:00:00Z')
             && str_contains($html, 'Private forward &lt;note&gt; &amp; text<br />')
             && str_contains($html, '&lt;img src=x onerror=alert(1)&gt;, &quot;quoted&quot; &amp; text')
+            && str_contains($html, '&quot;sku&quot;: &quot;&lt;row-one&gt;&quot;') && str_contains($html, 'white-space:pre-wrap')
+            && !str_contains($html, '[object Object]') && !preg_match('/>Array(?:<|\s)/', $html)
             && str_contains($html, '&lt;b&gt;literal&lt;/b&gt;') && str_contains($html, 'private-person@example.invalid')
             && !preg_match('/<(?:img|b|note|label|title)(?:\s|>)/i', $html)
             && !str_contains($html, 'definition-secret') && !str_contains($html, 'delivery-secret'), "forward $mode captures actual complete rendered message with escaped arrays/scalars/labels/note");

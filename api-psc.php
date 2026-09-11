@@ -8,6 +8,28 @@
  */
 header('Content-Type: application/json; charset=utf-8');
 
+foreach (['psc', 'city', 'prefix', 'limit'] as $parameter) {
+    if (array_key_exists($parameter, $_GET) && !is_string($_GET[$parameter])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid query parameter']);
+        exit;
+    }
+}
+if (!function_exists('mb_strtolower')) {
+    function mb_strtolower(string $value): string {
+        return strtr(strtolower($value), [
+            'Á'=>'á','Ä'=>'ä','Č'=>'č','Ď'=>'ď','É'=>'é','Ě'=>'ě','Í'=>'í','Ĺ'=>'ĺ','Ľ'=>'ľ',
+            'Ň'=>'ň','Ó'=>'ó','Ô'=>'ô','Ŕ'=>'ŕ','Ř'=>'ř','Š'=>'š','Ť'=>'ť','Ú'=>'ú','Ů'=>'ů','Ý'=>'ý','Ž'=>'ž',
+        ]);
+    }
+}
+if (!function_exists('mb_strlen')) {
+    function mb_strlen(string $value): int {
+        $count = preg_match_all('/./us', $value, $matches);
+        return $count === false ? strlen($value) : $count;
+    }
+}
+
 $dataDir = __DIR__ . '/data';
 $countryNames = ['SK' => 'Slovakia', 'CZ' => 'Czech Republic'];
 

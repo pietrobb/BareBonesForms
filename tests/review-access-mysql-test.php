@@ -406,6 +406,73 @@ PHP);
         'data' => ['answer' => $unicode, 'retired' => 'historical', 'nested' => ['zero' => 0, 'values' => ['č', '😀']]],
         'meta' => ['submitted' => '2020-01-01T12:00:00Z', 'ip' => '127.0.0.1', 'user_agent' => 'fixture', 'note' => '元😀']];
     mysql_access_check($store($record), 'G3 real storeMysql succeeds and auto-creates missing schema');
+    $backupDeliveryPath = bbf_outbox_path($config, 'persist', $record['id']);
+    mysql_access_check((bbf_outbox_init($backupDeliveryPath, 'persist:' . $record['id'], [], 3, 10)['ok'] ?? false) === true,
+        'G3 strict backup fixture has a valid empty delivery relationship');
+
+    // A logical backup must see malformed legacy LONGTEXT that tolerant viewer/export reads omit.
+    $pdo->exec('SET SESSION check_constraint_checks=OFF');
+    $corruptInsert = $pdo->prepare('INSERT INTO bbf_submissions (id,form_id,data,meta,created_at) VALUES (?,?,?,?,?)');
+    try {
+        $corruptInsert->execute(['bbf_mysql_corrupt_backup', 'persist', '{broken-data', '{broken-meta', '2020-01-01 12:00:01']);
+    } finally {
+        $pdo->exec('SET SESSION check_constraint_checks=ON');
+        $corruptInsert = null;
+    }
+    $corruptBefore = $pdo->query("SELECT * FROM bbf_submissions WHERE id='bbf_mysql_corrupt_backup'")->fetch(PDO::FETCH_ASSOC);
+    $backupProbe = <<<'PHP'
+<?php
+if (PHP_SAPI !== 'cli') exit(2);
+define('BBF_LOADED', true);
+$config = require $argv[1];
+$config['backup'] = ['directory' => $argv[2]];
+require $argv[3] . '/bbf_backup.php';
+try {
+    echo json_encode(['created' => bbf_backup_create($config, 'persist', 1789128000)], JSON_THROW_ON_ERROR);
+} catch (Throwable $error) {
+    echo json_encode(['error' => $error->getMessage()], JSON_THROW_ON_ERROR);
+}
+PHP;
+    file_put_contents("$root/tests/mysql-backup-probe.php", $backupProbe);
+    $backupSource = file_get_contents("$root/bbf_backup.php");
+    $mutantSource = str_replace(
+        'bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null, null, true)',
+        'bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null)',
+        $backupSource,
+        $mutantReplacements
+    );
+    if ($mutantReplacements !== 2) throw new RuntimeException('Strict backup mutation boundary changed.');
+    file_put_contents("$root/bbf_backup.php", $mutantSource);
+    $mutantDir = dirname($root) . '/bbf mysql backup mutant ' . bin2hex(random_bytes(8));
+    $GLOBALS['bbf_test_roots'][$mutantDir] = true;
+    register_shutdown_function(static function () use ($mutantDir): void { bbf_test_cleanup($mutantDir); });
+    try {
+        $mutantProbe = json_decode(mysql_access_command([
+            PHP_BINARY, "$root/tests/mysql-backup-probe.php", "$root/config.php", $mutantDir, $root,
+        ], $root, 'backup-mutant', $env), true, 512, JSON_THROW_ON_ERROR);
+    } finally {
+        file_put_contents("$root/bbf_backup.php", $backupSource);
+    }
+    $mutantPublished = ($mutantProbe['created']['ok'] ?? false) === true
+        && ($mutantProbe['created']['count'] ?? null) === 1 && is_dir($mutantDir);
+    bbf_test_cleanup($mutantDir);
+    mysql_access_check($mutantPublished,
+        'G3 pre-fix backup mutation silently publishes a bundle after omitting malformed real MySQL LONGTEXT');
+
+    $fixedDir = dirname($root) . '/bbf mysql backup fixed ' . bin2hex(random_bytes(8));
+    $GLOBALS['bbf_test_roots'][$fixedDir] = true;
+    register_shutdown_function(static function () use ($fixedDir): void { bbf_test_cleanup($fixedDir); });
+    $fixedProbe = json_decode(mysql_access_command([
+        PHP_BINARY, "$root/tests/mysql-backup-probe.php", "$root/config.php", $fixedDir, $root,
+    ], $root, 'backup-fixed', $env), true, 512, JSON_THROW_ON_ERROR);
+    $corruptAfter = $pdo->query("SELECT * FROM bbf_submissions WHERE id='bbf_mysql_corrupt_backup'")->fetch(PDO::FETCH_ASSOC);
+    mysql_access_check(str_contains($fixedProbe['error'] ?? '', 'Invalid stored database submission')
+        && !file_exists($fixedDir) && $corruptAfter === $corruptBefore,
+        'G3 strict backup rejects malformed real MySQL data/meta before publication and preserves exact source row');
+    $pdo->exec("DELETE FROM bbf_submissions WHERE id='bbf_mysql_corrupt_backup'");
+    mysql_access_check((int)$pdo->query("SELECT COUNT(*) FROM bbf_submissions WHERE id='bbf_mysql_corrupt_backup'")->fetchColumn() === 0,
+        'G3 strict backup malformed-row fixture cleanup is exact');
+
     $columns = $pdo->query('SHOW COLUMNS FROM bbf_submissions')->fetchAll(PDO::FETCH_ASSOC);
     $ddl = $pdo->query('SHOW CREATE TABLE bbf_submissions')->fetch(PDO::FETCH_NUM)[1];
     mysql_access_check(array_column($columns, 'Field') === ['id', 'form_id', 'data', 'meta', 'created_at']

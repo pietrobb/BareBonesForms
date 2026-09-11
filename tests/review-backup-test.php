@@ -82,6 +82,15 @@ try {
     bbf_audit_write($sourceConfig, ['id' => 'fixture'], 'viewer_read', 'beta', ['bbf_beta'], 'allowed', 'completed', 1);
 
     backup_write_config($source, $sourceConfig);
+    $corruptPath = "$source/submissions/alpha/bbf_corrupt.json";
+    file_put_contents($corruptPath, '{"id":"bbf_corrupt"');
+    $corruptRejected = false;
+    try { bbf_backup_create($sourceConfig, 'alpha', strtotime('2026-09-09T11:59:59Z')); }
+    catch (RuntimeException $error) { $corruptRejected = str_contains($error->getMessage(), 'Invalid stored submission'); }
+    unset($error);
+    backup_check($corruptRejected && !is_dir($backupDir),
+        'file backup rejects a malformed source record before publishing a bundle');
+    unlink($corruptPath);
     $createdRun = backup_cli($source, ['backup', '--form=alpha']);
     $created = json_decode($createdRun['stdout'], true, 512, JSON_THROW_ON_ERROR);
     backup_check($createdRun['code'] === 0 && ($created['ok'] ?? false) === true
@@ -291,6 +300,38 @@ foreach ($portableBackends as $backend) {
         $deliveryPath = bbf_outbox_path($sourceConfig, 'alpha', $record['id']);
         bbf_outbox_init($deliveryPath, 'alpha:' . $record['id'], [], 3, 10);
         bbf_audit_write($sourceConfig, ['id' => 'fixture'], 'viewer_read', 'alpha', [$record['id']], 'allowed', 'completed', 1);
+        $corruptRejected = false;
+        if ($backend === 'csv') {
+            $storagePath = "$source/submissions/alpha.csv";
+            $cleanBytes = file_get_contents($storagePath);
+            $fp = fopen($storagePath, 'ab');
+            fputcsv($fp, array_fill(0, 10, 'corrupt'), ',', '"', '');
+            fclose($fp);
+            try { bbf_backup_create($sourceConfig, 'alpha', strtotime('2026-09-09T11:59:59Z')); }
+            catch (RuntimeException $error) { $corruptRejected = str_contains($error->getMessage(), 'Invalid stored CSV submission'); }
+            unset($error);
+            file_put_contents($storagePath, $cleanBytes);
+            $truncatedBytes = $cleanBytes . 'bbf_truncated,2026-09-09T01:02:04Z,,,,,,"unterminated';
+            file_put_contents($storagePath, $truncatedBytes);
+            $truncatedRejected = false;
+            try { bbf_backup_create($sourceConfig, 'alpha', strtotime('2026-09-09T11:59:59Z')); }
+            catch (RuntimeException $error) { $truncatedRejected = str_contains($error->getMessage(), 'Invalid stored CSV submission'); }
+            unset($error);
+            backup_check($truncatedRejected && file_get_contents($storagePath) === $truncatedBytes && !is_dir($backupDir),
+                'csv backup rejects an unterminated quoted record before publication and preserves exact source bytes');
+            file_put_contents($storagePath, $cleanBytes);
+        } else {
+            $pdo = new PDO("sqlite:$source/submissions/bbf.sqlite", null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+            $pdo->prepare('INSERT INTO bbf_submissions VALUES (?, ?, ?, ?, ?)')->execute(
+                ['corrupt', 'alpha', '{', '{}', '2026-09-09T01:02:04Z']);
+            try { bbf_backup_create($sourceConfig, 'alpha', strtotime('2026-09-09T11:59:59Z')); }
+            catch (RuntimeException $error) { $corruptRejected = str_contains($error->getMessage(), 'Invalid stored database submission'); }
+            unset($error);
+            $pdo->prepare('DELETE FROM bbf_submissions WHERE id = ?')->execute(['corrupt']);
+            $pdo = null;
+        }
+        backup_check($corruptRejected && !is_dir($backupDir),
+            "$backend backup rejects a malformed source record before publishing a bundle");
         $bundle = bbf_backup_create($sourceConfig, 'alpha', strtotime('2026-09-09T12:00:00Z'));
         $targetAccess = $access; $targetAccess[0]['token'] = 'PORTABLE-TARGET-SECRET';
         $targetConfig = ['storage' => 'file', 'forms_dir' => "$target/forms", 'submissions_dir' => "$target/submissions",

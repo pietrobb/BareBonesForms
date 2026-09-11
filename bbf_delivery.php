@@ -366,8 +366,8 @@ function bbf_delivery_webhook_addresses(array $target, ?callable $resolver): arr
     }
 
     return $addresses === []
-        ? ['ok' => false, 'addresses' => [], 'message' => 'Webhook DNS resolution failed']
-        : ['ok' => true, 'addresses' => array_keys($addresses), 'message' => ''];
+        ? ['ok' => false, 'addresses' => [], 'message' => 'Webhook DNS resolution failed', 'retryable' => true]
+        : ['ok' => true, 'addresses' => array_keys($addresses), 'message' => '', 'retryable' => false];
 }
 
 function bbf_delivery_webhook_response_status(string $response): int {
@@ -456,7 +456,8 @@ function bbf_delivery_webhook(
     }
     $resolved = bbf_delivery_webhook_addresses($target, $resolver);
     if (!$resolved['ok']) {
-        return bbf_delivery_result(false, 'failed', 'url', 0, false, $resolved['message']);
+        return bbf_delivery_result(false, 'failed', !empty($resolved['retryable']) ? 'dns' : 'url', 0,
+            !empty($resolved['retryable']), $resolved['message']);
     }
 
     $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

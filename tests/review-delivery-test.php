@@ -171,6 +171,18 @@ $expectedSignature = 'X-BBF-Signature: sha256=' . hash_hmac('sha256', $captured[
 check_delivery($signatureHeaders === [$expectedSignature], 'webhook signs the exact transmitted JSON payload');
 check_delivery(!str_contains(json_encode($result), 'top-secret'), 'structured webhook result does not expose secret');
 
+$dnsTransportCalls = 0;
+$dnsAnswers = [[], ['127.0.0.1']];
+$dnsResolver = static function () use (&$dnsAnswers): array { return array_shift($dnsAnswers); };
+$temporaryDns = bbf_delivery_webhook('https://hooks.example/hook', [], '', '',
+    static function () use (&$dnsTransportCalls): array { $dnsTransportCalls++; return ['status' => 200]; }, $dnsResolver);
+$unsafeRetry = bbf_delivery_webhook('https://hooks.example/hook', [], '', '',
+    static function () use (&$dnsTransportCalls): array { $dnsTransportCalls++; return ['status' => 200]; }, $dnsResolver);
+check_delivery(!$temporaryDns['ok'] && $temporaryDns['stage'] === 'dns' && $temporaryDns['retryable'],
+    'temporary DNS resolution failure is retryable');
+check_delivery(!$unsafeRetry['ok'] && $unsafeRetry['stage'] === 'url' && !$unsafeRetry['retryable'] && $dnsTransportCalls === 0,
+    'each DNS retry revalidates SSRF safety and rejects a newly private answer before transport');
+
 $invalidUrls = [
     'http://example.com/hook' => 'HTTP scheme',
     'file:///tmp/hook' => 'non-HTTP scheme',

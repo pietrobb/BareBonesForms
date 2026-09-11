@@ -27,9 +27,11 @@ test('F7 repeatable client behavioral gate', () => {
         'repeatable conditions, validation, and serialization stay row-local',
         'repeatable reset restores minimum rows and page navigation validates current rows',
         'submit emits structured repeatable rows and maps dotted server errors to current row controls',
+        'repeatable lookup and autocomplete mappings stay inside their originating row',
+        'sandbox submit serializes repeatable rows with the production collector',
     ]) {
         assert.match(result.stdout, new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
-    assert.match(result.stdout, /(?:#|ℹ)\s+pass 4\b/);
+    assert.match(result.stdout, /(?:#|ℹ)\s+pass 6\b/);
     assert.match(result.stdout, /(?:#|ℹ)\s+fail 0\b/);
 });
