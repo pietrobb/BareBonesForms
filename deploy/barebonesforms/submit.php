@@ -793,8 +793,12 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
                 $stat = fstat($source);
                 if ($stat === false) return false;
                 if ($stat['size'] > 0) {
+                    $headerStart = ftell($source);
                     $headers = fgetcsv($source, 0, ',', '"', '');
-                    if (!is_array($headers) || array_slice($headers, 0, 4) !== $metaCols
+                    $headerEnd = ftell($source);
+                    if ($headerStart === false || $headerEnd === false
+                        || !bbf_storage_csv_record_syntax_valid($source, $headerStart, $headerEnd)
+                        || !is_array($headers) || array_slice($headers, 0, 4) !== $metaCols
                         || count(array_unique($headers)) !== count($headers)) return false;
                     bbf_storage_json($headers);
                 }
@@ -804,9 +808,15 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
             return bbf_storage_replace($file, static function ($out) use ($source, $headers, $union, $submission, $escapedFields, $structuredFields): bool {
                 if (!bbf_storage_write_csv($out, $union)) return false;
                 if ($source) {
-                    while (($old = fgetcsv($source, 0, ',', '"', '')) !== false) {
+                    while (true) {
+                        $start = ftell($source);
+                        $old = fgetcsv($source, 0, ',', '"', '');
+                        if ($old === false) break;
+                        $end = ftell($source);
                         // Refuse ambiguous/truncated records rather than silently discarding cells.
-                        if (count($old) !== count($headers)) return false;
+                        if ($start === false || $end === false
+                            || !bbf_storage_csv_record_syntax_valid($source, $start, $end)
+                            || count($old) !== count($headers)) return false;
                         bbf_storage_json($old);
                         $old = array_pad($old, count($union), '');
                         if (!bbf_storage_write_csv($out, $old)) return false;

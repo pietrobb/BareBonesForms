@@ -304,6 +304,18 @@ foreach ($portableBackends as $backend) {
         if ($backend === 'csv') {
             $storagePath = "$source/submissions/alpha.csv";
             $cleanBytes = file_get_contents($storagePath);
+            $firstLineEnd = strpos($cleanBytes, "\n");
+            $cleanHeader = substr($cleanBytes, 0, $firstLineEnd + 1);
+            $malformedHeader = str_replace(',answer,', ',"answer"junk,', $cleanHeader)
+                . substr($cleanBytes, $firstLineEnd + 1);
+            file_put_contents($storagePath, $malformedHeader);
+            $headerRejected = false;
+            try { bbf_backup_create($sourceConfig, 'alpha', strtotime('2026-09-09T11:59:59Z')); }
+            catch (RuntimeException $error) { $headerRejected = str_contains($error->getMessage(), 'Invalid CSV headers'); }
+            unset($error);
+            backup_check($headerRejected && file_get_contents($storagePath) === $malformedHeader && !is_dir($backupDir),
+                '6129-F01 strict backup rejects a balanced but illegally quoted CSV header before publication');
+            file_put_contents($storagePath, $cleanBytes);
             $fp = fopen($storagePath, 'ab');
             fputcsv($fp, array_fill(0, 10, 'corrupt'), ',', '"', '');
             fclose($fp);
@@ -370,5 +382,75 @@ foreach ($portableBackends as $backend) {
         bbf_test_cleanup($source);
         bbf_test_cleanup($target);
     }
+}
+
+$orderSource = bbf_test_installation(dirname(__DIR__));
+$orderTarget = bbf_test_installation(dirname(__DIR__));
+$legacyOrderTarget = bbf_test_installation(dirname(__DIR__));
+$orderBackupDir = dirname($orderSource) . '/bbf ordered backups ' . bin2hex(random_bytes(8));
+$GLOBALS['bbf_test_roots'][$orderBackupDir] = true;
+try {
+    foreach ([$orderSource, $orderTarget, $legacyOrderTarget] as $root) { bbf_test_remove_dir("$root/forms"); mkdir("$root/forms", 0700); }
+    $orderDefinition = ['id' => 'ordered', 'name' => 'Ordered', 'storage' => 'csv',
+        'fields' => [['name' => 'answer', 'type' => 'text']]];
+    file_put_contents("$orderSource/forms/ordered.json", json_encode($orderDefinition, JSON_THROW_ON_ERROR));
+    $orderCsv = fopen("$orderSource/submissions/ordered.csv", 'wb');
+    fputcsv($orderCsv, ['_id', '_submitted', '_ip', '_user_agent', 'answer'], ',', '"', '');
+    fputcsv($orderCsv, ['bbf_ffffffffffffffff', '2026-09-10T00:00:00Z', '', '', 'old'], ',', '"', '');
+    fputcsv($orderCsv, ['bbf_0000000000000000', '2026-09-11T00:00:00Z', '', '', 'new'], ',', '"', '');
+    fclose($orderCsv);
+    $orderAccess = [['id' => 'reviewer', 'token' => 'ORDER-SOURCE-SECRET', 'forms' => ['ordered'],
+        'permissions' => ['read', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]];
+    $targetAccess = $orderAccess; $targetAccess[0]['token'] = 'ORDER-TARGET-SECRET';
+    $orderSourceConfig = ['storage' => 'file', 'forms_dir' => "$orderSource/forms",
+        'submissions_dir' => "$orderSource/submissions", 'logs_dir' => "$orderSource/logs",
+        'api_token' => '', 'access_tokens' => $orderAccess, 'backup' => ['directory' => $orderBackupDir]];
+    $orderBundle = bbf_backup_create($orderSourceConfig, 'ordered', strtotime('2026-09-12T00:00:00Z'));
+    $orderDocument = bbf_backup_bundle_read($orderSourceConfig, $orderBundle['path']);
+    backup_check($orderDocument['payload']['record_order'] === ['bbf_0000000000000000', 'bbf_ffffffffffffffff'],
+        '6129-F05 backup records explicit newest-first order independent of random submission IDs');
+
+    $invalidOrder = $orderDocument;
+    $invalidOrder['payload']['record_order'] = ['bbf_ffffffffffffffff', 'bbf_ffffffffffffffff'];
+    $invalidOrder['sha256'] = hash('sha256', bbf_storage_json($invalidOrder['payload']));
+    $invalidOrderPath = $orderBackupDir . '/invalid-order.json';
+    file_put_contents($invalidOrderPath, bbf_storage_json($invalidOrder, true));
+    $invalidRejected = false;
+    try { bbf_backup_bundle_read($orderSourceConfig, $invalidOrderPath); }
+    catch (RuntimeException $error) { $invalidRejected = $error->getMessage() === 'Invalid backup record order.'; }
+    backup_check($invalidRejected, '6129-F05 duplicate or incomplete backup record order fails closed');
+
+    $legacyOrder = $orderDocument;
+    unset($legacyOrder['payload']['record_order']);
+    $legacyOrder['sha256'] = hash('sha256', bbf_storage_json($legacyOrder['payload']));
+    $legacyOrderPath = $orderBackupDir . '/legacy-order.json';
+    file_put_contents($legacyOrderPath, bbf_storage_json($legacyOrder, true));
+    $legacyTargetConfig = ['storage' => 'file', 'forms_dir' => "$legacyOrderTarget/forms",
+        'submissions_dir' => "$legacyOrderTarget/submissions", 'logs_dir' => "$legacyOrderTarget/logs",
+        'api_token' => '', 'access_tokens' => $targetAccess, 'backup' => ['directory' => $orderBackupDir]];
+    $legacyPlan = bbf_backup_restore_plan($legacyTargetConfig, $legacyOrderPath);
+    $legacyRestored = bbf_backup_restore($legacyTargetConfig, $legacyOrderPath, $legacyPlan['confirmation']);
+    $legacyEffective = bbf_effective_storage_config($legacyTargetConfig, 'ordered');
+    $legacyLatest = iterator_to_array(bbf_read_export('ordered', $legacyEffective, 1, 0, null, null), false);
+    backup_check(($legacyRestored['ok'] ?? false) === true && ($legacyLatest[0]['data']['answer'] ?? null) === 'new',
+        '6129-F05 legacy bundle without record_order derives chronological latest N semantics');
+
+    $orderTargetConfig = ['storage' => 'file', 'forms_dir' => "$orderTarget/forms",
+        'submissions_dir' => "$orderTarget/submissions", 'logs_dir' => "$orderTarget/logs",
+        'api_token' => '', 'access_tokens' => $targetAccess, 'backup' => ['directory' => $orderBackupDir]];
+    $orderPlan = bbf_backup_restore_plan($orderTargetConfig, $orderBundle['path']);
+    $orderRestored = bbf_backup_restore($orderTargetConfig, $orderBundle['path'], $orderPlan['confirmation']);
+    $orderEffective = bbf_effective_storage_config($orderTargetConfig, 'ordered');
+    $orderRecords = iterator_to_array(bbf_read_export('ordered', $orderEffective, 2, 0, null, null), false);
+    $latestRecord = iterator_to_array(bbf_read_export('ordered', $orderEffective, 1, 0, null, null), false);
+    backup_check(($orderRestored['ok'] ?? false) === true
+        && array_column($orderRecords, 'id') === ['bbf_0000000000000000', 'bbf_ffffffffffffffff']
+        && ($latestRecord[0]['data']['answer'] ?? null) === 'new',
+        '6129-F05 CSV restore preserves chronological latest N semantics with stable IDs');
+} finally {
+    bbf_test_cleanup($orderBackupDir);
+    bbf_test_cleanup($orderSource);
+    bbf_test_cleanup($orderTarget);
+    bbf_test_cleanup($legacyOrderTarget);
 }
 print "Backup review tests: $checks passed\n";

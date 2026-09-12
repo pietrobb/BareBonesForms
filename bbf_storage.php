@@ -110,6 +110,44 @@ function bbf_storage_write_all($fp, string $bytes): bool {
 }
 
 /** Native CSV encoding, buffered one record at a time; check every destination byte. */
+function bbf_storage_csv_record_syntax_valid($fp, int $start, int $end): bool {
+    if ($end < $start || fseek($fp, $start) !== 0) return false;
+    $raw = stream_get_contents($fp, $end - $start);
+    if ($raw === false || strlen($raw) !== $end - $start || fseek($fp, $end) !== 0) return false;
+    if (str_ends_with($raw, "\n")) $raw = substr($raw, 0, -1);
+    if (str_ends_with($raw, "\r")) $raw = substr($raw, 0, -1);
+    $length = strlen($raw);
+    $offset = 0;
+    while (true) {
+        if ($offset === $length) return true;
+        if ($raw[$offset] === '"') {
+            $offset++;
+            $closed = false;
+            while ($offset < $length) {
+                if ($raw[$offset] !== '"') {
+                    $offset++;
+                    continue;
+                }
+                if ($offset + 1 < $length && $raw[$offset + 1] === '"') {
+                    $offset += 2;
+                    continue;
+                }
+                $offset++;
+                $closed = true;
+                break;
+            }
+            if (!$closed || ($offset < $length && $raw[$offset] !== ',')) return false;
+        } else {
+            while ($offset < $length && $raw[$offset] !== ',') {
+                if ($raw[$offset] === '"' || $raw[$offset] === "\r" || $raw[$offset] === "\n") return false;
+                $offset++;
+            }
+        }
+        if ($offset === $length) return true;
+        $offset++;
+    }
+}
+
 function bbf_storage_write_csv($fp, array $row): bool {
     $buffer = fopen('php://memory', 'w+b');
     if (!$buffer) return false;

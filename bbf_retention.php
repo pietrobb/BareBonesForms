@@ -83,7 +83,7 @@ function bbf_retention_plan(array $config, string $formId, ?int $now = null): ar
     $asOf = intdiv($now, 86400) * 86400;
     $cutoff = $asOf - ($policy['days'] * 86400);
     $ids = [];
-    foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null) as $submission) {
+    foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null, null, true) as $submission) {
         $submitted = bbf_retention_timestamp($submission['meta']['submitted'] ?? null);
         if ($submitted === null || $submitted >= $cutoff) continue;
         $ids[$submission['id']] = $submission['id'];
@@ -167,7 +167,7 @@ function bbf_retention_capture_records(array $config, string $formId, array $ids
             if ($record !== null) $records[$id] = $record;
         }
     } elseif ($config['storage'] === 'csv') {
-        foreach (bbf_read_csv($formId, $config['submissions_dir'] ?? __DIR__ . '/submissions') as $record) {
+        foreach (bbf_read_csv($formId, $config['submissions_dir'] ?? __DIR__ . '/submissions', null, null, null, null, true) as $record) {
             if (isset($wanted[$record['id']])) $records[$record['id']] = $record;
             if (count($records) === count($wanted)) break;
         }
@@ -184,7 +184,9 @@ function bbf_retention_capture_records(array $config, string $formId, array $ids
         }
     }
     ksort($records, SORT_STRING);
-    if (array_keys($records) !== $ids) throw new RuntimeException('Retention candidates changed before archive.');
+    $capturedIds = array_map(static fn($id): string => (string)$id, array_keys($records));
+    $expectedIds = array_map(static fn($id): string => (string)$id, $ids);
+    if ($capturedIds !== $expectedIds) throw new RuntimeException('Retention candidates changed before archive.');
     return $records;
 }
 
@@ -244,11 +246,22 @@ function bbf_retention_delete_csv(array $config, string $formId, array $expected
             $in = @fopen($path, 'rb');
             if (!$in) return false;
             try {
+                $headerStart = ftell($in);
                 $headers = fgetcsv($in, 0, ',', '"', '');
-                if (!is_array($headers) || !in_array('_id', $headers, true) || count(array_unique($headers)) !== count($headers)
+                $headerEnd = ftell($in);
+                if ($headerStart === false || $headerEnd === false
+                    || !bbf_storage_csv_record_syntax_valid($in, $headerStart, $headerEnd)
+                    || !is_array($headers) || !in_array('_id', $headers, true) || count(array_unique($headers)) !== count($headers)
                     || !bbf_storage_write_csv($out, $headers)) return false;
-                while (($row = fgetcsv($in, 0, ',', '"', '')) !== false) {
+                while (true) {
+                    $start = ftell($in);
+                    $row = fgetcsv($in, 0, ',', '"', '');
+                    if ($row === false) break;
+                    $end = ftell($in);
+                    if ($start === false || $end === false
+                        || !bbf_storage_csv_record_syntax_valid($in, $start, $end)) return false;
                     $record = bbf_read_csv_record($headers, $row, $formId);
+                    if ($record === null) return false;
                     $id = $record['id'] ?? null;
                     if (is_string($id) && array_key_exists($id, $expected)) {
                         if ($record !== $expected[$id]) return false;

@@ -306,6 +306,78 @@ PHP;
     bbf_test_cleanup($shutdownRoot);
 }
 
+$corruptRoot = bbf_test_installation(dirname(__DIR__));
+$corruptArchive = dirname($corruptRoot) . '/bbf corrupt retention ' . bin2hex(random_bytes(8));
+$GLOBALS['bbf_test_roots'][$corruptArchive] = true;
+try {
+    bbf_test_remove_dir("$corruptRoot/forms"); mkdir("$corruptRoot/forms", 0700);
+    file_put_contents("$corruptRoot/forms/alpha.json", json_encode(['id' => 'alpha', 'storage' => 'csv',
+        'fields' => [['name' => 'answer', 'type' => 'text']]], JSON_THROW_ON_ERROR));
+    $corruptPath = "$corruptRoot/submissions/alpha.csv";
+    $corruptBytes = "_id,_submitted,_ip,_user_agent,answer\n"
+        . "bbf_old,2020-01-01T00:00:00Z,ip,ua,\"unterminated\n"
+        . "bbf_recent,2026-09-09T00:00:01Z,ip,ua,recent\n";
+    file_put_contents($corruptPath, $corruptBytes);
+    $corruptConfig = ['storage' => 'csv', 'forms_dir' => "$corruptRoot/forms",
+        'submissions_dir' => "$corruptRoot/submissions", 'logs_dir' => "$corruptRoot/logs",
+        'retention' => ['enabled' => true, 'days' => 30, 'archive_dir' => $corruptArchive, 'batch_limit' => 100]];
+    $corruptRejected = false;
+    try { bbf_retention_plan($corruptConfig, 'alpha', $now); }
+    catch (RuntimeException $error) { $corruptRejected = str_contains($error->getMessage(), 'Invalid stored CSV submission'); }
+    $tolerantRecords = iterator_to_array(bbf_read_csv('alpha', "$corruptRoot/submissions"), false);
+    retention_check(count($tolerantRecords) === 1 && ($tolerantRecords[0]['id'] ?? null) === 'bbf_old'
+        && str_contains($tolerantRecords[0]['data']['answer'] ?? '', 'bbf_recent'),
+        '6129-F01 fixture proves permissive CSV parsing swallows the later physical record');
+    $deleteResult = bbf_retention_delete_csv($corruptConfig, 'alpha', [
+        'bbf_old' => $tolerantRecords[0],
+    ]);
+    retention_check($corruptRejected && ($deleteResult['ok'] ?? true) === false
+        && file_get_contents($corruptPath) === $corruptBytes && !is_dir($corruptArchive),
+        '6129-F01 malformed CSV blocks retention planning and deletion without changing source bytes or publishing an archive');
+} finally {
+    bbf_test_cleanup($corruptArchive);
+    bbf_test_cleanup($corruptRoot);
+}
+
+$numericRoot = bbf_test_installation(dirname(__DIR__));
+$numericArchive = dirname($numericRoot) . '/bbf numeric retention ' . bin2hex(random_bytes(8));
+$GLOBALS['bbf_test_roots'][$numericArchive] = true;
+try {
+    bbf_test_remove_dir("$numericRoot/forms"); mkdir("$numericRoot/forms", 0700);
+    file_put_contents("$numericRoot/forms/alpha.json", json_encode(['id' => 'alpha', 'storage' => 'csv',
+        'fields' => [['name' => 'answer', 'type' => 'text']]], JSON_THROW_ON_ERROR));
+    $numericRecord = retention_record('123', 'alpha', '2020-01-01T00:00:00Z');
+    $numericCsv = fopen("$numericRoot/submissions/alpha.csv", 'wb');
+    fputcsv($numericCsv, ['_id', '_submitted', '_ip', '_user_agent', '__bbf:definition_version', 'answer'], ',', '"', '');
+    fputcsv($numericCsv, ['123', $numericRecord['meta']['submitted'], '', '',
+        $numericRecord['meta']['definition_version'], $numericRecord['data']['answer']], ',', '"', '');
+    fclose($numericCsv);
+    $numericConfig = ['storage' => 'csv', 'forms_dir' => "$numericRoot/forms",
+        'submissions_dir' => "$numericRoot/submissions", 'logs_dir' => "$numericRoot/logs",
+        'retention' => ['enabled' => true, 'days' => 30, 'archive_dir' => $numericArchive, 'batch_limit' => 100]];
+    $numericReview = bbf_review_update($numericConfig, 'alpha', '123', 'reviewer', ['notes' => 'private numeric note'], 0);
+    $numericPlan = bbf_retention_plan($numericConfig, 'alpha', $now);
+    $numericApplied = bbf_retention_apply($numericConfig, 'alpha', $numericPlan['confirmation'], $now);
+    retention_check(($numericReview['ok'] ?? false) === true,
+        '6129-F06 numeric-string submission ID can own review metadata');
+    retention_check($numericPlan['ids'] === ['123'],
+        '6129-F06 numeric-string submission ID is retained as a string in the reviewed plan');
+    retention_check(($numericApplied['ok'] ?? false) === true && ($numericApplied['deleted'] ?? 0) === 1,
+        '6129-F06 numeric-string submission ID survives capture maps and completes retention apply');
+    $numericArchiveDocument = json_decode(file_get_contents($numericApplied['archive']), true, 512, JSON_THROW_ON_ERROR);
+    retention_check(($numericArchiveDocument['payload']['records'][123]['id'] ?? null) === '123'
+        && ($numericArchiveDocument['payload']['reviews'][123]['notes'] ?? null) === 'private numeric note'
+        && hash_equals($numericArchiveDocument['sha256'], hash('sha256', bbf_storage_json($numericArchiveDocument['payload']))),
+        '6129-F06 numeric-string archive preserves the exact response and private review relationship with valid integrity');
+    retention_check(iterator_to_array(bbf_read_csv('alpha', "$numericRoot/submissions"), false) === [],
+        '6129-F06 numeric-string primary record is deleted only after archive publication');
+    retention_check(bbf_review_get($numericConfig, 'alpha', '123') === bbf_review_default(),
+        '6129-F06 numeric-string review metadata is tombstoned with its primary record');
+} finally {
+    bbf_test_cleanup($numericArchive);
+    bbf_test_cleanup($numericRoot);
+}
+
 $threw = false;
 try { bbf_retention_plan([], '../operator', $now); } catch (InvalidArgumentException $error) { $threw = true; }
 retention_check($threw, 'invalid form scope is rejected before storage access');

@@ -250,6 +250,37 @@ foreach ($missionInventory as $finding => $evidenceByRole) {
 }
 acceptance_check(count($missionInventory) === 29, 'fresh G1-G6 inventory maps all 29 manifest substeps');
 
+$review6129Inventory = [
+    '6129-F01 strict CSV mutation and retention preflight' => [
+        'fixes' => [['bbf_storage.php', 'function bbf_storage_csv_record_syntax_valid'], ['submit.php', 'bbf_storage_csv_record_syntax_valid($source'], ['bbf_retention.php', 'bbf_storage_csv_record_syntax_valid($in']],
+        'positive' => [['tests/review-storage-test.php', 'historical multiline/quoted values retained and padded']],
+        'failure' => [['tests/review-storage-test.php', '6129-F01 unterminated historical CSV'], ['tests/review-storage-test.php', '6129-F01 balanced quotes with trailing non-delimiter text'], ['tests/review-backup-test.php', '6129-F01 strict backup rejects a balanced but illegally quoted CSV header'], ['tests/review-retention-test.php', '6129-F01 fixture proves permissive CSV parsing swallows'], ['tests/review-retention-test.php', '6129-F01 malformed CSV blocks retention']],
+    ],
+    '6129-F05 CSV backup restore chronological latest order' => [
+        'fixes' => [['bbf_backup.php', "'record_order' => \$recordOrder"], ['bbf_backup.php', 'array_reverse(bbf_backup_record_order($payload))']],
+        'positive' => [['tests/review-backup-test.php', '6129-F05 CSV restore preserves chronological latest N semantics'], ['tests/review-backup-test.php', '6129-F05 legacy bundle without record_order derives chronological latest N semantics']],
+        'failure' => [['tests/review-backup-test.php', '6129-F05 duplicate or incomplete backup record order fails closed']],
+    ],
+    '6129-F06 numeric-string retention IDs' => [
+        'fixes' => [['bbf_retention.php', '$capturedIds = array_map'], ['bbf_review.php', '$id = is_int($id) ? (string)$id : $id']],
+        'positive' => [['tests/review-retention-test.php', 'dry-run selects only strictly expired exact-form records'], ['tests/review-retention-test.php', '6129-F06 numeric-string archive preserves the exact response']],
+        'failure' => [['tests/review-retention-test.php', '6129-F06 numeric-string submission ID survives capture maps']],
+    ],
+];
+foreach ($review6129Inventory as $finding => $evidenceByRole) {
+    acceptance_check(array_keys($evidenceByRole) === ['fixes', 'positive', 'failure'],
+        "$finding maps fixes, positive behavior and failure behavior");
+    foreach ($evidenceByRole as $role => $evidence) {
+        acceptance_check($evidence !== [], "$finding has $role evidence");
+        foreach ($evidence as [$relative, $anchor]) {
+            $missionSources[$relative] ??= acceptance_source($root, $relative);
+            acceptance_check(str_contains($missionSources[$relative], $anchor), "$finding $role anchor exists in $relative");
+            if (str_starts_with($relative, 'tests/')) $missionTestFiles[$relative] = true;
+        }
+    }
+}
+acceptance_check(count($review6129Inventory) === 3, 'review 6129 G1 inventory maps findings F01, F05 and F06');
+
 $ciSource = acceptance_source($root, 'tests/review-ci-test.php');
 foreach (array_keys($sources) as $relative) {
     if ($relative === 'tests/review-acceptance-test.php') {

@@ -77,6 +77,21 @@ try {
     $broken = file_get_contents("$root/submissions/broken.csv");
     storage_check(!storeCsv(storage_record('bbf_bad', 'broken', ['new' => 'new']), $config['submissions_dir'], [])
         && file_get_contents("$root/submissions/broken.csv") === $broken, 'malformed historical CSV refused byte-for-byte');
+    $unterminatedPath = "$root/submissions/unterminated.csv";
+    $unterminated = "_id,_submitted,_ip,_user_agent,answer\n"
+        . "bbf_old,2020-01-01T00:00:00Z,ip,ua,\"unterminated\n"
+        . "bbf_new,2026-09-12T00:00:00Z,ip,ua,new answer\n";
+    file_put_contents($unterminatedPath, $unterminated);
+    storage_check(!storeCsv(storage_record('bbf_append', 'unterminated', ['answer' => 'append']), $config['submissions_dir'], [['name' => 'answer']])
+        && file_get_contents($unterminatedPath) === $unterminated,
+        '6129-F01 unterminated historical CSV cannot swallow a later row during append and preserves exact source bytes');
+    $illegalQuotePath = "$root/submissions/illegal-quote.csv";
+    $illegalQuote = "_id,_submitted,_ip,_user_agent,answer\n"
+        . "bbf_old,2020-01-01T00:00:00Z,ip,ua,\"quoted\"junk\n";
+    file_put_contents($illegalQuotePath, $illegalQuote);
+    storage_check(!storeCsv(storage_record('bbf_append', 'illegal-quote', ['answer' => 'append']), $config['submissions_dir'], [['name' => 'answer']])
+        && file_get_contents($illegalQuotePath) === $illegalQuote,
+        '6129-F01 balanced quotes with trailing non-delimiter text are rejected byte-for-byte');
 
     foreach (['file', 'csv', 'sqlite'] as $backend) {
         $cfg = array_replace($config, ['storage' => $backend]);

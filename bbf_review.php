@@ -747,6 +747,7 @@ function bbf_review_delete_records_if(array $config, string $formId, array $expe
     if (bbf_auth_id($formId) === '' || $expected === []) return ['ok' => false, 'reason' => 'invalid'];
     $normalized = [];
     foreach ($expected as $id => $record) {
+        $id = is_int($id) ? (string)$id : $id;
         if (!is_string($id) || bbf_auth_id($id) === '' || ($record !== null && !is_array($record))) {
             return ['ok' => false, 'reason' => 'invalid'];
         }

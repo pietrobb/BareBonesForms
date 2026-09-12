@@ -163,7 +163,34 @@ function bbf_backup_bundle_read(array $config, string $path): array {
         || !is_array($payload['delivery'] ?? null)) {
         throw new RuntimeException('Invalid backup bundle payload.');
     }
+    bbf_backup_record_order($payload);
     return $document;
+}
+
+function bbf_backup_record_order(array $payload): array {
+    $records = $payload['records'] ?? [];
+    $recordIds = array_map(static fn($id): string => (string)$id, array_keys($records));
+    if (array_key_exists('record_order', $payload)) {
+        $order = $payload['record_order'];
+        if (!is_array($order) || !array_is_list($order)
+            || count(array_filter($order, 'is_string')) !== count($order)
+            || count(array_unique($order)) !== count($order)) {
+            throw new RuntimeException('Invalid backup record order.');
+        }
+        $sortedOrder = $order;
+        $sortedIds = $recordIds;
+        sort($sortedOrder, SORT_STRING);
+        sort($sortedIds, SORT_STRING);
+        if ($sortedOrder !== $sortedIds) throw new RuntimeException('Invalid backup record order.');
+        return $order;
+    }
+    $ordered = array_values($records);
+    usort($ordered, static function (array $left, array $right): int {
+        $leftTime = bbf_retention_timestamp($left['meta']['submitted'] ?? null) ?? PHP_INT_MIN;
+        $rightTime = bbf_retention_timestamp($right['meta']['submitted'] ?? null) ?? PHP_INT_MIN;
+        return ($rightTime <=> $leftTime) ?: strcmp((string)($left['id'] ?? ''), (string)($right['id'] ?? ''));
+    });
+    return array_map(static fn(array $record): string => (string)$record['id'], $ordered);
 }
 
 function bbf_backup_create(array $config, string $formId, ?int $now = null): array {
@@ -173,30 +200,35 @@ function bbf_backup_create(array $config, string $formId, ?int $now = null): arr
     $versions = bbf_backup_version_capture($config, $formId);
     $effective = bbf_effective_storage_config($config, $formId, $versions['active']);
     $records = [];
+    $recordOrder = [];
     foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null, null, true) as $record) {
         if (!is_string($record['id'] ?? null) || isset($records[$record['id']])) {
             throw new RuntimeException('Invalid or duplicate backup submission.');
         }
         $records[$record['id']] = $record;
+        $recordOrder[] = $record['id'];
     }
     ksort($records, SORT_STRING);
     $payload = ['version' => 1, 'kind' => 'logical-backup',
         'created_at' => gmdate('Y-m-d\TH:i:s\Z', $now ?? time()), 'form' => $formId,
         'source_backend' => $effective['storage'], 'access' => bbf_backup_access_policy($config, $formId),
         'definition' => $versions['active'], 'versions' => $versions, 'records' => $records,
-        'review' => bbf_backup_review_capture($config, $formId),
+        'record_order' => $recordOrder, 'review' => bbf_backup_review_capture($config, $formId),
         'delivery' => bbf_backup_delivery_capture($config, $formId, $records),
         'audit' => bbf_backup_audit_capture($config, $formId)];
     $verifiedRecords = [];
+    $verifiedOrder = [];
     foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null, null, true) as $record) {
         if (!is_string($record['id'] ?? null) || isset($verifiedRecords[$record['id']])) {
             throw new RuntimeException('Invalid or duplicate backup submission.');
         }
         $verifiedRecords[$record['id']] = $record;
+        $verifiedOrder[] = $record['id'];
     }
     ksort($verifiedRecords, SORT_STRING);
     $verifiedVersions = bbf_backup_version_capture($config, $formId);
-    if ($verifiedRecords !== $payload['records'] || $verifiedVersions['active'] !== $payload['definition']
+    if ($verifiedRecords !== $payload['records'] || $verifiedOrder !== $payload['record_order']
+        || $verifiedVersions['active'] !== $payload['definition']
         || $verifiedVersions !== $payload['versions']
         || bbf_backup_review_capture($config, $formId) !== $payload['review']
         || bbf_backup_delivery_capture($config, $formId, $verifiedRecords) !== $payload['delivery']
@@ -332,9 +364,11 @@ function bbf_backup_restore_csv(array $config, array $payload, array &$created):
     $headers = array_merge($headers, array_keys($fields));
     $path = rtrim($config['submissions_dir'] ?? __DIR__ . '/submissions', '/\\') . '/' . $payload['form'] . '.csv';
     $created[] = $path;
-    $written = bbf_storage_replace($path, static function ($fp) use ($payload, $headers, $withVersions, $withStructured, $dataOffset): bool {
+    $writeOrder = array_reverse(bbf_backup_record_order($payload));
+    $written = bbf_storage_replace($path, static function ($fp) use ($payload, $writeOrder, $headers, $withVersions, $withStructured, $dataOffset): bool {
         if (!bbf_storage_write_csv($fp, $headers)) return false;
-            foreach ($payload['records'] as $record) {
+            foreach ($writeOrder as $recordId) {
+                $record = $payload['records'][$recordId];
                 $escaped = [];
                 $structured = [];
                 foreach ($record['data'] as $name => $value) {

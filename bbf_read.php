@@ -99,20 +99,7 @@ function bbf_read_files(string $formId, string $dir, ?string $from = null, ?stri
 }
 
 function bbf_read_csv_record_syntax_valid($fp, int $start, int $end): bool {
-    if ($end < $start || fseek($fp, $start) !== 0) return false;
-    $raw = stream_get_contents($fp, $end - $start);
-    if ($raw === false || strlen($raw) !== $end - $start || fseek($fp, $end) !== 0) return false;
-    $quoted = false;
-    $length = strlen($raw);
-    for ($i = 0; $i < $length; $i++) {
-        if ($raw[$i] !== '"') continue;
-        if ($quoted && $i + 1 < $length && $raw[$i + 1] === '"') {
-            $i++;
-            continue;
-        }
-        $quoted = !$quoted;
-    }
-    return !$quoted;
+    return bbf_storage_csv_record_syntax_valid($fp, $start, $end);
 }
 
 function bbf_read_csv_record(array $headers, array $row, string $formId): ?array {
@@ -172,12 +159,16 @@ function bbf_read_csv(string $formId, string $dir, ?string $from = null, ?string
         if (!file_exists($path)) return;
         $fp = @fopen($path, 'rb');
         if (!$fp) throw new RuntimeException('Cannot open CSV submissions.');
+        $headerStart = ftell($fp);
         $headers = fgetcsv($fp, 0, ',', '"', '');
+        $headerEnd = ftell($fp);
         if ($headers === false) {
             if (!feof($fp)) throw new RuntimeException('Cannot read CSV headers.');
             return;
         }
-        if (!in_array('_id', $headers, true) || !in_array('_submitted', $headers, true)
+        if ($headerStart === false || $headerEnd === false
+            || ($strict && !bbf_read_csv_record_syntax_valid($fp, $headerStart, $headerEnd))
+            || !in_array('_id', $headers, true) || !in_array('_submitted', $headers, true)
             || count(array_unique($headers)) !== count($headers)) throw new RuntimeException('Invalid CSV headers.');
         $bounds = bbf_read_bounds($from, $to);
         if ($id === null) {
