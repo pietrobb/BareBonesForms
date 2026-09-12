@@ -355,7 +355,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             // Fetch form definition
             const resp = await fetch(`sandbox.php?action=definition&form=${encodeURIComponent(formId)}`);
             const formDef = await resp.json();
-            if (request !== loadRequest) return;
+            if (request !== loadRequest || !await BBF._prepareFormDefinition(formDef, () => request === loadRequest)) return;
             currentFormDef = formDef;
 
             // Show form JSON

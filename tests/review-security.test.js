@@ -208,7 +208,7 @@ test('editor preview renders hostile errors as text inside an opaque-origin sand
         fs.writeFileSync(preview, '<!doctype html><meta charset="utf-8">'
             + '<div id="bbf-preview"></div>'
             + '<script>parent.postMessage({type:"bbf-boot"},"*");window.onerror=m=>parent.postMessage({type:"bbf-error",message:String(m)},"*");<\/script>'
-            + '<script>window.BBF={baseUrl:"",_buildForm(){throw new Error(' + JSON.stringify(attack) + ')}};parent.postMessage({type:"bbf-stub"},"*");<\/script>'
+            + '<script>window.BBF={baseUrl:"",async _prepareFormDefinition(){return true},_buildForm(){throw new Error(' + JSON.stringify(attack) + ')}};parent.postMessage({type:"bbf-stub"},"*");<\/script>'
             + '<script>' + executablePreview.replace(/<\/script/gi, '<\\/script') + '<\/script>'
             + '<script>parent.postMessage({type:"bbf-handler"},"*");window.addEventListener("message",()=>parent.postMessage({'
             + 'type:"bbf-preview-result",text:document.getElementById("bbf-preview").textContent,'

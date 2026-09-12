@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { spawnSync } = require('node:child_process');
 
 class MiniElement {
     constructor(tag = 'div') {
@@ -188,7 +189,8 @@ test('sandbox submit serializes repeatable rows with the production collector', 
 
 test('sandbox latest form load wins when the older definition resolves last', async () => {
     const requests = new Map();
-    const { BBF } = loadBBF();
+    const requestFetch = url => { const gate = deferred(); requests.set(url, gate); return gate.promise; };
+    const { BBF } = loadBBF({ fetch: requestFetch });
     const elements = new Map(['form-container', 'results', 'result-placeholder', 'form-json', 'form-meta']
         .map(id => [id, new MiniElement('div')]));
     const document = { getElementById: id => elements.get(id) };
@@ -197,15 +199,19 @@ test('sandbox latest form load wins when the older definition resolves last', as
     assert.ok(loadForm, 'extract actual sandbox load function');
     const runtime = vm.createContext({
         BBF, document, window: {}, sandboxSubmit() {}, encodeURIComponent,
-        fetch: url => { const gate = deferred(); requests.set(url, gate); return gate.promise; },
+        fetch: requestFetch,
     });
     vm.runInContext("let currentFormId = ''; let currentFormDef = null; let loadRequest = 0;\n"
         + loadForm + '\nthis.loadForm = window.loadForm; this.currentDefinition = () => currentFormDef;', runtime);
     const oldLoad = runtime.loadForm('old');
     const newLoad = runtime.loadForm('new');
     requests.get('sandbox.php?action=definition&form=new').resolve({
-        json: async () => ({ id: 'new', name: 'Newest', fields: [] }),
+        json: async () => ({ id: 'new', name: 'Newest', fields: [
+            { name: 'choice', type: 'select', options_from: '/new-options' },
+        ] }),
     });
+    await settle();
+    requests.get('/new-options').resolve({ ok: true, json: async () => ['Fresh option'] });
     await newLoad;
     requests.get('sandbox.php?action=definition&form=old').resolve({
         json: async () => ({ id: 'old', name: 'Stale', fields: [] }),
@@ -213,6 +219,8 @@ test('sandbox latest form load wins when the older definition resolves last', as
     await oldLoad;
     assert.equal(runtime.currentDefinition().id, 'new');
     assert.equal(elements.get('form-container').querySelector('[data-form-id="new"]')?.getAttribute('data-form-id'), 'new');
+    assert.equal(elements.get('form-container').querySelector('option')?.textContent, 'Fresh option',
+        '6129-F10 sandbox preview awaits options_from before rendering');
     assert.match(elements.get('form-json').textContent, /"id": "new"/);
 });
 
@@ -712,6 +720,131 @@ test('submit emits structured repeatable rows and maps dotted server errors to c
     const skuWrap = row.querySelector('[data-field="items__1__sku"]');
     assert.equal(skuWrap.querySelector('.bbf-field-error').textContent, 'Server rejected SKU');
     assert.equal(skuWrap.querySelector('input').focused, true);
+});
+
+test('6129-F09 cross-field zero, whitespace, arrays, and hidden values match PHP', () => {
+    const { BBF } = loadBBF();
+    const form = new MiniElement('form'); form.className = 'bbf-form';
+    const text = form.appendChild(new MiniElement('input'));
+    text.name = 'text'; text.setAttribute('name', 'text');
+    const choices = ['2', '3'].map(value => {
+        const input = form.appendChild(new MiniElement('input'));
+        input.type = 'checkbox'; input.name = 'choices'; input.setAttribute('name', 'choices');
+        input.value = value; input.checked = true; return input;
+    });
+    const hiddenWrap = form.appendChild(new MiniElement('div'));
+    hiddenWrap.setAttribute('data-conditional-hidden', 'true');
+    const hidden = hiddenWrap.appendChild(new MiniElement('input'));
+    hidden.name = 'hidden'; hidden.setAttribute('name', 'hidden'); hidden.value = '100';
+    const phpCode = `define('BBF_LOADED', true); require $argv[1]; $payload=json_decode(stream_get_contents(STDIN),true); echo json_encode(validateCrossFields($payload['rules'],$payload['data']));`;
+    const phpErrors = (rules, data) => {
+        const result = spawnSync(process.env.PHP_BINARY || 'php', ['-r', phpCode,
+            path.join(__dirname, '..', 'bbf_functions.php')], {
+            input: JSON.stringify({ rules, data }), encoding: 'utf8', timeout: 10000, windowsHide: true,
+        });
+        assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
+        return JSON.parse(result.stdout);
+    };
+    const check = (label, rule, data, expectedErrors) => {
+        const clientErrors = BBF._validateCrossField([rule], form);
+        const serverErrors = phpErrors([rule], data);
+        assert.equal(Object.keys(clientErrors).length, expectedErrors, '6129-F09 client ' + label);
+        assert.equal(Object.keys(serverErrors).length, expectedErrors, '6129-F09 PHP ' + label);
+    };
+
+    text.value = '';
+    check('explicit zero minimum accepts empty visible values',
+        { type: 'min_sum', fields: ['text', 'hidden'], min: 0 }, { text: '' }, 0);
+    check('positive minimum rejects empty visible values despite hidden stale data',
+        { type: 'min_sum', fields: ['text', 'hidden'], min: 1 }, { text: '' }, 1);
+    text.value = '   ';
+    check('whitespace is not filled', { type: 'min_filled', fields: ['text'], min: 1 }, { text: '   ' }, 1);
+    text.value = '';
+    check('checkbox arrays are not numeric scalars',
+        { type: 'min_sum', fields: ['choices'], min: 1 }, { choices: choices.map(input => input.value) }, 1);
+    check('nonempty checkbox arrays count as one filled field',
+        { type: 'min_filled', fields: ['choices'], min: 1 }, { choices: choices.map(input => input.value) }, 0);
+});
+
+test('6129-F10 shared preview preparation is latest-request-wins for options_from', async () => {
+    const requests = new Map();
+    const { BBF } = loadBBF({ fetch: url => {
+        const gate = deferred(); requests.set(url, gate); return gate.promise;
+    } });
+    let generation = 1;
+    const stale = { fields: [{ name: 'choice', type: 'select', options_from: '/stale-options' }] };
+    const fresh = { fields: [{ name: 'choice', type: 'select', options_from: '/fresh-options' }] };
+    const stalePreparation = BBF._prepareFormDefinition(stale, () => generation === 1);
+    generation = 2;
+    const freshPreparation = BBF._prepareFormDefinition(fresh, () => generation === 2);
+    requests.get('/fresh-options').resolve({ ok: true, json: async () => ['Fresh'] });
+    await freshPreparation;
+    requests.get('/stale-options').resolve({ ok: true, json: async () => ['Stale'] });
+    await stalePreparation;
+    assert.deepEqual(fresh.fields[0].options, ['Fresh'], '6129-F10 current preview receives dynamic options');
+    assert.equal(stale.fields[0].options, undefined, '6129-F10 stale preview cannot apply late dynamic options');
+    const editor = fs.readFileSync(path.join(__dirname, '..', 'editor.php'), 'utf8');
+    const sandbox = fs.readFileSync(path.join(__dirname, '..', 'sandbox.php'), 'utf8');
+    assert.match(editor, /await BBF\._prepareFormDefinition\(def,/);
+    assert.match(sandbox, /await BBF\._prepareFormDefinition\(formDef,/);
+});
+
+test('6129-F11 simultaneous form instances namespace every label and ARIA id', () => {
+    const { BBF } = loadBBF();
+    const definition = { fields: [
+        { name: 'email', type: 'text', label: 'Email', description: 'Contact', autocomplete_from: '/people?q={{value}}' },
+        { name: 'choice', type: 'checkbox', label: 'Choice', description: 'Pick', options: ['a'] },
+        { name: 'score', type: 'rating', label: 'Score', description: 'Rate' },
+        { name: 'items', type: 'group', repeatable: true, title: 'Items', fields: [{ name: 'sku', type: 'text', label: 'SKU' }] },
+    ] };
+    const forms = [
+        BBF._buildForm(structuredClone(definition), 'same', 'https://example.test/', {}, null, null, true),
+        BBF._buildForm(structuredClone(definition), 'same', 'https://example.test/', {}, null, null, true),
+    ];
+    const nodes = root => {
+        const result = [];
+        const visit = node => { result.push(node); node.children.forEach(visit); };
+        visit(root); return result;
+    };
+    const allNodes = forms.flatMap(nodes);
+    const ids = allNodes.map(node => node.id).filter(Boolean);
+    assert.equal(new Set(ids).size, ids.length, '6129-F11 two embeds contain no duplicate HTML id');
+    assert.notEqual(forms[0].getAttribute('data-bbf-instance'), forms[1].getAttribute('data-bbf-instance'));
+    forms.forEach(form => {
+        const formIds = new Set(nodes(form).map(node => node.id).filter(Boolean));
+        const email = form.querySelector('[name="email"]');
+        assert.equal(form.querySelector('label').getAttribute('for'), email.id);
+        for (const attribute of ['aria-describedby', 'aria-controls']) {
+            nodes(form).forEach(node => {
+                const references = (node.getAttribute(attribute) || '').split(/\s+/).filter(Boolean);
+                references.forEach(id => assert.ok(formIds.has(id), `6129-F11 ${attribute} resolves ${id}`));
+            });
+        }
+    });
+});
+
+test('6129-F12 delayed reset cannot reveal hideOnSuccess fields', async () => {
+    const timers = [];
+    class TestFormData { forEach(callback) { callback('yes', 'gate'); callback('kept', 'dependent'); } }
+    const { BBF, context } = loadBBF({
+        FormData: TestFormData,
+        setTimeout: fn => { timers.push(fn); return fn; },
+        fetch: async () => ({ ok: true, headers: { get: () => 'application/json' }, json: async () => ({ status: 'ok' }) }),
+    });
+    context.window.location = context.location;
+    const form = BBF._buildForm({ fields: [
+        { name: 'gate', type: 'text', value: 'yes' },
+        { name: 'dependent', type: 'text', show_if: { field: 'gate', value: 'yes' } },
+    ] }, 'hidden-success', 'https://example.test/', { hideOnSuccess: true }, null, null, true);
+    const gate = form.querySelector('[name="gate"]');
+    const dependent = form.querySelector('[data-field="dependent"]');
+    form.reset = () => { gate.value = ''; form.dispatchEvent(new context.Event('reset')); };
+    form.dispatchEvent(new context.Event('submit'));
+    await settle();
+    assert.equal(dependent.style.display, 'none');
+    timers.splice(0).forEach(fn => fn());
+    assert.equal(dependent.style.display, 'none', '6129-F12 reset callback preserves hidden success lifecycle');
+    assert.equal(form.querySelector('.bbf-submit-wrap').style.display, 'none');
 });
 
 test('schema permits option-level show_if', () => {

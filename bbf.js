@@ -122,6 +122,29 @@
             return msg;
         },
 
+        _instanceSequence: 0,
+
+        _prepareFormDefinition: async function(form, isCurrent = () => true) {
+            if (form.templates && !form._bbfTemplatesResolved) {
+                form.fields = this._resolveTemplates(form.fields || [], form.templates);
+                form._bbfTemplatesResolved = true;
+            }
+            const fields = this._flattenFields(form.fields || [], true);
+            await Promise.all(fields.filter(field => field.options_from).map(async field => {
+                try {
+                    const response = await fetch(field.options_from);
+                    if (!response.ok) throw new Error(response.status);
+                    const options = await response.json();
+                    if (isCurrent()) field.options = options;
+                } catch (error) {
+                    if (!isCurrent()) return;
+                    console.warn('BBF: Failed to load options for ' + field.name + ':', error);
+                    field.options = field.options || [];
+                }
+            }));
+            return isCurrent();
+        },
+
         /**
          * Render a form into a container
          */
@@ -174,23 +197,7 @@
                     if (!isCurrent()) return;
                 }
 
-                // Fetch dynamic options (options_from) before building the form
-                const allFields = this._flattenFields(form.fields || [], true);
-                const optionsFetches = [];
-                allFields.forEach(field => {
-                    if (field.options_from) {
-                        optionsFetches.push(
-                            fetch(field.options_from)
-                                .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
-                                .then(opts => { field.options = opts; })
-                                .catch(err => { console.warn('BBF: Failed to load options for ' + field.name + ':', err); field.options = field.options || []; })
-                        );
-                    }
-                });
-                if (optionsFetches.length > 0) {
-                    await Promise.all(optionsFetches);
-                }
-                if (!isCurrent()) return;
+                if (!await this._prepareFormDefinition(form, isCurrent)) return;
 
                 container.innerHTML = '';
                 container.classList.remove('bbf-loading');
@@ -352,17 +359,17 @@
         // ─── Conditional logic ───────────────────────────────
 
         // Get current value of a form field by name
-        _getFieldValue: function(formEl, fieldName) {
-            const inputs = formEl.querySelectorAll(`input[name="${fieldName}"]`);
+        _getFieldValue: function(formEl, fieldName, visibleOnly = false) {
+            const inputs = Array.from(formEl.querySelectorAll(`[name="${fieldName}"]`))
+                .filter(input => !visibleOnly || !this._isHidden(input));
             if (inputs.length > 0 && inputs[0].type === 'radio') {
-                const checked = formEl.querySelector(`input[name="${fieldName}"]:checked`);
+                const checked = inputs.find(input => input.checked);
                 return checked ? checked.value : '';
             }
             if (inputs.length > 0 && inputs[0].type === 'checkbox') {
-                return Array.from(formEl.querySelectorAll(`input[name="${fieldName}"]:checked`)).map(c => c.value);
+                return inputs.filter(input => input.checked).map(input => input.value);
             }
-            const el = formEl.querySelector(`[name="${fieldName}"]`);
-            return el ? el.value : '';
+            return inputs.length > 0 ? inputs[0].value : '';
         },
 
         // Compare a field value against a target using an operator
@@ -669,13 +676,13 @@
             this._applyConditions(formEl, fields, false);
         },
 
-        _buildDraftControls: function(formEl, form, formId, baseUrl, csrfToken, langCode, isSameOrigin, fields) {
+        _buildDraftControls: function(formEl, form, formId, baseUrl, csrfToken, langCode, isSameOrigin, fields, idPrefix) {
             const policy = form.drafts;
             if (!policy || policy.enabled !== true || !Array.isArray(policy.fields) || policy.fields.length === 0) return null;
             const wrap = document.createElement('div');
             wrap.className = 'bbf-field bbf-draft-controls';
             const label = document.createElement('label');
-            const codeId = `bbf-${formId}-draft-code`;
+            const codeId = `${idPrefix || 'bbf-' + formId}-draft-code`;
             label.className = 'bbf-label'; label.htmlFor = codeId;
             label.textContent = this._t('draftCode', {}, langCode);
             const code = document.createElement('input');
@@ -745,10 +752,12 @@
 
         _buildForm: function(form, formId, baseUrl, options, csrfToken, langCode, isSameOrigin) {
             // Resolve templates before building
-            if (form.templates) {
+            if (form.templates && !form._bbfTemplatesResolved) {
                 form.fields = this._resolveTemplates(form.fields || [], form.templates);
+                form._bbfTemplatesResolved = true;
             }
 
+            const idPrefix = 'bbf-instance-' + (++this._instanceSequence);
             const el = document.createElement('form');
             el.className = 'bbf-form';
             if (form.label_position === 'left' || form.label_position === 'right') {
@@ -756,6 +765,8 @@
             }
             el.noValidate = true;
             el.setAttribute('data-form-id', formId);
+            el.setAttribute('data-bbf-instance', idPrefix);
+            el._bbfHideOnSuccess = false;
 
             // Title
             if (form.name && options.showTitle !== false) {
@@ -793,13 +804,13 @@
                     if (pi > 0) pageDiv.style.display = 'none';
 
                     pageFields.forEach(field => {
-                        pageDiv.appendChild(this._buildField(field, langCode));
+                        pageDiv.appendChild(this._buildField(field, langCode, idPrefix));
                     });
                     el.appendChild(pageDiv);
                 });
             } else {
                 (form.fields || []).forEach(field => {
-                    el.appendChild(this._buildField(field, langCode));
+                    el.appendChild(this._buildField(field, langCode, idPrefix));
                 });
             }
 
@@ -811,6 +822,7 @@
                 setTimeout(() => {
                     this._resetRepeatableGroups(el);
                     this._resetCustomFields(el);
+                    if (el._bbfHideOnSuccess) return;
                     this._stabilizeOptionConditions(el);
                     this._applyConditions(el, allFlat, false);
                 }, 0);
@@ -832,7 +844,7 @@
                 el.appendChild(csrfInput);
             }
 
-            const draftControls = this._buildDraftControls(el, form, formId, baseUrl, csrfToken, langCode, isSameOrigin, dataFields);
+            const draftControls = this._buildDraftControls(el, form, formId, baseUrl, csrfToken, langCode, isSameOrigin, dataFields, idPrefix);
             if (draftControls) el.appendChild(draftControls);
 
             // Navigation / Submit
@@ -984,10 +996,13 @@
                         msg.className = 'bbf-message bbf-success';
                         msg.textContent = form.success_message || this._t('successDefault', {}, langCode);
                         msg.style.display = 'block';
+                        el._bbfHideOnSuccess = !!options.hideOnSuccess;
                         el.reset();
                         this._resetCustomFields(el);
-                        this._stabilizeOptionConditions(el);
-                        this._applyConditions(el, allFlat, false);
+                        if (!el._bbfHideOnSuccess) {
+                            this._stabilizeOptionConditions(el);
+                            this._applyConditions(el, allFlat, false);
+                        }
                         this._clearErrors(el);
 
                         if (options.hideOnSuccess) {
@@ -1120,13 +1135,13 @@
 
         // ─── Build single field ──────────────────────────────
 
-        _buildRepeatableGroup: function(field, langCode) {
+        _buildRepeatableGroup: function(field, langCode, idPrefix) {
             const group = document.createElement('div');
             group.className = 'bbf-field bbf-group bbf-repeatable-group';
             if (field.css_class) group.className += ' ' + field.css_class;
             group.setAttribute('data-field', field.name);
             const label = field.title || field.label || field.name;
-            const titleId = `bbf-${field.name}-title`;
+            const titleId = `${idPrefix || 'bbf'}-${field.name}-title`;
             if (label) {
                 const title = document.createElement('h3');
                 title.className = 'bbf-group-title';
@@ -1144,14 +1159,14 @@
             }
             const error = document.createElement('div');
             error.className = 'bbf-field-error bbf-repeatable-error';
-            error.id = `bbf-${field.name}-error`;
+            error.id = `${idPrefix || 'bbf'}-${field.name}-error`;
             error.setAttribute('role', 'alert');
             group.setAttribute('aria-describedby', error.id);
             group.appendChild(error);
 
             const rows = document.createElement('div');
             rows.className = 'bbf-repeatable-rows';
-            rows.id = `bbf-${field.name}-rows`;
+            rows.id = `${idPrefix || 'bbf'}-${field.name}-rows`;
             group.appendChild(rows);
             const controls = document.createElement('div');
             controls.className = 'bbf-repeatable-controls';
@@ -1212,7 +1227,7 @@
                 let children = field.fields || [];
                 if (field.shuffle) children = this._shuffle(children);
                 row._bbfFields = this._scopeRepeatableFields(children, prefix);
-                row._bbfFields.forEach(child => { row.appendChild(this._buildField(child, langCode)); });
+                row._bbfFields.forEach(child => { row.appendChild(this._buildField(child, langCode, idPrefix)); });
                 const remove = document.createElement('button');
                 remove.type = 'button';
                 remove.className = 'bbf-repeatable-remove';
@@ -1268,9 +1283,10 @@
             });
         },
 
-        _buildField: function(field, langCode) {
+        _buildField: function(field, langCode, idPrefix) {
             const type = field.type || 'text';
             const self = this;
+            const fieldId = `${idPrefix || 'bbf'}-${field.name}`;
 
             // Section break (no data, visual only)
             if (type === 'section') {
@@ -1296,7 +1312,7 @@
 
             // Group container (nested fields with optional show_if)
             if (type === 'group') {
-                if (field.repeatable) return this._buildRepeatableGroup(field, langCode);
+                if (field.repeatable) return this._buildRepeatableGroup(field, langCode, idPrefix);
                 const group = document.createElement('div');
                 group.className = 'bbf-field bbf-group';
                 if (field.css_class) group.className += ' ' + field.css_class;
@@ -1317,7 +1333,7 @@
                 var children = field.fields || [];
                 if (field.shuffle) children = this._shuffle(children);
                 children.forEach(child => {
-                    group.appendChild(this._buildField(child, langCode));
+                    group.appendChild(this._buildField(child, langCode, idPrefix));
                 });
                 return group;
             }
@@ -1331,7 +1347,7 @@
 
             // Rating field
             if (type === 'rating') {
-                return this._buildRating(field, langCode);
+                return this._buildRating(field, langCode, idPrefix);
             }
 
             const wrap = document.createElement('div');
@@ -1354,7 +1370,7 @@
                 if (field.label) {
                     const label = document.createElement('label');
                     label.className = 'bbf-label';
-                    label.setAttribute('for', `bbf-${field.name}`);
+                    label.setAttribute('for', fieldId);
                     label.textContent = field.label;
                     if (field.required) {
                         const req = document.createElement('span');
@@ -1369,7 +1385,7 @@
                 if (field.description) {
                     const desc = document.createElement('small');
                     desc.className = 'bbf-field-desc';
-                    desc.id = `bbf-${field.name}-desc`;
+                    desc.id = fieldId + '-desc';
                     desc.textContent = field.description;
                     wrap.appendChild(desc);
                 }
@@ -1416,7 +1432,7 @@
 
                 case 'radio':
                 case 'checkbox':
-                    return this._buildGroup(field, type, langCode);
+                    return this._buildGroup(field, type, langCode, idPrefix);
 
                 case 'hidden':
                     input = document.createElement('input');
@@ -1439,7 +1455,7 @@
             }
 
             input.name = field.name;
-            input.id = `bbf-${field.name}`;
+            input.id = fieldId;
             input.className = 'bbf-input';
 
             if (field.placeholder) input.placeholder = field.placeholder;
@@ -1455,8 +1471,8 @@
 
             // Accessibility: link input to description and error
             const ariaDesc = [];
-            if (field.description) ariaDesc.push(`bbf-${field.name}-desc`);
-            ariaDesc.push(`bbf-${field.name}-error`);
+            if (field.description) ariaDesc.push(fieldId + '-desc');
+            ariaDesc.push(fieldId + '-error');
             input.setAttribute('aria-describedby', ariaDesc.join(' '));
 
             // Prefix / suffix (e.g. "€", "kg", "ks")
@@ -1504,7 +1520,7 @@
                 const confirmInput = document.createElement('input');
                 confirmInput.type = 'email';
                 confirmInput.name = field.name + '_confirm';
-                confirmInput.id = `bbf-${field.name}-confirm`;
+                confirmInput.id = fieldId + '-confirm';
                 confirmInput.className = 'bbf-input';
                 const confirmLabel = this._t('emailMismatch', { label: field.label || field.name }, langCode).includes('match')
                     ? 'Confirm ' + (field.label || 'email')
@@ -1566,7 +1582,7 @@
                 var acMap = acConfig.map || null;
 
                 var acList = document.createElement('div');
-                var acListId = `bbf-${field.name}-autocomplete`;
+                var acListId = fieldId + '-autocomplete';
                 acList.className = 'bbf-autocomplete-list';
                 acList.id = acListId;
                 acList.setAttribute('role', 'listbox');
@@ -1708,7 +1724,7 @@
             // Error placeholder
             const errEl = document.createElement('div');
             errEl.className = 'bbf-field-error';
-            errEl.id = `bbf-${field.name}-error`;
+            errEl.id = fieldId + '-error';
             errEl.setAttribute('role', 'alert');
             wrap.appendChild(errEl);
 
@@ -1717,7 +1733,8 @@
 
         // ─── Build radio/checkbox group ──────────────────────
 
-        _buildGroup: function(field, type, langCode) {
+        _buildGroup: function(field, type, langCode, idPrefix) {
+            const fieldId = `${idPrefix || 'bbf'}-${field.name}`;
             const fieldset = document.createElement('fieldset');
             fieldset.className = `bbf-fieldset bbf-field bbf-field-${type}`;
             fieldset.setAttribute('data-field', field.name);
@@ -1744,12 +1761,12 @@
             if (field.description) {
                 const desc = document.createElement('small');
                 desc.className = 'bbf-field-desc';
-                desc.id = `bbf-${field.name}-desc`;
+                desc.id = fieldId + '-desc';
                 desc.textContent = field.description;
                 fieldset.appendChild(desc);
                 groupAriaDesc.push(desc.id);
             }
-            groupAriaDesc.push(`bbf-${field.name}-error`);
+            groupAriaDesc.push(fieldId + '-error');
 
             const optionsWrap = document.createElement('div');
             optionsWrap.className = 'bbf-options';
@@ -1769,7 +1786,7 @@
                 const inp = document.createElement('input');
                 inp.type = type;
                 inp.name = field.name;
-                inp.id = `bbf-${field.name}-${i}`;
+                inp.id = fieldId + '-' + i;
                 inp.value = typeof o === 'object' ? o.value : o;
                 // Default checked: field.value (string or array) or option-level checked
                 if (typeof o === 'object' && o.checked) {
@@ -1799,7 +1816,7 @@
                 const otherInp = document.createElement('input');
                 otherInp.type = type;
                 otherInp.name = field.name;
-                otherInp.id = `bbf-${field.name}-other`;
+                otherInp.id = fieldId + '-other';
                 otherInp.value = '__other__';
                 const otherSpan = document.createElement('span');
                 otherSpan.textContent = field.other_label || 'Other…';
@@ -1833,7 +1850,7 @@
 
             const err = document.createElement('div');
             err.className = 'bbf-field-error';
-            err.id = `bbf-${field.name}-error`;
+            err.id = fieldId + '-error';
             err.setAttribute('role', 'alert');
             fieldset.appendChild(err);
 
@@ -1842,7 +1859,8 @@
 
         // ─── Build rating field ──────────────────────────────
 
-        _buildRating: function(field, langCode) {
+        _buildRating: function(field, langCode, idPrefix) {
+            const fieldId = `${idPrefix || 'bbf'}-${field.name}`;
             const wrap = document.createElement('div');
             wrap.className = 'bbf-field bbf-field-rating';
             wrap.setAttribute('data-field', field.name);
@@ -1864,7 +1882,7 @@
             if (field.description) {
                 const desc = document.createElement('small');
                 desc.className = 'bbf-field-desc';
-                desc.id = `bbf-${field.name}-desc`;
+                desc.id = fieldId + '-desc';
                 desc.textContent = field.description;
                 wrap.appendChild(desc);
             }
@@ -1880,7 +1898,7 @@
             starsWrap.className = 'bbf-rating-stars';
             starsWrap.setAttribute('role', 'radiogroup');
             starsWrap.setAttribute('aria-label', field.label || 'Rating');
-            starsWrap.setAttribute('aria-describedby', (field.description ? `bbf-${field.name}-desc ` : '') + `bbf-${field.name}-error`);
+            starsWrap.setAttribute('aria-describedby', (field.description ? fieldId + '-desc ' : '') + fieldId + '-error');
 
             const updateRating = (value, focusStar = false, emitEvents = true) => {
                 const parsed = Number(value);
@@ -1954,7 +1972,7 @@
 
             const errEl = document.createElement('div');
             errEl.className = 'bbf-field-error';
-            errEl.id = `bbf-${field.name}-error`;
+            errEl.id = fieldId + '-error';
             errEl.setAttribute('role', 'alert');
             wrap.appendChild(errEl);
 
@@ -2095,25 +2113,31 @@
             if (!validations || !validations.length) return errors;
             var self = this;
             var fallback = this._t('crossFieldDefault', {}, langCode);
+            var isFilled = function(value) {
+                if (Array.isArray(value)) return value.some(isFilled);
+                return typeof value === 'string' ? value.trim() !== '' : value !== null && value !== undefined;
+            };
             validations.forEach(function(rule) {
                 var fields = rule.fields || [];
                 var key = '_validation_' + fields.join('_');
                 if (rule.type === 'min_sum') {
                     var sum = 0;
                     fields.forEach(function(name) {
-                        var val = parseFloat(self._getFieldValue(formEl, name)) || 0;
-                        sum += val;
+                        var value = self._getFieldValue(formEl, name, true);
+                        if (!Array.isArray(value) && value !== '' && Number.isFinite(Number(value))) {
+                            sum += Number(value);
+                        }
                     });
-                    if (sum < (rule.min || 1)) {
+                    if (sum < (rule.min ?? 1)) {
                         errors[key] = rule.message || fallback;
                     }
                 } else if (rule.type === 'min_filled') {
                     var filled = 0;
                     fields.forEach(function(name) {
-                        var val = self._getFieldValue(formEl, name);
-                        if (val !== '' && val !== null && val !== undefined && !(Array.isArray(val) && val.length === 0)) filled++;
+                        var val = self._getFieldValue(formEl, name, true);
+                        if (isFilled(val)) filled++;
                     });
-                    if (filled < (rule.min || 1)) {
+                    if (filled < (rule.min ?? 1)) {
                         errors[key] = rule.message || fallback;
                     }
                 }

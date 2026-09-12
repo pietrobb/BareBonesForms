@@ -291,6 +291,26 @@ $review6129Inventory = [
         'positive' => [['tests/review-renderer.test.js', '6129-F08 lookup selects the matching radio'], ['tests/review-renderer.test.js', '6129-F08 lookup checks every mapped checkbox']],
         'failure' => [['tests/review-renderer.test.js', '6129-F08 lookup leaves the sibling repeatable row untouched'], ['tests/review-renderer.test.js', '6129-F08 autocomplete replaces the radio selection without mutating option values'], ['tests/review-renderer.test.js', '6129-F08 autocomplete clears stale checkbox selections inside its row'], ['tests/review-renderer.test.js', '6129-F08 autocomplete leaves the sibling repeatable row untouched']],
     ],
+    '6129-F09 frontend cross-field zero minimum and hidden values' => [
+        'fixes' => [['bbf.js', 'rule.min ?? 1'], ['bbf.js', '_getFieldValue(formEl, name, true)']],
+        'positive' => [['tests/review-renderer.test.js', 'explicit zero minimum accepts empty visible values'], ['tests/review-renderer.test.js', 'nonempty checkbox arrays count as one filled field']],
+        'failure' => [['tests/review-renderer.test.js', 'positive minimum rejects empty visible values despite hidden stale data'], ['tests/review-renderer.test.js', 'whitespace is not filled'], ['tests/review-renderer.test.js', 'checkbox arrays are not numeric scalars']],
+    ],
+    '6129-F10 shared dynamic preview option preparation' => [
+        'fixes' => [['bbf.js', '_prepareFormDefinition: async function'], ['editor.php', 'await BBF._prepareFormDefinition(def'], ['sandbox.php', 'await BBF._prepareFormDefinition(formDef']],
+        'positive' => [['tests/review-renderer.test.js', '6129-F10 current preview receives dynamic options'], ['tests/review-renderer.test.js', '6129-F10 sandbox preview awaits options_from before rendering']],
+        'failure' => [['tests/review-renderer.test.js', '6129-F10 stale preview cannot apply late dynamic options']],
+    ],
+    '6129-F11 unique embedded form instance namespaces' => [
+        'fixes' => [['bbf.js', "'data-bbf-instance'"], ['bbf.js', "const fieldId = `\${idPrefix || 'bbf'}-\${field.name}`"]],
+        'positive' => [['tests/review-renderer.test.js', '6129-F11 simultaneous form instances namespace every label and ARIA id']],
+        'failure' => [['tests/review-renderer.test.js', '6129-F11 two embeds contain no duplicate HTML id'], ['tests/review-renderer.test.js', '6129-F11 ${attribute} resolves']],
+    ],
+    '6129-F12 hideOnSuccess reset lifecycle' => [
+        'fixes' => [['bbf.js', 'el._bbfHideOnSuccess'], ['bbf.js', 'if (el._bbfHideOnSuccess) return']],
+        'positive' => [['tests/review-renderer.test.js', '6129-F12 delayed reset cannot reveal hideOnSuccess fields']],
+        'failure' => [['tests/review-renderer.test.js', '6129-F12 reset callback preserves hidden success lifecycle']],
+    ],
     '6129-F14 finite numbers and bounded integer ratings' => [
         'fixes' => [['bbf_functions.php', '!is_finite($number)'], ['bbf_functions.php', '$field[\'max\'] ?? 5']],
         'positive' => [['tests/review-validation-test.php', '6129-F14 rating accepts integer in implicit one-to-five range'], ['tests/review-validation-test.php', '6129-F14 rating honors an explicit renderer maximum']],
@@ -309,7 +329,7 @@ foreach ($review6129Inventory as $finding => $evidenceByRole) {
         }
     }
 }
-acceptance_check(count($review6129Inventory) === 9, 'review 6129 G1-G4 inventory maps findings F01 through F08 and F14');
+acceptance_check(count($review6129Inventory) === 13, 'review 6129 G1-G5 inventory maps findings F01 through F12 and F14');
 
 $ciSource = acceptance_source($root, 'tests/review-ci-test.php');
 foreach (array_keys($sources) as $relative) {

@@ -310,16 +310,20 @@ body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont,
 <script>
 (function() {
     const container = document.getElementById('bbf-preview');
-    window.addEventListener('message', function(e) {
+    let renderRequest = 0;
+    window.addEventListener('message', async function(e) {
         if (window === window.parent || e.source !== window.parent) return;
         if (!e.data || e.data.type !== 'bbf-render') return;
+        const request = ++renderRequest;
         try {
             const def = JSON.parse(e.data.json);
+            if (!await BBF._prepareFormDefinition(def, () => request === renderRequest)) return;
             container.innerHTML = '';
             container.className = 'bbf-form-container';
             const formEl = BBF._buildForm(def, def.id || 'preview', BBF.baseUrl, {showTitle: true}, null, null, false);
             container.appendChild(formEl);
         } catch(ex) {
+            if (request !== renderRequest) return;
             container.replaceChildren();
             const error = document.createElement('div');
             error.className = 'preview-error';
