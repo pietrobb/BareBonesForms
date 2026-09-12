@@ -100,6 +100,10 @@ function flattenFields(array $fields, ?array $parentShowIf = null): array {
     return $result;
 }
 
+function bbfNormalizeInputValue($value) {
+    return is_array($value) ? $value : trim((string)$value);
+}
+
 // Evaluate a show_if condition against submitted data.
 // Mirrors the client-side _evalCondition / _compareValues logic.
 function evalCondition(array $cond, array $input): bool {
@@ -116,7 +120,7 @@ function evalCondition(array $cond, array $input): bool {
         return false;
     }
     if (!empty($cond['field'])) {
-        $val = $input[$cond['field']] ?? '';
+        $val = bbfNormalizeInputValue($input[$cond['field']] ?? '');
         return compareValues($val, $cond['value'] ?? null, $cond['op'] ?? '');
     }
     return true;
@@ -1727,7 +1731,7 @@ function validate(array $fields, array $input): array {
         }
 
         $raw   = $input[$name] ?? '';
-        $value = is_array($raw) ? $raw : trim((string)$raw);
+        $value = bbfNormalizeInputValue($raw);
         $label = $field['label'] ?? $name;
 
         // Required
@@ -1764,14 +1768,19 @@ function validate(array $fields, array $input): array {
                     break;
                 case 'number':
                 case 'rating':
-                    if (!is_numeric($value)) {
+                    $number = is_numeric($value) ? (float)$value : null;
+                    if ($number === null || !is_finite($number)
+                        || ($type === 'rating' && floor($number) !== $number)) {
                         $errors[$name] = msg('invalidNumber', ['label' => $label]);
+                        break;
                     }
-                    if (isset($field['min']) && $value < $field['min']) {
-                        $errors[$name] = msg('numberMin', ['label' => $label, 'min' => $field['min']]);
+                    $minimum = $type === 'rating' ? max(1, $field['min'] ?? 1) : ($field['min'] ?? null);
+                    $maximum = $type === 'rating' ? ($field['max'] ?? 5) : ($field['max'] ?? null);
+                    if ($minimum !== null && $number < $minimum) {
+                        $errors[$name] = msg('numberMin', ['label' => $label, 'min' => $minimum]);
                     }
-                    if (isset($field['max']) && $value > $field['max']) {
-                        $errors[$name] = msg('numberMax', ['label' => $label, 'max' => $field['max']]);
+                    if ($maximum !== null && $number > $maximum) {
+                        $errors[$name] = msg('numberMax', ['label' => $label, 'max' => $maximum]);
                     }
                     break;
                 case 'tel':

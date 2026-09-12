@@ -261,6 +261,11 @@ $review6129Inventory = [
         'positive' => [['tests/review-payment-test.php', '6129-F02 paid callback delivers the durable paid status and payment identity'], ['tests/review-payment-test.php', '6129-F02 paid finalization atomically refreshes email webhook and action payloads and hashes'], ['tests/review-payment-test.php', '6129-F02 pre-upgrade pending email replaces the persisted Checkout ID before delivery']],
         'failure' => [['tests/review-payment-test.php', '6129-F02 paid payload persistence failure preserves the exact pending plan before any effect'], ['tests/review-payment-test.php', '6129-F02 tampered pending payload cannot be legitimized during paid finalization']],
     ],
+    '6129-F03 normalized conditional validation and collection' => [
+        'fixes' => [['bbf_functions.php', 'function bbfNormalizeInputValue'], ['submit.php', "bbfNormalizeInputValue(\$input[\$name] ?? '')"], ['bbf_functions.php', 'bbfRepeatableRowInput($childFields, $input, $row)']],
+        'positive' => [['tests/review-validation-test.php', '6129-F03 collection and conditions share normalized scalar input']],
+        'failure' => [['tests/review-conditions-test.php', '6129-F03 normalized scalar condition enforces a required field'], ['tests/review-conditions-test.php', '6129-F03 repeatable conditions use normalized row-local values']],
+    ],
     '6129-F04 coordinated viewer review deletion' => [
         'fixes' => [['viewer.php', 'bbf_review_records($config, $formId, array_values($ids))'], ['viewer.php', 'bbf_review_delete_records_if($config, $formId']],
         'positive' => [['tests/review-inbox-test.php', '6129-F04 delete retry atomically removes the retained primary and private review metadata']],
@@ -276,6 +281,11 @@ $review6129Inventory = [
         'positive' => [['tests/review-retention-test.php', 'dry-run selects only strictly expired exact-form records'], ['tests/review-retention-test.php', '6129-F06 numeric-string archive preserves the exact response']],
         'failure' => [['tests/review-retention-test.php', '6129-F06 numeric-string submission ID survives capture maps']],
     ],
+    '6129-F14 finite numbers and bounded integer ratings' => [
+        'fixes' => [['bbf_functions.php', '!is_finite($number)'], ['bbf_functions.php', '$field[\'max\'] ?? 5']],
+        'positive' => [['tests/review-validation-test.php', '6129-F14 rating accepts integer in implicit one-to-five range'], ['tests/review-validation-test.php', '6129-F14 rating honors an explicit renderer maximum']],
+        'failure' => [['tests/review-validation-test.php', '6129-F14 number rejects a non-finite numeric literal'], ['tests/review-validation-test.php', '6129-F14 rating rejects invalid value']],
+    ],
 ];
 foreach ($review6129Inventory as $finding => $evidenceByRole) {
     acceptance_check(array_keys($evidenceByRole) === ['fixes', 'positive', 'failure'],
@@ -289,7 +299,7 @@ foreach ($review6129Inventory as $finding => $evidenceByRole) {
         }
     }
 }
-acceptance_check(count($review6129Inventory) === 5, 'review 6129 G1-G2 inventory maps findings F01, F02, F04, F05 and F06');
+acceptance_check(count($review6129Inventory) === 7, 'review 6129 G1-G3 inventory maps findings F01 through F06 and F14');
 
 $ciSource = acceptance_source($root, 'tests/review-ci-test.php');
 foreach (array_keys($sources) as $relative) {

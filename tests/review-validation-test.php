@@ -77,6 +77,16 @@ foreach ([
 ] as $i => [$field, $value, $message]) {
     check("existing scalar constraint $i", fn() => rejects($field, $value, $message));
 }
+check('6129-F14 number rejects a non-finite numeric literal', fn() => rejects(['type' => 'number'], '1e309', 'invalidNumber'));
+foreach (['1.5', '0', '6', '1e309'] as $rating) {
+    $message = $rating === '0' ? 'numberMin' : ($rating === '6' ? 'numberMax' : 'invalidNumber');
+    check("6129-F14 rating rejects invalid value $rating", fn() => rejects(['type' => 'rating'], $rating, $message));
+}
+foreach (['1', '5'] as $rating) {
+    check("6129-F14 rating accepts integer in implicit one-to-five range $rating", fn() => accepts(['type' => 'rating'], $rating));
+}
+check('6129-F14 rating honors an explicit renderer maximum', fn() => accepts(['type' => 'rating', 'max' => 10], '10'));
+
 foreach ([
     [['type' => 'email'], ' reader@example.test '],
     [['type' => 'number', 'min' => 0, 'max' => 10], 0],
@@ -235,6 +245,15 @@ same(true, strpos($submitSource, 'validateCrossFields(') < strpos($submitSource,
 same(2, substr_count($submitSource, '$data = $normalizedData;'));
 same(1, preg_match('/^function collectData\(.*?^\}/ms', $submitSource, $collectionMatch));
 eval($collectionMatch[0]);
+check('6129-F03 collection and conditions share normalized scalar input', function () {
+    $fields = [
+        ['name' => 'kind', 'type' => 'select', 'options' => ['personal', 'business']],
+        ['name' => 'tax_id', 'required' => true, 'show_if' => ['field' => 'kind', 'value' => 'business']],
+    ];
+    same(['tax_id' => 'required:tax_id'], validate($fields, ['kind' => ' business ']));
+    same(['kind' => 'business', 'tax_id' => 'SK123'], collectData($fields, ['kind' => ' business ', 'tax_id' => ' SK123 ']));
+    same(['flag' => ''], collectData([['name' => 'flag']], ['flag' => false]));
+});
 same(1, preg_match('/^if \(\$isSandbox\) \{\R(    \$data = .*?^    \$sandboxResult\[\'on_submit_preview\'\] = \$preview;)/ms', $submitSource, $sandboxMatch));
 $sandboxPreviewSource = $sandboxMatch[1];
 function sandboxPreview(array $flatFields, array $input, array $validations = []): array {

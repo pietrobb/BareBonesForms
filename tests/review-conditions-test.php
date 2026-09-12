@@ -194,6 +194,55 @@ conditions_check('nested template-local condition references receive the instanc
     conditions_same(['p_dependent' => 'required:p_dependent'], validate($fields, ['p_gate' => 'yes']));
 });
 
+conditions_check('6129-F03 normalized scalar condition enforces a required field', static function (): void {
+    $fields = [
+        ['name' => 'kind', 'type' => 'select', 'options' => ['personal', 'business']],
+        ['name' => 'tax_id', 'required' => true, 'show_if' => ['field' => 'kind', 'value' => 'business']],
+    ];
+
+    conditions_same(['tax_id' => 'required:tax_id'], validate($fields, ['kind' => ' business ']));
+    conditions_same([], validate($fields, ['kind' => ' personal ']));
+});
+
+conditions_check('6129-F03 empty operators share non-string scalar normalization', static function (): void {
+    $empty = ['name' => 'empty_detail', 'required' => true, 'show_if' => ['field' => 'gate', 'op' => 'empty']];
+    $notEmpty = ['name' => 'filled_detail', 'required' => true, 'show_if' => ['field' => 'gate', 'op' => 'not_empty']];
+
+    conditions_same(['empty_detail' => 'required:empty_detail'], validate([$empty, $notEmpty], ['gate' => false]));
+    conditions_same(['filled_detail' => 'required:filled_detail'], validate([$empty, $notEmpty], ['gate' => true]));
+});
+
+conditions_check('6129-F03 repeatable conditions use normalized row-local values', static function (): void {
+    $group = [
+        'name' => 'companies', 'type' => 'group', 'repeatable' => true,
+        'fields' => [
+            ['name' => 'kind', 'type' => 'select', 'options' => ['personal', 'business']],
+            ['name' => 'tax_id', 'required' => true, 'show_if' => ['field' => 'kind', 'value' => 'business']],
+        ],
+    ];
+
+    conditions_same(
+        ['companies.0.tax_id' => 'required:tax_id'],
+        validate([$group], ['kind' => 'personal', 'companies' => [['kind' => ' business ']]])
+    );
+    conditions_same([], validate([$group], ['kind' => 'business', 'companies' => [['kind' => ' personal ']]]));
+});
+
+conditions_check('6129-F03 repeatable empty condition normalizes a row boolean before outer fallback', static function (): void {
+    $group = [
+        'name' => 'rows', 'type' => 'group', 'repeatable' => true,
+        'fields' => [
+            ['name' => 'gate'],
+            ['name' => 'detail', 'required' => true, 'show_if' => ['field' => 'gate', 'op' => 'empty']],
+        ],
+    ];
+
+    conditions_same(
+        ['rows.0.detail' => 'required:detail'],
+        validate([$group], ['gate' => true, 'rows' => [['gate' => false]]])
+    );
+});
+
 conditions_check('source field and template definitions are not mutated', static function () use (
     $directDefinition,
     $directDefinitionSnapshot,

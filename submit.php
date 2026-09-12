@@ -619,10 +619,7 @@ function collectData(array $fields, array $input): array {
             continue;
         }
 
-        $value = $input[$name] ?? '';
-        if (is_string($value)) {
-            $value = trim($value);
-        }
+        $value = bbfNormalizeInputValue($input[$name] ?? '');
 
         // Resolve "other" option: if value is __other__, use the _other text field
         if (!empty($field['other']) && $value === '__other__') {
