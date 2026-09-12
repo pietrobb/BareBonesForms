@@ -473,11 +473,9 @@ if (!empty($onSubmit['payment'])) {
 
         // Freeze the original delivery plan and backend before returning the Checkout redirect.
         try {
-            $paymentTemplateData = bbf_delivery_template_data($form, $submission, [
-                '_payment_status' => 'paid',
-                '_payment_id' => $checkout['id'],
-                '_payment_amount' => bbfPaymentFormatMinor($paymentQuote['amount_minor'], $paymentQuote['minor_units']),
-                '_payment_currency' => strtoupper($paymentQuote['currency']),
+            $paymentBindings = bbf_delivery_payment_template_bindings();
+            $paymentTemplateData = bbf_delivery_template_data($form, $submission, $paymentBindings + [
+                '_bbf_payment_bindings' => $paymentBindings,
             ]);
             $paymentJobs = bbf_delivery_prepare_jobs($form, $submission, $storeConfig, $paymentTemplateData);
             $paymentOutboxPath = bbf_outbox_path($storeConfig, $formId, $submissionId);

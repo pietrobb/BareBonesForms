@@ -368,16 +368,19 @@ try {
     inbox_check($preparedRetry['code'] === 200, 'retry-safe purge fixture has persisted metadata');
     $reviewPath = "$root/submissions/.review/alpha.json"; $reviewBackup = $reviewPath . '.saved';
     rename($reviewPath, $reviewBackup); mkdir($reviewPath, 0700);
+    $primaryBeforeFailedPurge = file_get_contents("$root/submissions/alpha/bbf_one.json");
     $failedPurge = $mutate('delete', $reviewer, ['form' => 'alpha', 'id' => 'bbf_one']);
-    inbox_check($failedPurge['code'] === 503 && !is_file("$root/submissions/alpha/bbf_one.json"),
-        'primary deletion reports failure when its metadata tombstone cannot persist');
+    inbox_check($failedPurge['code'] === 503 && is_file("$root/submissions/alpha/bbf_one.json")
+        && file_get_contents("$root/submissions/alpha/bbf_one.json") === $primaryBeforeFailedPurge,
+        '6129-F04 failed metadata tombstone preserves the exact primary response');
     rmdir($reviewPath); rename($reviewBackup, $reviewPath);
     $retriedPurge = $mutate('delete', $reviewer, ['form' => 'alpha', 'id' => 'bbf_one']);
     $retriedSidecar = json_decode(file_get_contents($reviewPath), true, 512, JSON_THROW_ON_ERROR);
-    inbox_check($retriedPurge['code'] === 404 && !isset($retriedSidecar['records']['bbf_one'])
+    inbox_check($retriedPurge['code'] === 200 && !is_file("$root/submissions/alpha/bbf_one.json")
+        && !isset($retriedSidecar['records']['bbf_one'])
         && ($retriedSidecar['deleted']['bbf_one'] ?? false) === true
         && !str_contains(json_encode($retriedSidecar, JSON_THROW_ON_ERROR), 'retry-purge-secret'),
-        'delete retry purges residual metadata after the primary is already absent');
+        '6129-F04 delete retry atomically removes the retained primary and private review metadata');
     $audit = file_get_contents("$root/logs/access-audit.php");
     inbox_check(str_contains($audit, 'viewer_review_update') && str_contains($audit, 'viewer_review_filter_save')
         && !str_contains($audit, 'private-note'), 'review API mutations are audited without notes or tags');

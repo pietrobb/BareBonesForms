@@ -122,6 +122,21 @@ foreach (['file', 'sqlite', 'sqlite_streaming_control'] as $mode) { $storage = $
             preg_match('/const TOKEN = ("[^"]+");/', $login['body'], $csrf);
             if (!isset($cookie[1], $csrf[1])) throw new RuntimeException('Session/CSRF login failed');
             $session = ['cookie' => $cookie[1], 'headers' => ['X-BBF-CSRF' => json_decode($csrf[1], true), 'Content-Type' => 'application/json']];
+            $reviewFailurePath = "$root/submissions/alpha/bbf_review_failure.json";
+            $reviewFailureBytes = json_encode(['id' => 'bbf_review_failure', 'form' => 'alpha', 'data' => ['private' => 'response'],
+                'meta' => ['submitted' => $stamp]], JSON_THROW_ON_ERROR);
+            file_put_contents($reviewFailurePath, $reviewFailureBytes);
+            mkdir("$root/submissions/.review", 0700, true);
+            $corruptReviewBytes = '{"private-note":"must survive failed delete"';
+            file_put_contents("$root/submissions/.review/alpha.json", $corruptReviewBytes);
+            $reviewFailure = rc_http('viewer.php?action=delete', $session + [
+                'raw' => json_encode(['form' => 'alpha', 'id' => 'bbf_review_failure'], JSON_THROW_ON_ERROR),
+            ]);
+            rc_check($reviewFailure['code'] === 503 && is_file($reviewFailurePath)
+                && file_get_contents($reviewFailurePath) === $reviewFailureBytes
+                && file_get_contents("$root/submissions/.review/alpha.json") === $corruptReviewBytes,
+                '6129-F04 viewer review-storage failure preserves the primary response and exact private review bytes');
+            unlink("$root/submissions/.review/alpha.json");
             // Controlled writer uses the real stable lock and checked publication primitives.
             file_put_contents("$root/writer.php", <<<'PHP'
 <?php

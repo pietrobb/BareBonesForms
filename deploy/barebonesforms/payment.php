@@ -217,6 +217,12 @@ if (in_array($event['type'], $paymentEventTypes, true)) {
         echo json_encode(['received' => false, 'error' => 'delivery remains unsettled']);
         exit;
     }
+    $finalized = bbf_delivery_finalize_submission($outboxPath, $submission);
+    if (!($finalized['ok'] ?? false)) {
+        http_response_code(503);
+        echo json_encode(['received' => false, 'error' => 'delivery remains unsettled']);
+        exit;
+    }
     $leases = bbf_outbox_expire_leases($outboxPath, (int)($config['delivery']['lease_seconds'] ?? 300));
     if (!($leases['ok'] ?? false)) {
         http_response_code(503);

@@ -323,54 +323,49 @@ function deleteSubs(string $formId, array $subIds, array $config): array { $conf
     }
     if ($ids === []) return ['ok' => true, 'deleted' => 0];
 
-    $pdo = null;
-    $stmt = null;
-    if ($s !== 'file') {
-        $pdo = getDbConnection($config);
-        if (!$pdo) return ['ok' => false, 'reason' => 'primary', 'deleted' => 0];
-        $stmt = $pdo->prepare("DELETE FROM bbf_submissions WHERE id = ? AND " . bbf_auth_form_sql($pdo));
+    try {
+        $reviews = bbf_review_records($config, $formId, array_values($ids));
+    } catch (Throwable $error) {
+        error_log('BareBonesForms viewer review preflight: ' . $error->getMessage());
+        return ['ok' => false, 'reason' => 'review', 'deleted' => 0];
     }
+    foreach ($ids as $id) if (!isset($reviews[$id])) $reviews[$id] = null;
     $deletions = [];
-    $deletedIds = [];
-    $purgeIds = [];
     foreach ($ids as $subId) {
         $path = bbf_outbox_existing_path($config, $formId, $subId);
         if ($s === 'file') {
             $file = ($config['submissions_dir'] ?? __DIR__ . '/submissions') . "/$formId/$subId.json";
-            $delete = static function () use ($file, $subId, &$deletedIds, &$purgeIds): array {
-                $deleted = false; $absent = false;
-                $locked = bbf_storage_locked($file, static function () use ($file, &$deleted, &$absent): bool {
+            $deletePrimary = static function () use ($file): array {
+                $deleted = false;
+                $locked = bbf_storage_locked($file, static function () use ($file, &$deleted): bool {
                     clearstatcache(true, $file);
-                    if (!is_file($file)) { $absent = true; return true; }
+                    if (!is_file($file)) return true;
                     $deleted = @unlink($file);
                     return $deleted;
                 });
-                if ($locked && ($deleted || $absent)) $purgeIds[] = $subId;
-                if ($locked && $deleted) $deletedIds[] = $subId;
                 return ['ok' => $locked, 'deleted' => $locked && $deleted];
             };
         } else {
-            $delete = static function () use ($stmt, $subId, $formId, &$deletedIds, &$purgeIds): array {
+            $deletePrimary = static function (?PDO $pdo) use ($subId, $formId): array {
                 try {
+                    if (!$pdo) return ['ok' => false, 'deleted' => false, 'reason' => 'primary'];
+                    $stmt = $pdo->prepare("DELETE FROM bbf_submissions WHERE id = ? AND " . bbf_auth_form_sql($pdo));
                     $stmt->execute([$subId, $formId]);
-                    $deleted = $stmt->rowCount() > 0;
-                    $purgeIds[] = $subId;
-                    if ($deleted) $deletedIds[] = $subId;
-                    return ['ok' => true, 'deleted' => $deleted];
+                    return ['ok' => true, 'deleted' => $stmt->rowCount() > 0];
                 } catch (Throwable $error) {
                     error_log('BareBonesForms viewer delete: ' . $error->getMessage());
-                    return ['ok' => false, 'deleted' => false];
+                    return ['ok' => false, 'deleted' => false, 'reason' => 'primary'];
                 }
             };
         }
+        $delete = static function () use ($config, $formId, $subId, $reviews, $deletePrimary): array {
+            $coordinated = bbf_review_delete_records_if($config, $formId, [$subId => $reviews[$subId]], $deletePrimary);
+            if (isset($coordinated['primary']) && is_array($coordinated['primary'])) return $coordinated['primary'];
+            return ['ok' => false, 'deleted' => false, 'reason' => $coordinated['reason'] ?? 'review'];
+        };
         $deletions[] = ['path' => $path, 'delete' => $delete];
     }
-    $result = bbf_outbox_delete_submissions($deletions);
-    if ($purgeIds !== []) {
-        $purge = bbf_review_delete_records($config, $formId, array_values(array_unique($purgeIds)));
-        if (!($purge['ok'] ?? false)) return ['ok' => false, 'reason' => 'review', 'deleted' => count($deletedIds)];
-    }
-    return $result;
+    return bbf_outbox_delete_submissions($deletions);
 }
 
 function deleteSub(string $formId, string $subId, array $config): array {

@@ -342,6 +342,112 @@ function bbf_delivery_payload_hash(array $payload): string {
         JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 }
 
+function bbf_delivery_payment_template_bindings(): array {
+    $nonce = bin2hex(random_bytes(16));
+    $bindings = [];
+    foreach (['_payment_status', '_payment_id', '_payment_amount', '_payment_currency'] as $name) {
+        $bindings[$name] = '[[BBF_PAYMENT_' . $nonce . '_' . strtoupper(substr($name, 9)) . ']]';
+    }
+    return $bindings;
+}
+
+function bbf_delivery_finalize_submission(string $path, array $submission, ?int $now = null): array {
+    if (!is_array($submission['meta'] ?? null)
+        || ($submission['meta']['payment_status'] ?? null) !== 'paid') return ['ok' => false, 'reason' => 'payment'];
+    $now = bbf_outbox_now($now);
+    return bbf_outbox_transaction($path, static function($ledger) use ($submission, $now): array {
+        if (!is_array($ledger) || !is_array($ledger['jobs'] ?? null) || ($ledger['deleted'] ?? false) === true) {
+            return ['result' => ['ok' => false, 'reason' => 'missing']];
+        }
+        $meta = $submission['meta'];
+        $bindingValues = [
+            '_payment_status' => 'paid',
+            '_payment_id' => (string)($meta['payment_id'] ?? ''),
+            '_payment_amount' => isset($meta['payment_amount_minor'], $meta['payment_minor_units'])
+                ? bbfPaymentFormatMinor((int)$meta['payment_amount_minor'], (int)$meta['payment_minor_units'])
+                : (string)($meta['payment_amount'] ?? ''),
+            '_payment_currency' => strtoupper((string)($meta['payment_currency'] ?? '')),
+        ];
+        $finalized = ($ledger['submission_finalized'] ?? false) === true;
+        foreach ($ledger['jobs'] as $key => &$job) {
+            if (!is_array($job) || !is_array($job['payload'] ?? null)) {
+                unset($job);
+                return ['result' => ['ok' => false, 'reason' => 'payload']];
+            }
+            $hasSubmission = array_key_exists('submission', $job['payload']);
+            $hasBindings = array_key_exists('_payment_bindings', $job['payload']);
+            $legacyEmail = !$finalized && !$hasSubmission && !$hasBindings
+                && in_array((string)($job['type'] ?? ''), ['email', 'smtp'], true);
+            if (!$hasSubmission && !$hasBindings && !$legacyEmail) continue;
+            try { $payloadHash = bbf_delivery_payload_hash($job['payload']); }
+            catch (Throwable $error) {
+                unset($job);
+                return ['result' => ['ok' => false, 'reason' => 'payload']];
+            }
+            if (!preg_match('/\A[a-f0-9]{64}\z/', (string)($job['payload_hash'] ?? ''))
+                || !hash_equals((string)$job['payload_hash'], $payloadHash)) {
+                unset($job);
+                return ['result' => ['ok' => false, 'reason' => 'payload']];
+            }
+            if ($finalized) {
+                if ($hasBindings || ($hasSubmission && $job['payload']['submission'] !== $submission)) {
+                    unset($job);
+                    return ['result' => ['ok' => false, 'reason' => 'conflict']];
+                }
+                continue;
+            }
+            if (($job['state'] ?? null) !== 'pending' || (int)($job['attempts'] ?? 0) !== 0) {
+                unset($job);
+                return ['result' => ['ok' => false, 'reason' => 'started']];
+            }
+            if ($hasSubmission) $job['payload']['submission'] = $submission;
+            if ($hasBindings) {
+                $bindings = $job['payload']['_payment_bindings'];
+                if (!is_array($bindings) || $bindings === []
+                    || array_diff(array_keys($bindings), array_keys($bindingValues))) {
+                    unset($job);
+                    return ['result' => ['ok' => false, 'reason' => 'payload']];
+                }
+                $tokens = []; $values = [];
+                foreach ($bindings as $name => $token) {
+                    if (!is_string($token) || !preg_match('/\A\[\[BBF_PAYMENT_[a-f0-9]{32}_[A-Z_]+\]\]\z/D', $token)) {
+                        unset($job);
+                        return ['result' => ['ok' => false, 'reason' => 'payload']];
+                    }
+                    $tokens[] = $token; $values[] = $bindingValues[$name];
+                }
+                unset($job['payload']['_payment_bindings']);
+                foreach (['to', 'subject', 'body', 'reply_to'] as $field) {
+                    if (isset($job['payload'][$field]) && is_string($job['payload'][$field])) {
+                        $job['payload'][$field] = str_replace($tokens, $values, $job['payload'][$field]);
+                    }
+                }
+            }
+            if ($legacyEmail) {
+                $checkoutId = (string)($meta['payment_checkout_session_id'] ?? '');
+                $paymentId = (string)($meta['payment_id'] ?? '');
+                if ($checkoutId === '' || $paymentId === '') {
+                    unset($job);
+                    return ['result' => ['ok' => false, 'reason' => 'payment']];
+                }
+                foreach (['to', 'subject', 'body', 'reply_to'] as $field) {
+                    if (isset($job['payload'][$field]) && is_string($job['payload'][$field])) {
+                        $job['payload'][$field] = str_replace($checkoutId, $paymentId, $job['payload'][$field]);
+                    }
+                }
+            }
+            $job['payload_hash'] = bbf_delivery_payload_hash($job['payload']);
+            $job['updated_at'] = $now;
+            $ledger['jobs'][$key] = $job;
+        }
+        unset($job);
+        if ($finalized) return ['result' => ['ok' => true, 'changed' => false, 'ledger' => $ledger]];
+        $ledger['submission_finalized'] = true;
+        $ledger['updated_at'] = $now;
+        return ['ledger' => $ledger, 'result' => ['ok' => true, 'changed' => true, 'ledger' => $ledger]];
+    });
+}
+
 function bbf_delivery_template_data(array $form, array $submission, array $templateData = []): array {
     $data = is_array($submission['data'] ?? null) ? $submission['data'] : [];
     $templateData = array_replace($data, $templateData);
@@ -452,6 +558,9 @@ function bbf_delivery_runtime_action(array $payload, array $config): array {
 
 /** Build the complete immutable execution plan before any delivery effect runs. */
 function bbf_delivery_prepare_jobs(array $form, array $submission, array $config, array $templateData = []): array {
+    $paymentBindings = is_array($templateData['_bbf_payment_bindings'] ?? null)
+        ? $templateData['_bbf_payment_bindings'] : [];
+    unset($templateData['_bbf_payment_bindings']);
     $formId = (string)($submission['form'] ?? $form['id'] ?? 'form');
     $submissionId = (string)($submission['id'] ?? 'submission');
     $prefix = $formId . ':' . $submissionId;
@@ -490,6 +599,7 @@ function bbf_delivery_prepare_jobs(array $form, array $submission, array $config
             'body' => renderTemplate($templatesDir . '/' . basename((string)($email['template'] ?? 'confirm.html')), $templateVars),
             'reply_to' => isset($email['reply_to']) ? interpolate((string)$email['reply_to'], $data) : '',
         ];
+        if ($paymentBindings !== []) $payload['_payment_bindings'] = $paymentBindings;
         $add('confirm', 'email', $payload, 'respondent-email', false);
     }
 
@@ -507,6 +617,7 @@ function bbf_delivery_prepare_jobs(array $form, array $submission, array $config
             'body' => renderTemplate($templatesDir . '/' . basename((string)($email['template'] ?? 'notify.html')), $templateVars),
             'reply_to' => isset($email['reply_to']) ? interpolate((string)$email['reply_to'], $data) : '',
         ];
+        if ($paymentBindings !== []) $payload['_payment_bindings'] = $paymentBindings;
         $add('notify', 'email', $payload, 'owner-email', false);
     }
 

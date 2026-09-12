@@ -256,6 +256,16 @@ $review6129Inventory = [
         'positive' => [['tests/review-storage-test.php', 'historical multiline/quoted values retained and padded']],
         'failure' => [['tests/review-storage-test.php', '6129-F01 unterminated historical CSV'], ['tests/review-storage-test.php', '6129-F01 balanced quotes with trailing non-delimiter text'], ['tests/review-backup-test.php', '6129-F01 strict backup rejects a balanced but illegally quoted CSV header'], ['tests/review-retention-test.php', '6129-F01 fixture proves permissive CSV parsing swallows'], ['tests/review-retention-test.php', '6129-F01 malformed CSV blocks retention']],
     ],
+    '6129-F02 finalized paid delivery payload' => [
+        'fixes' => [['bbf_functions.php', 'function bbf_delivery_finalize_submission'], ['payment.php', 'bbf_delivery_finalize_submission($outboxPath, $submission)']],
+        'positive' => [['tests/review-payment-test.php', '6129-F02 paid callback delivers the durable paid status and payment identity'], ['tests/review-payment-test.php', '6129-F02 paid finalization atomically refreshes email webhook and action payloads and hashes'], ['tests/review-payment-test.php', '6129-F02 pre-upgrade pending email replaces the persisted Checkout ID before delivery']],
+        'failure' => [['tests/review-payment-test.php', '6129-F02 paid payload persistence failure preserves the exact pending plan before any effect'], ['tests/review-payment-test.php', '6129-F02 tampered pending payload cannot be legitimized during paid finalization']],
+    ],
+    '6129-F04 coordinated viewer review deletion' => [
+        'fixes' => [['viewer.php', 'bbf_review_records($config, $formId, array_values($ids))'], ['viewer.php', 'bbf_review_delete_records_if($config, $formId']],
+        'positive' => [['tests/review-inbox-test.php', '6129-F04 delete retry atomically removes the retained primary and private review metadata']],
+        'failure' => [['tests/review-read-consistency-test.php', '6129-F04 viewer review-storage failure preserves the primary response'], ['tests/review-inbox-test.php', '6129-F04 failed metadata tombstone preserves the exact primary response']],
+    ],
     '6129-F05 CSV backup restore chronological latest order' => [
         'fixes' => [['bbf_backup.php', "'record_order' => \$recordOrder"], ['bbf_backup.php', 'array_reverse(bbf_backup_record_order($payload))']],
         'positive' => [['tests/review-backup-test.php', '6129-F05 CSV restore preserves chronological latest N semantics'], ['tests/review-backup-test.php', '6129-F05 legacy bundle without record_order derives chronological latest N semantics']],
@@ -279,7 +289,7 @@ foreach ($review6129Inventory as $finding => $evidenceByRole) {
         }
     }
 }
-acceptance_check(count($review6129Inventory) === 3, 'review 6129 G1 inventory maps findings F01, F05 and F06');
+acceptance_check(count($review6129Inventory) === 5, 'review 6129 G1-G2 inventory maps findings F01, F02, F04, F05 and F06');
 
 $ciSource = acceptance_source($root, 'tests/review-ci-test.php');
 foreach (array_keys($sources) as $relative) {

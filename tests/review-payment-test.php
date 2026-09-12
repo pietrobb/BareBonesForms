@@ -243,6 +243,53 @@ echo json_encode($result, JSON_THROW_ON_ERROR);
 exit(($result['ok'] ?? false) ? 0 : 1);
 PHP);
 
+    $finalizePlanPath = bbf_outbox_path(['submissions_dir' => "$root/submissions"], 'finalize', 'bbf_finalize');
+    file_put_contents("$root/templates/payment-finalize.html",
+        '{{_payment_status}}|{{_payment_id}}|{{_payment_amount}}|{{_payment_currency}}');
+    $finalizeSubmission = ['id' => 'bbf_finalize', 'form' => 'finalize', 'data' => ['answer' => 'fixture'],
+        'meta' => ['payment_status' => 'pending']];
+    $finalizeForm = ['id' => 'finalize', 'fields' => [], 'on_submit' => [
+        'confirm_email' => ['to' => 'fixture@example.test', 'template' => 'payment-finalize.html'],
+        'webhooks' => ['https://webhook.invalid/fixture'], 'actions' => [['type' => 'payment-probe']],
+    ]];
+    $finalizeBindings = bbf_delivery_payment_template_bindings();
+    $finalizeJobs = bbf_delivery_prepare_jobs($finalizeForm, $finalizeSubmission, $fixtureConfig,
+        $finalizeBindings + ['_bbf_payment_bindings' => $finalizeBindings]);
+    bbf_outbox_init($finalizePlanPath, 'finalize:bbf_finalize', $finalizeJobs, 3, 10);
+    $finalizeSubmission['meta'] = ['payment_status' => 'paid', 'payment_id' => 'pi_finalize',
+        'payment_amount_minor' => 1250, 'payment_minor_units' => 2, 'payment_currency' => 'eur'];
+    $finalizeResult = bbf_delivery_finalize_submission($finalizePlanPath, $finalizeSubmission, 11);
+    $finalizedJobs = bbf_outbox_read($finalizePlanPath)['ledger']['jobs'] ?? [];
+    $finalizedPayloads = array_column(array_values($finalizedJobs), 'payload');
+    payment_check(($finalizeResult['ok'] ?? false) && count($finalizedPayloads) === 3
+        && count(array_filter($finalizedPayloads, static fn(array $payload): bool =>
+            ($payload['submission']['meta'] ?? null) === $finalizeSubmission['meta'])) === 2
+        && ($finalizedJobs['confirm']['payload']['body'] ?? null) === 'paid|pi_finalize|12.50|EUR'
+        && !isset($finalizedJobs['confirm']['payload']['_payment_bindings'])
+        && count(array_filter($finalizedJobs, static fn(array $job): bool =>
+            hash_equals($job['payload_hash'], bbf_delivery_payload_hash($job['payload'])))) === 3,
+        '6129-F02 paid finalization atomically refreshes email webhook and action payloads and hashes');
+    $legacyPlanPath = bbf_outbox_path(['submissions_dir' => "$root/submissions"], 'legacy-finalize', 'bbf_legacy');
+    $legacyPending = ['id' => 'bbf_legacy', 'form' => 'legacy-finalize', 'data' => [], 'meta' => ['payment_status' => 'pending']];
+    $legacyForm = ['id' => 'legacy-finalize', 'fields' => [], 'on_submit' => [
+        'confirm_email' => ['to' => 'fixture@example.test', 'template' => 'payment-finalize.html'],
+    ]];
+    $legacyJobs = bbf_delivery_prepare_jobs($legacyForm, $legacyPending, $fixtureConfig, [
+        '_payment_status' => 'paid', '_payment_id' => 'cs_legacy',
+        '_payment_amount' => '12.50', '_payment_currency' => 'EUR',
+    ]);
+    bbf_outbox_init($legacyPlanPath, 'legacy-finalize:bbf_legacy', $legacyJobs, 3, 10);
+    $legacyPaid = $legacyPending;
+    $legacyPaid['meta'] = ['payment_status' => 'paid', 'payment_checkout_session_id' => 'cs_legacy',
+        'payment_id' => 'pi_legacy', 'payment_amount_minor' => 1250, 'payment_minor_units' => 2,
+        'payment_currency' => 'eur'];
+    $legacyFinalized = bbf_delivery_finalize_submission($legacyPlanPath, $legacyPaid, 11);
+    $legacyFinalizedJob = bbf_outbox_read($legacyPlanPath)['ledger']['jobs']['confirm'] ?? [];
+    payment_check(($legacyFinalized['ok'] ?? false)
+        && ($legacyFinalizedJob['payload']['body'] ?? null) === 'paid|pi_legacy|12.50|EUR'
+        && hash_equals($legacyFinalizedJob['payload_hash'], bbf_delivery_payload_hash($legacyFinalizedJob['payload'])),
+        '6129-F02 pre-upgrade pending email replaces the persisted Checkout ID before delivery');
+
     $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
     $base = 'http://127.0.0.1:' . $server['port'] . '/';
     $response = bbf_test_http($server, $base . 'submit.php?form=demo-order', $validData);
@@ -275,6 +322,27 @@ PHP);
     payment_check(is_array($submittedLedger) && ($submittedLedger['context'] ?? null) === ['storage' => 'file']
         && array_keys($submittedLedger['jobs'] ?? []) === ['action:0'],
         'real payment submit persists its complete immutable delivery plan and original backend before redirect');
+    $finalizeFaultPath = "$root/submissions/.delivery/demo-order/finalize-fault.json";
+    file_put_contents($finalizeFaultPath, $submittedOutboxRaw);
+    $finalizeFaultBefore = file_get_contents($finalizeFaultPath);
+    $paidFixture = $stored;
+    $paidFixture['meta']['payment_status'] = 'paid';
+    $paidFixture['meta']['payment_id'] = 'pi_fixture';
+    $GLOBALS['_bbf_outbox_write'] = static fn() => false;
+    $finalizeFault = bbf_delivery_finalize_submission($finalizeFaultPath, $paidFixture);
+    unset($GLOBALS['_bbf_outbox_write']);
+    payment_check(($finalizeFault['reason'] ?? null) === 'persist'
+        && file_get_contents($finalizeFaultPath) === $finalizeFaultBefore,
+        '6129-F02 paid payload persistence failure preserves the exact pending plan before any effect');
+    $tamperedPlanPath = "$root/submissions/.delivery/demo-order/finalize-tampered.json";
+    $tamperedPlan = $submittedLedger;
+    $tamperedPlan['jobs']['action:0']['payload']['action_type'] = 'tampered-action';
+    file_put_contents($tamperedPlanPath, bbf_storage_json($tamperedPlan));
+    $tamperedPlanBytes = file_get_contents($tamperedPlanPath);
+    $tamperedFinalize = bbf_delivery_finalize_submission($tamperedPlanPath, $paidFixture);
+    payment_check(($tamperedFinalize['reason'] ?? null) === 'payload'
+        && file_get_contents($tamperedPlanPath) === $tamperedPlanBytes,
+        '6129-F02 tampered pending payload cannot be legitimized during paid finalization');
 
     $baseSession = ['id' => 'cs_trusted_fixture', 'payment_intent' => 'pi_fixture', 'amount_total' => 1125,
         'currency' => 'eur', 'payment_status' => 'paid',
@@ -317,6 +385,11 @@ PHP);
     payment_check($submitPlanCallback['code'] === 200 && is_file("$root/data/action.json")
         && (bbf_outbox_settlement($outboxPath)['settled'] ?? false),
         'real submit plan settles after the current form becomes malformed without manual ledger seeding');
+    $paidPlanAction = is_file("$root/data/action.json")
+        ? json_decode(file_get_contents("$root/data/action.json"), true) : null;
+    payment_check(($paidPlanAction['meta']['payment_status'] ?? null) === 'paid'
+        && ($paidPlanAction['meta']['payment_id'] ?? null) === 'pi_fixture',
+        '6129-F02 paid callback delivers the durable paid status and payment identity from the finalized plan');
     file_put_contents("$root/forms/demo-order.json", json_encode($demo, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     if ($recordPath) file_put_contents($recordPath, json_encode($pending, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     file_put_contents($outboxPath, $submittedOutboxRaw);
