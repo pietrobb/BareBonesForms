@@ -93,6 +93,15 @@ repeat_check('schema publishes repeatable controls and bounds', function () {
     repeat_same(0, $properties['min_items']['minimum']);
     repeat_same(100, $properties['max_items']['maximum']);
 });
+repeat_check('6129-F13 submission and scoped presentation preserve repeatable identity', function () use ($group) {
+    $definition = ['id' => 'orders', 'name' => 'Orders', 'fields' => [$group]];
+    $metadata = bbf_version_submission_metadata($definition, 'orders');
+    repeat_same(true, $metadata['form_definition']['fields'][0]['repeatable'] ?? null);
+    repeat_same('Line items', $metadata['form_definition']['fields'][0]['title'] ?? null);
+    $scoped = bbf_auth_presentation($metadata['form_definition'], ['admin' => false]);
+    repeat_same(true, $scoped['fields'][0]['repeatable'] ?? null);
+    repeat_same('Line items', $scoped['fields'][0]['title'] ?? null);
+});
 repeat_check('flattening preserves repeatable group as one data field', function () use ($fields) {
     repeat_same(['items', 'approved'], array_column(flattenFields($fields), 'name'));
 });

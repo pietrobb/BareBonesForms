@@ -18,7 +18,9 @@ const script = source.slice(source.indexOf('<script>') + 8, source.lastIndexOf('
     .replace(/<\?= json_encode\(\$siteName\) \?>/g, '"Test Viewer"')
     .replace(/<\?= json_encode\(\$viewerLang\) \?>/g, '"en"')
     .replace(/\}\)\(\);\s*$/, `globalThis.viewer = {
-        state, api, showDashboard, selectForm, openDetail, loadPage, restoreRoute, getTableColumns
+        state, api, showDashboard, selectForm, openDetail, loadPage, restoreRoute,
+        buildLabelMap, getPreviewKeys, getCardSections, getTableColumns,
+        renderCards, renderCardsGrid, renderTable, valueText
     }; })();`);
 
 function classList(...initial) {
@@ -557,6 +559,49 @@ for (const surface of ['submission grid card', 'submission table row']) {
         });
     }
 }
+
+test('6129-F13 repeatable answers remain visible and labelled across viewer previews including legacy snapshots', async () => {
+    const v = await createViewer();
+    const definition = { fields: [{
+        name: 'items', type: 'group', title: 'Line items', repeatable: true,
+        fields: [{ name: 'sku', type: 'text', label: 'SKU' }],
+    }] };
+    const rows = [{ sku: 'A-1' }, { sku: 'B-2' }];
+    const data = { items: rows };
+    const legacyDefinition = structuredClone(definition);
+    delete legacyDefinition.fields[0].repeatable;
+    const submission = { id: 'bbf_repeatable', data, meta: { form_definition: legacyDefinition } };
+
+    assert.deepEqual(Array.from(v.getPreviewKeys(definition, data)), ['items']);
+    assert.deepEqual(Array.from(v.getPreviewKeys(legacyDefinition, data)), ['items']);
+    assert.equal(v.buildLabelMap(definition).items, 'Line items');
+    const sections = v.getCardSections(definition, data);
+    assert.equal(sections.length, 1);
+    assert.equal(sections[0].fields[0].key, 'items');
+    assert.equal(sections[0].fields[0].value, rows);
+    assert.match(v.valueText(rows), /A-1[\s\S]*B-2/);
+
+    assert.match(v.renderCards([submission]), /Line items:[\s\S]*A-1/);
+    v.state.formDef = null;
+    v.state.subs = [submission];
+    assert.match(v.renderCardsGrid(), /Line items:[\s\S]*A-1/);
+    const table = v.renderTable();
+    assert.match(table, /<th>Line items<\/th>/);
+    assert.match(table, /A-1/);
+    assert.equal((table.match(/<th>SKU<\/th>/g) || []).length, 0);
+});
+
+test('6129-F13 static groups retain flattened child previews', async () => {
+    const v = await createViewer();
+    const definition = { fields: [{
+        name: 'contact', type: 'group', title: 'Contact',
+        fields: [{ name: 'email', type: 'email', label: 'Email' }],
+    }] };
+    const data = { email: 'person@example.test' };
+    assert.deepEqual(Array.from(v.getPreviewKeys(definition, data)), ['email']);
+    assert.deepEqual(Array.from(v.getTableColumns(definition, []), column => column.key), ['email']);
+    assert.equal(v.getCardSections(definition, data)[0].fields[0].key, 'email');
+});
 
 test('table columns retain renamed and deleted historical fields from version snapshots', async () => {
     const v = await createViewer();

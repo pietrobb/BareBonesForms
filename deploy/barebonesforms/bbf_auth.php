@@ -253,7 +253,8 @@ function bbf_auth_presentation(?array $def, ?array $principal): ?array {
         foreach ($fields as $f) {
             if (!is_array($f)) continue;
             $safe = [];
-            foreach (['name', 'label', 'type'] as $k) if (is_string($f[$k] ?? null)) $safe[$k] = $f[$k];
+            foreach (['name', 'label', 'type', 'title'] as $k) if (is_string($f[$k] ?? null)) $safe[$k] = $f[$k];
+            if (is_bool($f['repeatable'] ?? null)) $safe['repeatable'] = $f['repeatable'];
             if (is_array($f['fields'] ?? null)) $safe['fields'] = $walk($f['fields']);
             $out[] = $safe;
         }

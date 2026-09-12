@@ -227,8 +227,11 @@
                     "description": "Custom error message when pattern validation fails."
                 },
                 "value": {
-                    "type": "string",
-                    "description": "Default/preset value."
+                    "oneOf": [
+                        { "type": "string" },
+                        { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+                    ],
+                    "description": "Default/preset value. Checkbox fields use an array; other fields use a string."
                 },
                 "rows": {
                     "type": "integer",
@@ -406,6 +409,20 @@
             },
             "additionalProperties": false,
             "allOf": [
+                {
+                    "if": {
+                        "properties": { "type": { "const": "checkbox" } },
+                        "required": ["type"]
+                    },
+                    "then": {
+                        "properties": {
+                            "value": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+                        }
+                    },
+                    "else": {
+                        "properties": { "value": { "type": "string" } }
+                    }
+                },
                 {
                     "if": {
                         "properties": { "type": { "enum": ["select", "radio", "checkbox"] } },

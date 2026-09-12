@@ -311,10 +311,20 @@ $review6129Inventory = [
         'positive' => [['tests/review-renderer.test.js', '6129-F12 delayed reset cannot reveal hideOnSuccess fields']],
         'failure' => [['tests/review-renderer.test.js', '6129-F12 reset callback preserves hidden success lifecycle']],
     ],
+    '6129-F13 repeatable viewer previews and columns' => [
+        'fixes' => [['viewer.php', 'function isRepeatableGroup'], ['bbf_versions.php', "is_bool(\$field['repeatable']"], ['bbf_auth.php', "is_bool(\$f['repeatable']"]],
+        'positive' => [['tests/viewer-navigation.test.js', '6129-F13 repeatable answers remain visible and labelled across viewer previews including legacy snapshots'], ['tests/review-repeatable-test.php', '6129-F13 submission and scoped presentation preserve repeatable identity']],
+        'failure' => [['tests/viewer-navigation.test.js', '6129-F13 static groups retain flattened child previews']],
+    ],
     '6129-F14 finite numbers and bounded integer ratings' => [
         'fixes' => [['bbf_functions.php', '!is_finite($number)'], ['bbf_functions.php', '$field[\'max\'] ?? 5']],
         'positive' => [['tests/review-validation-test.php', '6129-F14 rating accepts integer in implicit one-to-five range'], ['tests/review-validation-test.php', '6129-F14 rating honors an explicit renderer maximum']],
         'failure' => [['tests/review-validation-test.php', '6129-F14 number rejects a non-finite numeric literal'], ['tests/review-validation-test.php', '6129-F14 rating rejects invalid value']],
+    ],
+    '6129-F15 typed JSON Schema field defaults' => [
+        'fixes' => [['forms/form.schema.json', 'Checkbox fields use an array; other fields use a string.'], ['forms/form.schema.json', '"const": "checkbox"']],
+        'positive' => [['tests/review-acceptance-test.php', 'checkbox array default accepted']],
+        'failure' => [['tests/review-acceptance-test.php', 'invalid field default accepted']],
     ],
 ];
 foreach ($review6129Inventory as $finding => $evidenceByRole) {
@@ -329,7 +339,7 @@ foreach ($review6129Inventory as $finding => $evidenceByRole) {
         }
     }
 }
-acceptance_check(count($review6129Inventory) === 13, 'review 6129 G1-G5 inventory maps findings F01 through F12 and F14');
+acceptance_check(count($review6129Inventory) === 15, 'review 6129 inventory maps all findings F01 through F15');
 
 $ciSource = acceptance_source($root, 'tests/review-ci-test.php');
 foreach (array_keys($sources) as $relative) {
@@ -398,6 +408,22 @@ product_field = next(field for field in string_options_form['fields'] if field.g
 product_field['options'] = ['business_cards', 'flyers']
 if not validator.is_valid(string_options_form):
     failures.append('runtime-supported historical string options rejected')
+checkbox_default_form = {
+    'schema_version': 1,
+    'id': 'checkbox-default',
+    'fields': [{'name': 'choices', 'type': 'checkbox', 'options': ['a', 'b'], 'value': ['a', 'b']}],
+}
+if not validator.is_valid(checkbox_default_form):
+    failures.append('checkbox array default accepted by runtime but rejected by schema')
+invalid_field_defaults = {
+    'checkbox scalar': {**checkbox_default_form, 'fields': [{**checkbox_default_form['fields'][0], 'value': 'a'}]},
+    'checkbox duplicates': {**checkbox_default_form, 'fields': [{**checkbox_default_form['fields'][0], 'value': ['a', 'a']}]},
+    'radio array': {**checkbox_default_form, 'fields': [{'name': 'choice', 'type': 'radio', 'options': ['a'], 'value': ['a']}]},
+    'implicit text array': {**checkbox_default_form, 'fields': [{'name': 'note', 'value': ['a']}]},
+}
+for label, candidate in invalid_field_defaults.items():
+    if validator.is_valid(candidate):
+        failures.append(f'invalid field default accepted: {label}')
 payment_schema = schema['$defs']['on_submit']['properties']['payment']
 payment_validator = Draft202012Validator(payment_schema)
 fixed = {'provider': 'stripe', 'mode': 'fixed', 'pricing_version': 'fixed-v1', 'currency': 'eur', 'amount_minor': 4990}

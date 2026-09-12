@@ -1460,7 +1460,7 @@ function renderDashboard(data) {
             const time = relativeTime(sub.meta?.submitted);
             const formName = sub.form_name || sub.form;
             const formDef = sub.meta?.form_definition || state.dashDefs[sub.form] || null;
-            const labelMap = buildLabelMap(formDef);
+            const labelMap = buildLabelMap(formDef, sub.data || {});
             const previewKeys = getPreviewKeys(formDef, sub.data || {});
             const todayCls = isToday(sub.meta?.submitted) ? ' sub-card-today' : '';
             html += `<div class="sub-card${todayCls}" data-id="${esc(sub.id)}" data-form="${esc(sub.form)}" role="button" tabindex="0">`;
@@ -1612,11 +1612,22 @@ function renderMain() {
     panelMain.innerHTML = html;
 }
 
-function buildLabelMap(formDef) {
+function isRepeatableGroup(field, data) {
+    if (field?.type !== 'group') return false;
+    if (field.repeatable === true) return true;
+    const value = data?.[field.name];
+    return Array.isArray(value) && value.every(row => row !== null && typeof row === 'object' && !Array.isArray(row));
+}
+
+function buildLabelMap(formDef, data) {
     const map = {};
     if (!formDef?.fields) return map;
     function walk(fields) {
         for (const f of fields) {
+            if (isRepeatableGroup(f, data)) {
+                if (f.name) map[f.name] = f.label || f.title || f.name;
+                continue;
+            }
             if (f.type === 'group' && f.fields) { walk(f.fields); continue; }
             if (f.name && f.label) map[f.name] = f.label;
         }
@@ -1639,6 +1650,10 @@ function getPreviewKeys(formDef, data) {
     const allFields = [];
     function walk(fields) {
         for (const f of fields) {
+            if (isRepeatableGroup(f, data)) {
+                if (f.name && data[f.name] !== undefined && data[f.name] !== null && data[f.name] !== '') allFields.push(f);
+                continue;
+            }
             if (f.type === 'group' && f.fields) { walk(f.fields); continue; }
             if (['section', 'page_break', 'hidden'].includes(f.type)) continue;
             if (f.name && data[f.name] !== undefined && data[f.name] !== null && data[f.name] !== '') {
@@ -1677,7 +1692,7 @@ function renderCards(subs, opts) {
     return items.map(sub => {
         const time = relativeTime(sub.meta?.submitted);
         const formDef = sub.meta?.form_definition || state.formDef;
-        const labelMap = buildLabelMap(formDef);
+        const labelMap = buildLabelMap(formDef, sub.data || {});
         const previewKeys = getPreviewKeys(formDef, sub.data || {});
         const preview = previewKeys.map(k => [k, (sub.data || {})[k]]).filter(([,v]) => v !== undefined);
         const formTag = opts?.showForm ? `<span class="sub-card-form-tag">${esc(sub.form_name || sub.form)}</span>` : '';
@@ -1727,6 +1742,13 @@ function getCardSections(formDef, data) {
                 continue;
             }
             if (f.type === 'page_break' || f.type === 'hidden') continue;
+            if (isRepeatableGroup(f, data)) {
+                const val = data[f.name];
+                if (val === undefined || val === null || val === '') continue;
+                current.fields.push({ key: f.name, label: f.label || f.title || f.name, value: val });
+                totalFields++;
+                continue;
+            }
             if (f.type === 'group' && f.fields) { walk(f.fields); continue; }
             const val = data[f.name];
             if (val === undefined || val === null || val === '') continue;
@@ -1742,9 +1764,13 @@ function getCardSections(formDef, data) {
 // ─── Table columns from form definition ──────────────────────────
 function getTableColumns(formDef, subs) {
     const columns = new Map();
-    function addDefinition(definition) {
+    function addDefinition(definition, data) {
         function walk(fields) {
             for (const f of fields || []) {
+                if (isRepeatableGroup(f, data)) {
+                    if (f.name && !columns.has(f.name)) columns.set(f.name, f.label || f.title || f.name);
+                    continue;
+                }
                 if (f.type === 'group' && f.fields) { walk(f.fields); continue; }
                 if (['section', 'page_break', 'hidden'].includes(f.type)) continue;
                 if (f.name && !columns.has(f.name)) columns.set(f.name, f.label || f.name);
@@ -1753,7 +1779,7 @@ function getTableColumns(formDef, subs) {
         if (definition?.fields) walk(definition.fields);
     }
     addDefinition(formDef);
-    subs.forEach(sub => addDefinition(sub.meta?.form_definition));
+    subs.forEach(sub => addDefinition(sub.meta?.form_definition, sub.data || {}));
     subs.forEach(sub => Object.keys(sub.data || {}).forEach(key => {
         if (!columns.has(key)) columns.set(key, key);
     }));

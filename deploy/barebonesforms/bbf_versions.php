@@ -44,6 +44,7 @@ function bbf_version_presentation(array $definition): array {
             foreach (['label', 'type', 'title'] as $key) {
                 if (is_string($field[$key] ?? null)) $safe[$key] = $field[$key];
             }
+            if (is_bool($field['repeatable'] ?? null)) $safe['repeatable'] = $field['repeatable'];
             if (is_array($field['fields'] ?? null)) $safe['fields'] = $walk($field['fields']);
             $result[] = $safe;
         }
