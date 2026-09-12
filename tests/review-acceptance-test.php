@@ -281,6 +281,16 @@ $review6129Inventory = [
         'positive' => [['tests/review-retention-test.php', 'dry-run selects only strictly expired exact-form records'], ['tests/review-retention-test.php', '6129-F06 numeric-string archive preserves the exact response']],
         'failure' => [['tests/review-retention-test.php', '6129-F06 numeric-string submission ID survives capture maps']],
     ],
+    '6129-F07 draft Other companion privacy and restoration' => [
+        'fixes' => [['bbf_functions.php', 'Generated Other companion name collides with declared field'], ['bbf_drafts.php', 'isset($declared[$otherName])'], ['bbf.js', "body[field.name + '_other']"]],
+        'positive' => [['tests/review-drafts-test.php', '6129-F07 save persists only allowlisted nonsensitive values'], ['tests/review-drafts-test.php', '6129-F07 valid bearer restores the exact Other companion text'], ['tests/review-drafts-test.php', '6129-F07 radio and select Other companions survive'], ['tests/review-drafts.test.js', '6129-F07 draft restore follows the main Other selection'], ['tests/review-drafts.test.js', '6129-F07 scalar radio and select Other companions collect']],
+        'failure' => [['tests/review-drafts-test.php', '6129-F07 declared sensitive field cannot collide'], ['tests/review-drafts-test.php', '6129-F07 draft filter rejects a colliding sensitive companion'], ['tests/review-drafts-test.php', '6129-F07 repeatable child cannot collide'], ['tests/review-drafts.test.js', '6129-F07 client restore cannot overwrite a colliding sensitive field'], ['tests/review-drafts-test.php', '6129-F07 unselected Other companion text is discarded'], ['tests/review-drafts-test.php', '6129-F07 tightened scalar-field privacy removes radio and select'], ['tests/review-drafts-test.php', '6129-F07 tightened main-field privacy removes both']],
+    ],
+    '6129-F08 typed lookup and autocomplete option mapping' => [
+        'fixes' => [['bbf.js', '_applyMappedValue: function'], ['bbf.js', 'self._applyMappedValue(formEl, formField, val)']],
+        'positive' => [['tests/review-renderer.test.js', '6129-F08 lookup selects the matching radio'], ['tests/review-renderer.test.js', '6129-F08 lookup checks every mapped checkbox']],
+        'failure' => [['tests/review-renderer.test.js', '6129-F08 lookup leaves the sibling repeatable row untouched'], ['tests/review-renderer.test.js', '6129-F08 autocomplete replaces the radio selection without mutating option values'], ['tests/review-renderer.test.js', '6129-F08 autocomplete clears stale checkbox selections inside its row'], ['tests/review-renderer.test.js', '6129-F08 autocomplete leaves the sibling repeatable row untouched']],
+    ],
     '6129-F14 finite numbers and bounded integer ratings' => [
         'fixes' => [['bbf_functions.php', '!is_finite($number)'], ['bbf_functions.php', '$field[\'max\'] ?? 5']],
         'positive' => [['tests/review-validation-test.php', '6129-F14 rating accepts integer in implicit one-to-five range'], ['tests/review-validation-test.php', '6129-F14 rating honors an explicit renderer maximum']],
@@ -299,7 +309,7 @@ foreach ($review6129Inventory as $finding => $evidenceByRole) {
         }
     }
 }
-acceptance_check(count($review6129Inventory) === 7, 'review 6129 G1-G3 inventory maps findings F01 through F06 and F14');
+acceptance_check(count($review6129Inventory) === 9, 'review 6129 G1-G4 inventory maps findings F01 through F08 and F14');
 
 $ciSource = acceptance_source($root, 'tests/review-ci-test.php');
 foreach (array_keys($sources) as $relative) {

@@ -48,6 +48,10 @@ function bbf_draft_filter(array $form, array $flatFields, array $input): array {
     $policy = bbf_draft_policy($form);
     if ($policy === null) return [];
     $allow = array_fill_keys($policy['fields'], true);
+    $declared = [];
+    foreach ($flatFields as $field) {
+        if (is_array($field) && is_string($field['name'] ?? null)) $declared[$field['name']] = true;
+    }
     $data = [];
     foreach ($flatFields as $field) {
         if (!is_array($field) || !is_string($field['name'] ?? null)) continue;
@@ -60,15 +64,23 @@ function bbf_draft_filter(array $form, array $flatFields, array $input): array {
         if (is_string($value)) $value = trim($value);
         if (is_scalar($value) || $value === null) {
             $data[$name] = $value;
-            continue;
+        } elseif ($type === 'checkbox' && is_array($value) && array_is_list($value)) {
+            $safe = [];
+            foreach ($value as $item) {
+                if (!is_scalar($item) && $item !== null) { $safe = []; break; }
+                $safe[] = $item;
+            }
+            if ($safe !== [] || $value === []) $data[$name] = $safe;
         }
-        if ($type !== 'checkbox' || !is_array($value) || !array_is_list($value)) continue;
-        $safe = [];
-        foreach ($value as $item) {
-            if (!is_scalar($item) && $item !== null) { $safe = []; break; }
-            $safe[] = $item;
-        }
-        if ($safe !== [] || $value === []) $data[$name] = $safe;
+        if (!array_key_exists($name, $data) || empty($field['other'])) continue;
+        $selected = is_array($data[$name])
+            ? in_array('__other__', array_map('strval', $data[$name]), true)
+            : (string)$data[$name] === '__other__';
+        $otherName = $name . '_other';
+        if (!$selected || isset($declared[$otherName]) || !array_key_exists($otherName, $input)) continue;
+        $otherValue = $input[$otherName];
+        if (is_string($otherValue)) $otherValue = trim($otherValue);
+        if (is_scalar($otherValue) || $otherValue === null) $data[$otherName] = $otherValue;
     }
     return $data;
 }

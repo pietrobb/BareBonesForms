@@ -620,6 +620,12 @@
                 } else {
                     body[field.name] = inputs[0].value;
                 }
+                const selected = Array.isArray(body[field.name])
+                    ? body[field.name].map(String).includes('__other__')
+                    : String(body[field.name] ?? '') === '__other__';
+                const otherInput = field.other && selected && !fields.some(candidate => candidate.name === field.name + '_other')
+                    ? formEl.querySelector(`[name="${field.name}_other"]`) : null;
+                if (otherInput) body[field.name + '_other'] = otherInput.value;
             });
             return body;
         },
@@ -643,6 +649,17 @@
                     else inputs[0].value = data[name] === null || data[name] === undefined ? '' : String(data[name]);
                 }
                 inputs.forEach(input => changed.push(input));
+                const selected = field.type === 'checkbox'
+                    ? (Array.isArray(data[name]) && data[name].map(String).includes('__other__'))
+                    : String(data[name] ?? '') === '__other__';
+                const otherInput = field.other && !fieldMap.has(name + '_other')
+                    ? formEl.querySelector(`[name="${name}_other"]`) : null;
+                if (otherInput) {
+                    const otherName = name + '_other';
+                    otherInput.value = selected && Object.prototype.hasOwnProperty.call(data || {}, otherName)
+                        && data[otherName] !== null && data[otherName] !== undefined ? String(data[otherName]) : '';
+                    changed.push(otherInput);
+                }
             });
             changed.forEach(input => {
                 input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1234,8 +1251,26 @@
             return group;
         },
 
+        _applyMappedValue: function(scope, name, value) {
+            const targets = Array.from(scope.querySelectorAll('[name="' + name + '"]'));
+            if (!targets.length) return;
+            const type = targets[0].type;
+            if (type === 'radio' || type === 'checkbox') {
+                const values = (Array.isArray(value) ? value : [value]).map(String);
+                targets.forEach(target => { target.checked = values.includes(String(target.value)); });
+            } else {
+                targets[0].value = String(value);
+                targets.splice(1);
+            }
+            targets.forEach(target => {
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+                target.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        },
+
         _buildField: function(field, langCode) {
             const type = field.type || 'text';
+            const self = this;
 
             // Section break (no data, visual only)
             if (type === 'section') {
@@ -1507,12 +1542,7 @@
                             var responseKey = lk.map[formField];
                             var value = responseKey.split('.').reduce(function(obj, key) { return obj && obj[key]; }, data);
                             if (value !== undefined && value !== null) {
-                                var target = formEl.querySelector('[name="' + formField + '"]');
-                                if (target) {
-                                    target.value = String(value);
-                                    target.dispatchEvent(new Event('input', { bubbles: true }));
-                                    target.dispatchEvent(new Event('change', { bubbles: true }));
-                                }
+                                self._applyMappedValue(formEl, formField, value);
                             }
                         });
                     } catch (err) {
@@ -1614,12 +1644,7 @@
                                                 var responseKey = acMap[formField];
                                                 var val = responseKey.split('.').reduce(function(obj, k) { return obj && obj[k]; }, item);
                                                 if (val !== undefined && val !== null) {
-                                                    var target = formEl.querySelector('[name="' + formField + '"]');
-                                                    if (target) {
-                                                        target.value = String(val);
-                                                        target.dispatchEvent(new Event('input', { bubbles: true }));
-                                                        target.dispatchEvent(new Event('change', { bubbles: true }));
-                                                    }
+                                                    self._applyMappedValue(formEl, formField, val);
                                                 }
                                             });
                                         }

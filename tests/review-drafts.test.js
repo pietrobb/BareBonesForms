@@ -90,7 +90,7 @@ function harness() {
         { name: 'name', type: 'text' },
         { name: 'symptoms', type: 'textarea', sensitive: true },
         { name: 'password', type: 'password' },
-        { name: 'choices', type: 'checkbox' },
+        { name: 'choices', type: 'checkbox', other: true },
     ];
     const inputs = {
         name: addInput('name', 'text', 'Alice'),
@@ -98,8 +98,11 @@ function harness() {
         password: addInput('password', 'password', 'secret'),
         a: addInput('choices', 'checkbox', 'a'),
         b: addInput('choices', 'checkbox', 'b'),
+        other: addInput('choices', 'checkbox', '__other__'),
+        choicesOther: addInput('choices_other', 'text', 'custom choice'),
     };
     inputs.a.checked = true;
+    inputs.other.checked = true;
     const definition = { drafts: { enabled: true, fields: ['name', 'symptoms', 'password', 'choices'] } };
     const controls = context.window.BBF._buildDraftControls(form, definition, 'consultation', './', 'csrf-token', 'en', true, fields);
     form.appendChild(controls);
@@ -139,13 +142,63 @@ test('save sends only client allowlisted nonsensitive values and stores returned
     const pending = h.byClass('bbf-draft-save').emit('click');
     assert.equal(h.requests.length, 1);
     const body = JSON.parse(h.requests[0].options.body);
-    assert.deepEqual(body, { name: 'Alice', choices: ['a'], _bbf_csrf: 'csrf-token' });
+    assert.deepEqual(body, { name: 'Alice', choices: ['a', '__other__'], choices_other: 'custom choice', _bbf_csrf: 'csrf-token' });
     assert.equal(h.requests[0].options.credentials, 'same-origin');
     h.respond(0, { status: 'ok', handle: 'A'.repeat(43), expires_at: '2026-09-10T00:00:00Z' });
     await pending;
     assert.equal(h.byClass('bbf-draft-code').value, 'A'.repeat(43));
     assert.equal([...h.store.values()][0], 'A'.repeat(43));
     assert.match(h.byClass('bbf-draft-status').textContent, /saved until/i);
+});
+
+test('6129-F07 draft restore follows the main Other selection and clears stale companion text', () => {
+    const h = harness();
+    h.BBF._draftApply(h.form, h.fields, { choices: ['__other__'], choices_other: 'restored choice' }, ['choices']);
+    assert.equal(h.inputs.other.checked, true);
+    assert.equal(h.inputs.choicesOther.value, 'restored choice');
+
+    h.BBF._draftApply(h.form, h.fields, { choices: ['a'], choices_other: 'must not survive' }, ['choices']);
+    assert.equal(h.inputs.a.checked, true);
+    assert.equal(h.inputs.other.checked, false);
+    assert.equal(h.inputs.choicesOther.value, '');
+});
+
+test('6129-F07 scalar radio and select Other companions collect, restore and clear', () => {
+    const h = harness();
+    const add = (name, type, value) => {
+        const element = h.form.appendChild(new Element(type === 'select-one' ? 'select' : 'input'));
+        element.name = name; element.setAttribute('name', name); element.type = type; element.value = value;
+        return element;
+    };
+    const courier = add('delivery', 'radio', 'courier');
+    const deliveryOther = add('delivery', 'radio', '__other__'); deliveryOther.checked = true;
+    const deliveryText = add('delivery_other', 'text', 'pickup');
+    const country = add('country', 'select-one', '__other__');
+    const countryText = add('country_other', 'text', 'CZ');
+    const fields = [{ name: 'delivery', type: 'radio', other: true }, { name: 'country', type: 'select', other: true }];
+
+    assert.equal(JSON.stringify(h.BBF._draftCollect(h.form, fields, ['delivery', 'country'])),
+        JSON.stringify({ delivery: '__other__', delivery_other: 'pickup', country: '__other__', country_other: 'CZ' }));
+    const collisionFields = [...fields, { name: 'delivery_other', type: 'text', sensitive: true }];
+    assert.equal(JSON.stringify(h.BBF._draftCollect(h.form, collisionFields, ['delivery'])), JSON.stringify({ delivery: '__other__' }),
+        '6129-F07 client collection rejects a declared sensitive companion collision');
+    deliveryText.value = 'private diagnosis';
+    h.BBF._draftApply(h.form, collisionFields, { delivery: '__other__', delivery_other: 'attacker overwrite' }, ['delivery']);
+    assert.equal(deliveryText.value, 'private diagnosis', '6129-F07 client restore cannot overwrite a colliding sensitive field');
+    deliveryText.value = 'pickup';
+    h.BBF._draftApply(h.form, fields,
+        { delivery: '__other__', delivery_other: 'restored pickup', country: '__other__', country_other: 'AT' },
+        ['delivery', 'country']);
+    assert.equal(deliveryText.value, 'restored pickup');
+    assert.equal(countryText.value, 'AT');
+
+    h.BBF._draftApply(h.form, fields, { delivery: 'courier', delivery_other: 'stale', country: 'SK', country_other: 'stale' },
+        ['delivery', 'country']);
+    assert.equal(courier.checked, true);
+    assert.equal(deliveryOther.checked, false);
+    assert.equal(deliveryText.value, '');
+    assert.equal(country.value, 'SK');
+    assert.equal(countryText.value, '');
 });
 
 test('newer resume response wins and stale callback cannot overwrite fields', async () => {
@@ -249,7 +302,7 @@ async function browserChecks() {
         { name: 'name', type: 'text' },
         { name: 'symptoms', type: 'textarea', sensitive: true },
         { name: 'password', type: 'password' },
-        { name: 'choices', type: 'checkbox' },
+        { name: 'choices', type: 'checkbox', other: true },
     ];
     const form = document.createElement('form');
     const input = (name, type, value) => {

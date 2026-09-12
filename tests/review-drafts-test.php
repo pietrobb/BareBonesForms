@@ -51,7 +51,7 @@ register_shutdown_function(static fn() => drafts_remove($root));
 $config = ['submissions_dir' => $root . '/submissions', 'drafts_dir' => $root . '/private-drafts'];
 $fields = [
     ['name' => 'name', 'type' => 'text'],
-    ['name' => 'choices', 'type' => 'checkbox', 'options' => [['value' => 'a', 'label' => 'A'], ['value' => 'b', 'label' => 'B']]],
+    ['name' => 'choices', 'type' => 'checkbox', 'other' => true, 'options' => [['value' => 'a', 'label' => 'A'], ['value' => 'b', 'label' => 'B']]],
     ['name' => 'symptoms', 'type' => 'textarea', 'sensitive' => true],
     ['name' => 'password', 'type' => 'password'],
     ['name' => 'amount', 'type' => 'number'],
@@ -86,6 +86,20 @@ drafts_check((bool)array_filter(validateFormDefinition($invalid), static fn($err
 $invalid = $form; $invalid['fields'][2]['sensitive'] = 'false';
 drafts_check((bool)array_filter(validateFormDefinition($invalid), static fn($error) => str_contains($error, 'sensitive: Expected boolean')),
     'sensitive marker requires an actual boolean');
+$collision = $form;
+$collision['fields'][] = ['name' => 'choices_other', 'type' => 'text', 'sensitive' => true];
+drafts_check((bool)array_filter(validateFormDefinition($collision), static fn($error) => str_contains($error, 'Generated Other companion name collides')),
+    '6129-F07 declared sensitive field cannot collide with a generated Other companion name');
+drafts_check(bbf_draft_filter($collision, $collision['fields'], ['choices' => ['__other__'], 'choices_other' => 'private diagnosis'])
+    === ['choices' => ['__other__']],
+    '6129-F07 draft filter rejects a colliding sensitive companion even when validation was bypassed');
+$repeatableCollision = $form;
+$repeatableCollision['fields'][] = ['name' => 'items', 'type' => 'group', 'repeatable' => true, 'fields' => [
+    ['name' => 'repeat_choice', 'type' => 'radio', 'other' => true, 'options' => ['a']],
+    ['name' => 'repeat_choice_other', 'type' => 'text', 'sensitive' => true],
+]];
+drafts_check((bool)array_filter(validateFormDefinition($repeatableCollision), static fn($error) => str_contains($error, 'repeat_choice_other')),
+    '6129-F07 repeatable child cannot collide with its generated Other companion name');
 $disabled = $form; unset($disabled['drafts']);
 drafts_check(bbf_draft_policy($disabled) === null, 'forms remain draft-disabled by default');
 $unknownHandle = str_repeat('Z', 43);
@@ -95,11 +109,12 @@ drafts_check((bbf_draft_load($config, $form, $unknownHandle)['reason'] ?? '') ==
     && (bbf_draft_save($config, $form, $fields, ['name' => 'X'], $unknownHandle)['reason'] ?? '') === 'not_found'
     && !file_exists($unknownPath . '.lock'), 'unknown valid bearers do not create persistent lock sidecars');
 
-$input = ['name' => " Alice ", 'choices' => ['a', 'b'], 'symptoms' => 'private health history',
+$input = ['name' => " Alice ", 'choices' => ['a', '__other__'], 'choices_other' => ' custom choice ', 'symptoms' => 'private health history',
     'password' => 'secret', 'amount' => '99.99', 'internal' => 'attacker', 'unknown' => 'drop me'];
 $saved = bbf_draft_save($config, $form, $fields, $input, '', 1000);
 drafts_check(($saved['ok'] ?? false) && bbf_draft_valid_handle($saved['handle']), 'new draft returns an unguessable 256-bit bearer handle');
-drafts_check($saved['data'] === ['name' => 'Alice', 'choices' => ['a', 'b']], 'save persists only allowlisted nonsensitive values');
+drafts_check($saved['data'] === ['name' => 'Alice', 'choices' => ['a', '__other__'], 'choices_other' => 'custom choice'],
+    '6129-F07 save persists only allowlisted nonsensitive values including selected Other companion text');
 $path = bbf_draft_path($config, $saved['handle']);
 $record = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
 drafts_check(!str_contains($path, $saved['handle']) && !str_contains(file_get_contents($path), $saved['handle']),
@@ -121,7 +136,33 @@ stream_wrapper_unregister('bbfchmoddeny');
 drafts_check($record['created_at'] === 1000 && $record['expires_at'] === 1300, 'save records deterministic creation and expiry timestamps');
 
 $loaded = bbf_draft_load($config, $form, $saved['handle'], 1100);
-drafts_check(($loaded['ok'] ?? false) && $loaded['data'] === $saved['data'], 'valid bearer resumes its exact draft');
+drafts_check(($loaded['ok'] ?? false) && $loaded['data'] === $saved['data'],
+    '6129-F07 valid bearer restores the exact Other companion text');
+$unselectedOther = bbf_draft_filter($form, $fields, ['choices' => ['a'], 'choices_other' => 'stale private text']);
+drafts_check($unselectedOther === ['choices' => ['a']],
+    '6129-F07 unselected Other companion text is discarded instead of persisted');
+$scalarFields = [
+    ['name' => 'delivery', 'type' => 'radio', 'other' => true, 'options' => ['courier']],
+    ['name' => 'country', 'type' => 'select', 'other' => true, 'options' => ['SK']],
+];
+$scalarForm = ['schema_version' => 1, 'id' => 'scalar-other', 'fields' => $scalarFields,
+    'drafts' => ['enabled' => true, 'ttl_seconds' => 300, 'fields' => ['delivery', 'country']]];
+$scalarConfig = ['drafts_dir' => $root . '/scalar-other'];
+$scalarSaved = bbf_draft_save($scalarConfig, $scalarForm, $scalarFields,
+    ['delivery' => '__other__', 'delivery_other' => 'pickup', 'country' => '__other__', 'country_other' => 'CZ'], '', 1000);
+$scalarLoaded = bbf_draft_load($scalarConfig, $scalarForm, $scalarSaved['handle'] ?? '', 1100);
+drafts_check(($scalarLoaded['data'] ?? null) === ['delivery' => '__other__', 'delivery_other' => 'pickup',
+    'country' => '__other__', 'country_other' => 'CZ'],
+    '6129-F07 radio and select Other companions survive the server save-load round trip');
+$scalarTightened = $scalarForm;
+$scalarTightened['fields'][0]['sensitive'] = true;
+$scalarTightened['fields'][1]['sensitive'] = true;
+drafts_check((bbf_draft_load($scalarConfig, $scalarTightened, $scalarSaved['handle'], 1100)['data'] ?? null) === [],
+    '6129-F07 tightened scalar-field privacy removes radio and select Other companions');
+$tightenedOtherForm = $form;
+$tightenedOtherForm['fields'][1]['sensitive'] = true;
+drafts_check((bbf_draft_load($config, $tightenedOtherForm, $saved['handle'], 1100)['data'] ?? null) === ['name' => 'Alice'],
+    '6129-F07 tightened main-field privacy removes both the selection and Other companion');
 $tightenedForm = $form;
 $tightenedForm['drafts']['fields'] = ['name'];
 $tightenedForm['fields'][0]['sensitive'] = true;

@@ -403,7 +403,7 @@ test('latest lookup query wins even when the older response resolves last', asyn
     assert.equal(target.value, 'Newest');
 });
 
-test('repeatable lookup and autocomplete mappings stay inside their originating row', async () => {
+test('6129-F08 repeatable lookup and autocomplete mappings stay inside their originating row', async () => {
     const requests = new Map();
     const timers = [];
     const { BBF, context } = loadBBF({
@@ -415,31 +415,55 @@ test('repeatable lookup and autocomplete mappings stay inside their originating 
     const outerCity = form.appendChild(new MiniElement('input')); outerCity.name = 'city'; outerCity.setAttribute('name', 'city');
     const outerPrice = form.appendChild(new MiniElement('input')); outerPrice.name = 'price'; outerPrice.setAttribute('name', 'price');
     const group = form.appendChild(BBF._buildField({
-        name: 'items', type: 'group', repeatable: true, min_items: 1, max_items: 1,
+        name: 'items', type: 'group', repeatable: true, min_items: 1, max_items: 2,
         fields: [
-            { name: 'postal', type: 'text', lookup: { url: '/postal?q={{value}}', trigger: 1, map: { city: 'city' } } },
+            { name: 'postal', type: 'text', lookup: { url: '/postal?q={{value}}', trigger: 1, map: { city: 'city', tier: 'tier', tags: 'tags' } } },
             { name: 'city', type: 'text' },
-            { name: 'product', type: 'text', autocomplete_from: { url: '/products?q={{value}}', min_length: 1, debounce: 0, map: { price: 'price' } } },
+            { name: 'tier', type: 'radio', options: ['basic', 'pro'] },
+            { name: 'tags', type: 'checkbox', options: ['red', 'blue'] },
+            { name: 'product', type: 'text', autocomplete_from: { url: '/products?q={{value}}', min_length: 1, debounce: 0, map: { price: 'price', tier: 'tier', tags: 'tags' } } },
             { name: 'price', type: 'text' },
         ],
     }));
     group._bbfBindRows();
     const row = group.querySelector('.bbf-repeatable-row');
+    const sibling = group._bbfAddRow(false);
+    sibling.querySelector('[name="items__2__city"]').value = 'Sibling city';
+    sibling.querySelector('[name="items__2__price"]').value = '17.00';
+    sibling.querySelectorAll('[name="items__2__tier"]')[0].checked = true;
+    sibling.querySelectorAll('[name="items__2__tags"]')[0].checked = true;
+    const siblingState = () => JSON.stringify({
+        city: sibling.querySelector('[name="items__2__city"]').value,
+        price: sibling.querySelector('[name="items__2__price"]').value,
+        tier: sibling.querySelectorAll('[name="items__2__tier"]').map(option => [option.value, option.checked]),
+        tags: sibling.querySelectorAll('[name="items__2__tags"]').map(option => [option.value, option.checked]),
+    });
+    const untouchedSibling = siblingState();
     const postal = row.querySelector('[name="items__1__postal"]');
     postal.value = '100'; postal.dispatchEvent(new context.Event('input'));
-    requests.get('/postal?q=100').resolve({ ok: true, json: async () => ({ city: 'Row city' }) });
+    requests.get('/postal?q=100').resolve({ ok: true, json: async () => ({ city: 'Row city', tier: 'pro', tags: ['red', 'blue'] }) });
     await settle();
     assert.equal(row.querySelector('[name="items__1__city"]').value, 'Row city');
+    assert.deepEqual(row.querySelectorAll('[name="items__1__tier"]').map(option => [option.value, option.checked]), [['basic', false], ['pro', true]],
+        '6129-F08 lookup selects the matching radio without mutating option values');
+    assert.deepEqual(row.querySelectorAll('[name="items__1__tags"]').map(option => [option.value, option.checked]), [['red', true], ['blue', true]],
+        '6129-F08 lookup checks every mapped checkbox without mutating option values');
     assert.equal(outerCity.value, '');
+    assert.equal(siblingState(), untouchedSibling, '6129-F08 lookup leaves the sibling repeatable row untouched');
 
     const product = row.querySelector('[name="items__1__product"]');
     product.value = 'w'; product.dispatchEvent(new context.Event('input', { isTrusted: true }));
     timers.shift()(); await settle();
-    requests.get('/products?q=w').resolve({ ok: true, json: async () => [{ label: 'Widget', value: 'widget', price: '9.50' }] });
+    requests.get('/products?q=w').resolve({ ok: true, json: async () => [{ label: 'Widget', value: 'widget', price: '9.50', tier: 'basic', tags: ['blue'] }] });
     await settle();
     row.querySelector('.bbf-autocomplete-item').dispatchEvent(new context.Event('mousedown'));
     assert.equal(row.querySelector('[name="items__1__price"]').value, '9.50');
+    assert.deepEqual(row.querySelectorAll('[name="items__1__tier"]').map(option => [option.value, option.checked]), [['basic', true], ['pro', false]],
+        '6129-F08 autocomplete replaces the radio selection without mutating option values');
+    assert.deepEqual(row.querySelectorAll('[name="items__1__tags"]').map(option => [option.value, option.checked]), [['red', false], ['blue', true]],
+        '6129-F08 autocomplete clears stale checkbox selections inside its row');
     assert.equal(outerPrice.value, '');
+    assert.equal(siblingState(), untouchedSibling, '6129-F08 autocomplete leaves the sibling repeatable row untouched');
 });
 
 test('autocomplete keeps newest results and shortening invalidates in-flight work', async () => {

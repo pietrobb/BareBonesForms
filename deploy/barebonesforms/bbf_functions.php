@@ -1432,6 +1432,23 @@ function validateFormDefinition(array $form): array {
 
     $fieldNames = [];
     validateFieldList($fieldsToValidate, 'fields', $errors, $fieldNames);
+    $declaredNames = [];
+    foreach ($fieldNames as $fieldName) if (is_string($fieldName)) $declaredNames[$fieldName] = true;
+    $checkOtherNames = function (array $fields) use (&$checkOtherNames, $declaredNames, &$errors): void {
+        foreach ($fields as $field) {
+            if (!is_array($field)) continue;
+            if (!empty($field['other']) && is_string($field['name'] ?? null)) {
+                $otherName = $field['name'] . '_other';
+                if (isset($declaredNames[$otherName])) {
+                    $errors[] = "Generated Other companion name collides with declared field: $otherName.";
+                }
+            }
+            if (($field['type'] ?? '') === 'group' && is_array($field['fields'] ?? null)) {
+                $checkOtherNames($field['fields']);
+            }
+        }
+    };
+    $checkOtherNames($fieldsToValidate);
 
     if (isset($form['validations'])) {
         if (!is_array($form['validations']) || !array_is_list($form['validations'])) {
