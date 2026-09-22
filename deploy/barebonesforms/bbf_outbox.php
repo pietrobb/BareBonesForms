@@ -435,7 +435,8 @@ function bbf_outbox_claim(string $path, string $jobKey, ?int $now = null): array
         $job['updated_at'] = $now;
         $ledger['jobs'][$jobKey] = $job;
         $ledger['updated_at'] = $now;
-        return ['ledger' => $ledger, 'result' => ['ok' => true, 'token' => $token, 'job' => $job]];
+        return ['ledger' => $ledger, 'result' => ['ok' => true, 'token' => $token, 'job' => $job,
+            'submission_key' => (string)($ledger['submission_key'] ?? ''), 'context' => $ledger['context'] ?? []]];
     });
 }
 

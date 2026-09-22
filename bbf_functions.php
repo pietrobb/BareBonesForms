@@ -394,7 +394,7 @@ function bbf_delivery_finalize_submission(string $path, array $submission, ?int 
                 return ['result' => ['ok' => false, 'reason' => 'payload']];
             }
             if ($finalized) {
-                if ($hasBindings || ($hasSubmission && $job['payload']['submission'] !== $submission)) {
+                $planned = $job['payload']['submission'] ?? []; $current = $submission; unset($planned['meta']['actions'], $current['meta']['actions']); if ($hasBindings || ($hasSubmission && $planned !== $current)) {
                     unset($job);
                     return ['result' => ['ok' => false, 'reason' => 'conflict']];
                 }
@@ -650,6 +650,56 @@ function bbf_delivery_prepare_jobs(array $form, array $submission, array $config
     return $jobs;
 }
 
+/** File-only metadata projection. Other backends deliberately remain a no-op. */
+function bbfRecordActionResult(string $submissionId, string $formId, string $action, string $status,
+    array $detail, array $config): bool {
+    try {
+        if (!preg_match('/\A[a-zA-Z0-9_-]+\z/', $submissionId)
+            || !in_array($status, ['ok', 'error'], true) || $action === '') return false;
+        $config = bbf_effective_storage_config($config, $formId, ['storage' => $config['storage'] ?? 'file']);
+        if ($config['storage'] !== 'file') return true;
+        $path = ($config['submissions_dir'] ?? __DIR__ . '/submissions') . '/' . $formId . '/' . $submissionId . '.json';
+        return bbf_storage_locked($path, static function() use ($path, $submissionId, $formId, $action, $status, $detail): bool {
+            if (!is_file($path)) return false;
+            $record = json_decode(file_get_contents($path), false, 512, JSON_THROW_ON_ERROR);
+            if (!($record instanceof stdClass) || ($record->id ?? null) !== $submissionId || ($record->form ?? null) !== $formId
+                || !(($record->meta ?? null) instanceof stdClass)) return false;
+            if (isset($record->meta->actions) && !is_array($record->meta->actions)) return false;
+            // Decode objects as objects: a metadata projection must never turn
+            // empty or numeric-key objects in visitor data or old details into arrays.
+            if (!isset($record->meta->actions)) {
+                $record->meta->actions = [];
+            } $record->meta->actions[] = ['action' => $action, 'status' => $status,
+                'at' => gmdate('Y-m-d\TH:i:s\Z'), 'detail' => (object)$detail];
+            $json = bbf_storage_json($record, true);
+            return bbf_storage_replace($path, static fn($fp) => bbf_storage_write_all($fp, $json));
+        });
+    } catch (Throwable $error) {
+        return false;
+    }
+}
+
+/** Refresh only action history, never the immutable visitor payload, before an action's idempotence check. */
+function bbf_delivery_refresh_action_metadata(array $submission, array $config): array {
+    $id = (string)($submission['id'] ?? '');
+    $form = (string)($submission['form'] ?? '');
+    if (!preg_match('/\A[a-zA-Z0-9_-]+\z/', $id) || !preg_match('/\A[a-zA-Z0-9_-]+\z/', $form)) return $submission;
+    // The runner already receives the resolved backend; mutable form definitions cannot gate an immutable job.
+    if (($config['storage'] ?? 'file') !== 'file') return $submission;
+    $path = ($config['submissions_dir'] ?? __DIR__ . '/submissions') . '/' . $form . '/' . $id . '.json';
+    if (!is_file($path)) return $submission;
+    $ok = bbf_storage_locked($path, static function() use ($path, $id, $form, &$submission): bool {
+        $record = json_decode(file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($record) || ($record['id'] ?? null) !== $id || ($record['form'] ?? null) !== $form) return false;
+        $history = $record['meta']['actions'] ?? [];
+        if (!is_array($history)) return false;
+        $submission['meta']['actions'] = array_merge((array)($submission['meta']['actions'] ?? []), $history);
+        return true;
+    });
+    if (!$ok) throw new RuntimeException('Cannot read current action history safely.');
+    return $submission;
+}
+
 /** Execute one immutable delivery job without creating or updating durable state. */
 function bbf_delivery_execute_job(array $job, array $config, array &$actionResponse = []): array {
     $payload = is_array($job['payload'] ?? null) ? $job['payload'] : null;
@@ -704,11 +754,12 @@ function bbf_delivery_execute_job(array $job, array $config, array &$actionRespo
                         $actionType = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)($action['type'] ?? ''));
                         $actionFile = __DIR__ . '/actions/' . $actionType . '.php';
                         if ($actionType === '' || !is_file($actionFile)) throw new RuntimeException('Action handler not found.');
-                        (static function(string $__actionFile, array $config, array $action, array $submission,
-                            array &$actionResponse): void {
-                            include $__actionFile;
+                        $submission = bbf_delivery_refresh_action_metadata($submission, $config);
+                        $result = (static function(string $__actionFile, array $config, array $action, array $submission,
+                            array &$actionResponse) {
+                            return include $__actionFile;
                         })($actionFile, $config, $action, $submission, $actionResponse);
-                        $outcome = bbf_delivery_result(true, 'succeeded', 'action');
+                        $outcome = bbf_delivery_action_result($result, ($job['idempotent'] ?? false) === true);
                     }
                 } else {
                     $outcome = bbf_delivery_result(false, 'failed', 'delivery', 0, false, 'Unknown delivery job type');
@@ -718,6 +769,9 @@ function bbf_delivery_execute_job(array $job, array $config, array &$actionRespo
             $retryable = (string)($job['type'] ?? '') !== 'action' || ($job['idempotent'] ?? false) === true;
             $outcome = bbf_delivery_result(false, 'failed',
                 (string)($job['type'] ?? '') === 'action' ? 'action' : 'delivery', 0, $retryable, 'Delivery adapter failed');
+            $outcome['action_result'] = ['status' => 'error', 'detail' => [
+                'error' => substr($error->getMessage(), 0, 300), 'exception' => get_class($error),
+            ]];
         }
     }
 
@@ -798,10 +852,29 @@ function bbf_delivery_run_job(string $path, string $jobKey, array $config, array
         ];
     }
 
-    $job = is_array($claim['job'] ?? null) ? $claim['job'] : [];
+    $job = is_array($claim['job'] ?? null) ? $claim['job'] : []; if (in_array($claim['context']['storage'] ?? null, ['file', 'csv', 'sqlite', 'mysql'], true)) $config['storage'] = $claim['context']['storage'];
     $outcome = bbf_delivery_execute_job($job, $config, $actionResponse);
     $retryDelay = (int)($config['delivery']['retry_delay'] ?? 60);
     $completed = bbf_outbox_complete($path, $jobKey, (string)$claim['token'], $outcome, null, $retryDelay);
+    // Best-effort projection only AFTER delivery settlement. Never feed metadata failure into retry state.
+    try {
+        [$formId, $submissionId] = array_pad(explode(':', (string)($claim['submission_key'] ?? ''), 2), 2, '');
+        $result = array_key_exists('action_result', $outcome) ? $outcome['action_result'] : [
+            'status' => !empty($outcome['ok']) ? 'ok' : 'error',
+            'detail' => ['stage' => $outcome['stage'] ?? 'delivery', 'code' => $outcome['code'] ?? 0,
+                'error' => !empty($outcome['ok']) ? null : bbf_outbox_fallback_message(
+                    (string)($outcome['state'] ?? 'failed'), (string)($outcome['stage'] ?? 'delivery'), (int)($outcome['code'] ?? 0))],
+        ];
+        if (is_array($result)) {
+            $actionName = ($job['type'] ?? '') === 'action' ? (string)($job['target'] ?? 'action')
+                : (in_array($job['type'] ?? '', ['email', 'smtp'], true) ? 'email' : (string)($job['type'] ?? 'delivery'));
+            if (!bbfRecordActionResult($submissionId, $formId, $actionName, $result['status'], (array)$result['detail'], $config)) {
+                error_log('BareBonesForms: Action metadata not recorded; delivery will not be replayed for this failure.');
+            }
+        }
+    } catch (Throwable $metadataError) {
+        error_log('BareBonesForms: Action metadata projection failed; delivery state is unchanged.');
+    }
     if (!($completed['ok'] ?? false)) {
         return ['ok' => false, 'executed' => true, 'reason' => 'completion_' . (string)($completed['reason'] ?? 'failed')];
     }

@@ -38,7 +38,7 @@ function bbf_deploy_manifest(string $root): array
         'api-psc.php',
         'bbf-theme.css',
         'bbf.css',
-        'bbf.js',
+        'bbf.js', 'bbf-context.js', 'bbf-analytics.js', 'gclid.js', 'bbf_context.php',
         'bbf_auth.php',
         'bbf_backup.php',
         'bbf_delivery.php',
@@ -53,7 +53,7 @@ function bbf_deploy_manifest(string $root): array
         'bbf_storage.php',
         'bbf_versions.php',
         'check.php',
-        'config.example.php',
+        'config.example.php', 'config.attribution.example.php',
         'demo.css',
         'demo.html',
         'demo1.html',
@@ -117,8 +117,8 @@ function bbf_deploy_manifest(string $root): array
     }
 
     $manifest['.bbf-package'] = ['content' => BBF_DEPLOY_MARKER];
-    $manifest['actions/README.md'] = ['source' => $root . DIRECTORY_SEPARATOR . 'actions' . DIRECTORY_SEPARATOR . 'README.md'];
-    $manifest['data/city-to-psc.json'] = ['source' => $root . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'city-to-psc.json'];
+    $manifest['actions/README.md'] = ['source' => $root . DIRECTORY_SEPARATOR . 'actions' . DIRECTORY_SEPARATOR . 'README.md']; $manifest['actions/google-ads-conversion.php'] = ['source' => $root . '/actions/google-ads-conversion.php'];
+    $manifest['data/city-to-psc.json'] = ['source' => $root . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'city-to-psc.json']; $manifest['tools/migrate-system-fields.php'] = ['source' => $root . '/tools/migrate-system-fields.php'];
     $manifest['data/psc-to-city.json'] = ['source' => $root . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'psc-to-city.json'];
     $manifest['.gitignore'] = ['content' => BBF_DEPLOY_GITIGNORE . "\n"];
     $manifest['logs/.gitkeep'] = ['content' => ''];

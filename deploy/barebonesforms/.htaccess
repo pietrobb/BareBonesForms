@@ -9,7 +9,7 @@
 # location ~ ^/BBF_BASE/(submissions|logs|templates|actions|backups|tests|data)/ { deny all; }
 # location ~ ^/BBF_BASE/forms/.*\.json$ { deny all; }
 # location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
-# location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak-|~$|/#[^/]*#$)" { deny all; }
+# location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak[-_]|~$|/#[^/]*#$)" { deny all; }
 # location ~ /\. { deny all; }
 # autoindex off;
 # Keep lang/*.js public: browser translations load these files directly.
@@ -25,7 +25,7 @@ Options -Indexes
 
 # Block editor backup and temp files (any file)
 # Catches: file.php~, file.bak, file.swp, file.save, file.orig, #file#
-<FilesMatch "\.(bak|swp|save|orig|old)$|\.bak-|~$|^#.*#$">
+<FilesMatch "\.(bak|swp|save|orig|old)$|\.bak[-_]|~$|^#.*#$">
     Require all denied
 </FilesMatch>
 

@@ -122,7 +122,8 @@
             return msg;
         },
 
-        _instanceSequence: 0,
+        _instanceSequence: 0, _clientScripts: Object.create(null), _loadClientScript: function(url) { return this._clientScripts[url] || (this._clientScripts[url] = new Promise(resolve => { const script = document.createElement('script'); const timer = setTimeout(resolve, 5000); script.onload = script.onerror = () => { clearTimeout(timer); resolve(); }; script.src = url; document.head.appendChild(script); })); },
+
 
         _prepareFormDefinition: async function(form, isCurrent = () => true) {
             if (form.templates && !form._bbfTemplatesResolved) {
@@ -197,7 +198,7 @@
                     if (!isCurrent()) return;
                 }
 
-                if (!await this._prepareFormDefinition(form, isCurrent)) return;
+                if (form._bbf_client?.analytics?.umami) this._loadClientScript(baseUrl + 'bbf-analytics.js'); if (form._bbf_client?.visit_context?.trigger_params && !window.BBFContext && !window._bbfContextLoading) window._bbfContextLoading = this._loadClientScript(baseUrl + 'bbf-context.js'); if (!await this._prepareFormDefinition(form, isCurrent)) return;
 
                 container.innerHTML = '';
                 container.classList.remove('bbf-loading');
@@ -936,7 +937,7 @@
                 btn.textContent = form.submitting_label || this._t('submittingDefault', {}, langCode);
 
                 try {
-                    const data = new FormData(el);
+                    if (window._bbfContextLoading) await window._bbfContextLoading; if (window.BBFContext) { await window.BBFContext.ready; window.BBFContext.fill(el); } const data = new FormData(el);
                     const body = {};
                     data.forEach((v, k) => {
                         if (body[k]) {
@@ -982,7 +983,7 @@
                         msg.innerHTML = this._renderSandboxPreview(result);
                         msg.style.display = 'block';
                         this._clearErrors(el);
-                    } else if (result.status === 'ok') {
+                    } else if (result.status === 'ok' && resp.ok) { try { if (typeof result.submission_id === 'string' && result.submission_id) { const event = new CustomEvent('bbf:submitted', { detail: { form: formId, submission_id: result.submission_id } }); event.bbfAnalytics = form._bbf_client?.analytics || {}; document.dispatchEvent(event); } } catch (error) { /* External listeners cannot fail a stored lead. */ }
                         // onSuccess callback — return false to skip default handling
                         if (options.onSuccess && options.onSuccess(result, body) === false) {
                             btn.disabled = false;

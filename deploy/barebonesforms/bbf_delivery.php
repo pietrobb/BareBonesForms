@@ -20,6 +20,22 @@ function bbf_delivery_result(
     ];
 }
 
+/** Include return contract: bare return/null is silent; PHP fallthrough (1) is legacy success. */
+function bbf_delivery_action_result($result, bool $idempotent = false): array {
+    if ($result === null) {
+        return bbf_delivery_result(true, 'succeeded', 'action') + ['action_result' => null];
+    }
+    if ($result === 1) $result = ['status' => 'ok', 'detail' => []];
+    if (!is_array($result) || !in_array($result['status'] ?? null, ['ok', 'error'], true)
+        || (isset($result['detail']) && !is_array($result['detail']) && !is_object($result['detail']))) {
+        $result = ['status' => 'error', 'detail' => ['error' => 'Invalid action result contract']];
+    }
+    $ok = $result['status'] === 'ok';
+    return bbf_delivery_result($ok, $ok ? 'succeeded' : 'failed', 'action', 0, !$ok && $idempotent && ($result['retryable'] ?? true) === true) + [
+        'action_result' => ['status' => $result['status'], 'detail' => $result['detail'] ?? []],
+    ];
+}
+
 function bbf_delivery_smtp_body(string $body): string {
     $body = str_replace(["\r\n", "\r"], "\n", $body);
     $lines = explode("\n", $body);

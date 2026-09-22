@@ -35,7 +35,7 @@ function bbf_test_installation(string $source, bool $sandbox = false): string {
         }
         // Deliberate allowlist: no config.php, operator data/logs, custom actions or symlinks.
         foreach (['submit.php', 'submissions.php', 'bbf_functions.php', 'bbf_storage.php', 'bbf_delivery.php', 'bbf_drafts.php', 'bbf_outbox.php', 'bbf_export.php', 'bbf_read.php', 'bbf_auth.php', 'bbf_review.php', 'bbf_versions.php', 'bbf_retention.php', 'bbf_backup.php', 'maintenance.php', 'payment.php', '.htaccess',
-                  'actions/test-echo-response.php'] as $file) {
+                  'bbf_context.php', 'actions/test-echo-response.php'] as $file) {
             bbf_test_copy($source . '/' . $file, $root . '/' . $file);
         }
         foreach (['forms' => '*.json', 'templates' => '*.html', 'lang' => '*.php',

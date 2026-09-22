@@ -11,7 +11,7 @@ defined('BBF_LOADED') || exit;
 
 return [
 
-    // ─── Storage ────────────────────────────────────────────────
+    'system_fields' => [], 'visit_context' => [], 'analytics' => ['umami' => false], // Optional hidden fields, {trigger_params, params}, existing Umami tracker.
     // "file"   = JSON files in /submissions (zero config, works everywhere)
     // "sqlite" = SQLite database (file-based, zero config, SQL capable)
     // "mysql"  = MySQL / MariaDB (fill in credentials below)

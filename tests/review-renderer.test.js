@@ -95,7 +95,7 @@ class MiniElement {
     closest(selector) { for (let node = this; node; node = node.parentElement) if (node.matches(selector)) return node; return null; }
 }
 
-function loadBBF(overrides = {}) {
+module.exports = { loadBBF, MiniElement }; function loadBBF(overrides = {}) {
     const document = {
         readyState: 'complete',
         head: new MiniElement('head'),

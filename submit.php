@@ -32,7 +32,7 @@ if (!empty($missing)) {
 
 require_once __DIR__ . '/bbf_functions.php';
 require_once __DIR__ . '/bbf_versions.php';
-require_once __DIR__ . '/bbf_drafts.php';
+require_once __DIR__ . '/bbf_drafts.php'; require_once __DIR__ . '/bbf_context.php';
 
 require_once __DIR__ . '/bbf_auth.php'; $config = bbf_auth_load_config(__DIR__ . '/config.php');
 
@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // ─── GET endpoints (CSRF token, form definition) ───────────────
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $action = $_GET['action'] ?? '';
+    $action = $_GET['action'] ?? ''; if ($action === 'context') { echo json_encode(bbfClientConfiguration($config), JSON_UNESCAPED_UNICODE); exit; }
 
     // CSRF token — needs session
     if (($config['csrf'] ?? true) && $action === 'csrf') {
@@ -144,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // webhook URLs, email addresses, actions, or storage settings
         $def = json_decode(file_get_contents($defFile), true);
         if (!is_array($def) || ($def['id'] ?? null) !== $defFormId) respond(500, 'Invalid form definition.');
-        unset($def['on_submit'], $def['storage']);
+        $def = bbfSystemDefinition($def, $config); $def['_bbf_client'] = bbfClientConfiguration($config); unset($def['on_submit'], $def['storage']);
         echo json_encode($def, JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -179,7 +179,7 @@ if (!empty($schemaErrors)) {
     error_log('BareBonesForms schema errors in ' . $formId . ': ' . implode('; ', $schemaErrors));
     respond(500, 'Invalid form definition.', ['schema_errors' => $schemaErrors]);
 }
-$publishedDefinitionVersion = bbf_version_id($form);
+$form = bbfSystemDefinition($form, $config); $publishedDefinitionVersion = bbf_version_id($form);
 
 // ─── Parse input ────────────────────────────────────────────────
 $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
@@ -227,7 +227,7 @@ if (!empty($form['templates'])) {
 }
 
 // ─── Flatten group fields ───────────────────────────────────────
-$flatFields = flattenFields($form['fields']);
+$flatFields = flattenFields($form['fields']); $input = bbfSystemInput($flatFields, $input);
 
 // ─── Opt-in respondent drafts ───────────────────────────────────
 $draftAction = $_GET['action'] ?? '';
@@ -619,7 +619,7 @@ function collectData(array $fields, array $input): array {
             continue;
         }
 
-        $value = bbfNormalizeInputValue($input[$name] ?? '');
+        $value = !empty($field['_bbf_system']) ? ($input[$name] ?? '') : bbfNormalizeInputValue($input[$name] ?? '');
 
         // Resolve "other" option: if value is __other__, use the _other text field
         if (!empty($field['other']) && $value === '__other__') {
