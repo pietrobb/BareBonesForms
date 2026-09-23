@@ -1,12 +1,18 @@
-# BareBonesForms  v1.0.1
+# BareBonesForms
 
-**Zero-build PHP forms for shared hosting.**
+**Self-hosted PHP forms for shared hosting. No build step, no Composer, no npm, no SaaS.**
 
-Define a form as JSON. Upload to hosting. Embed. Collect submissions. Done.
+Define a form as JSON. Upload one folder. Embed with two lines. Submissions land on *your* server.
 
-PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 32 Languages · Shared-hosting friendly
+PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 32 Languages · ~22 KB gzipped JS
 
-**[Documentation →](docs.html)** · **[Sandbox →](sandbox.php)** · **[Viewer →](viewer.php)** · **[Editor →](editor.php)** · **[Installation Check →](check.php)** · **[Live Demos →](demo1.html)**
+**[Download →](https://github.com/pietrobb/BareBonesForms/releases/latest)** · **[Documentation →](docs.html)** · **[Changelog →](CHANGELOG.md)** · **[Upgrading →](#upgrading)** · **[Live Demos →](demo1.html)**
+
+### Why?
+
+Hosted form services (Formspree, Tally, Typeform…) are convenient until you care about where your leads are stored, what it costs per month, or what happens when their API changes. Classic PHP form plugins drag in a framework, a database, and a build pipeline. BareBonesForms sits in between: drop a folder on any PHP host and you own everything — the forms, the data, the emails.
+
+It has run in production on several business websites since spring 2026, collecting real leads in multiple languages.
 
 ---
 
@@ -43,6 +49,13 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 - **Submissions API** — List, filter, export as JSON or CSV. Token-authenticated. Quick export via `?last=7d`.
 - **Submissions Viewer** — Built-in dashboard (`viewer.php`) for browsing, searching, and exporting submissions.
 - **Form Editor** — Visual JSON editor (`editor.php`) with live preview, schema validation, and field snippets.
+- **Save & resume drafts** — Respondents can save a long form and come back later with a resume code. Opt-in per form, allowlisted fields only.
+- **Repeatable groups** — "Add another" rows (family members, line items, rooms…) with min/max limits, validated on the server.
+- **Viewer inbox** — Mark submissions *new / in-progress / done*, add private notes and tags, filter by them.
+- **Delivery log with retry** — Every email, webhook and action is recorded per submission. A failed delivery shows in the viewer with a Retry button instead of disappearing into a log.
+- **Form versions** — Submissions keep the form definition they were filled in with, so old answers still display correctly after you edit the form.
+- **Retention & backups** — Optional automatic deletion of old submissions (archive first, confirm by digest) and per-form logical backups with dry-run restore.
+- **Visit attribution** — Optionally store UTM parameters, Google Ads click IDs (`gclid`, `gbraid`, `wbraid`), landing page and referrer with each lead. Optional Umami event on success.
 
 **Built for:** PHP shared hosting, small–medium websites, developers who want control.
 
@@ -52,7 +65,7 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 
 ## Live Demos
 
-Eight demos, each building on the previous. From "hello world" to business logic:
+Nine demos, each building on the previous. From "hello world" to business logic:
 
 | # | Demo | What it shows |
 |---|------|---------------|
@@ -72,17 +85,48 @@ Demos 1–3 cover backend configuration. Demo 4 showcases the form engine's core
 
 ## Quick Start
 
-```
-1. Upload the barebonesforms/ folder to your hosting
-2. Copy config.example.php → config.php
-3. Fill in storage and mail settings
-4. Open check.php in your browser — fix any errors it reports
-5. Delete check.php — it exposes server details
-6. Create a JSON file in forms/
-7. Embed: <div data-form="kontakt"></div>
-         <script src="bbf.js"></script>
-8. Done.
-```
+1. **Download** `barebonesforms-vX.Y.Z.zip` from [Releases](https://github.com/pietrobb/BareBonesForms/releases/latest) and unzip it.
+   It contains only the files needed on a server — no tests, no dev tooling.
+2. **Upload** the `barebonesforms/` folder to your hosting (e.g. `https://example.com/bbf/`).
+3. **Configure:** copy `config.example.php` → `config.php`, fill in storage and mail settings, set a long random `api_token`.
+4. **Check:** open `check.php` in the browser and fix anything it reports. Then **delete `check.php`** — it exposes server details.
+5. **Create a form:** put a JSON file in `forms/` (start from `forms/kontakt.json`).
+6. **Embed** it on any page:
+   ```html
+   <div data-form="kontakt"></div>
+   <script src="/bbf/bbf.js"></script>
+   ```
+7. **Verify:** `php smoketest.php` (or the viewer at `viewer.php`) — every form should pass.
+
+Before going live, run through the [Production Checklist](#production-checklist). You can delete the demos (`demo*.html`, `demo.css`, `index.html`, `forms/demo-*.json`, `api-psc.php`, `data/`) — they are only there to try things out.
+
+> **Working from a git clone instead?** Don't upload the whole repository. Build the upload-ready folder with
+> `php tools/package-deploy.php --destination ../barebonesforms` — it copies exactly the runtime files from a closed allowlist.
+
+---
+
+## Upgrading
+
+Your data lives in four places that an upgrade never needs to touch: **`config.php`**, **`forms/`**, **`templates/`** and **`submissions/`** (plus `actions/` if you wrote custom actions and `lang/` if you added a language). Everything else is replaceable code.
+
+**Before you start:** read the [CHANGELOG](CHANGELOG.md) entries between your version and the new one. Items marked **Breaking** tell you exactly what to change.
+
+1. **Back up** the whole installation folder (e.g. `tar -czf bbf-backup-$(date +%F).tgz bbf/`).
+2. **Preflight in a staging folder** that is not web-accessible: unzip the new release there, copy in your `forms/*.json` (and `templates/`, `actions/`), and create a temporary `config.php` from the new `config.example.php` *without* live credentials. Then run
+   ```bash
+   php smoketest.php
+   ```
+   Dry mode validates your existing forms against the new version without storing anything or sending mail. Fix every reported error in your form JSON — never bypass validation.
+3. **Merge config:** compare your `config.php` with the new `config.example.php` and add the new keys you want. Keys you leave out fall back to safe defaults, so new features stay off until you opt in.
+4. **Replace the code:** copy the new release over the live folder, **excluding** `config.php`, `forms/`, `templates/`, `submissions/`, `logs/` (and your own `actions/`/`lang/` files). If you customized `.htaccess`, merge it by hand. With SSH:
+   ```bash
+   rsync -a --exclude=config.php --exclude=forms/ --exclude=templates/ \
+         --exclude=submissions/ --exclude=logs/ barebonesforms/ /path/to/bbf/
+   cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor autocomplete current
+   ```
+5. **Verify:** run `php smoketest.php` on the live folder, submit one real test form, and open it in `viewer.php`.
+
+**Rolling back** = restoring the backup from step 1.
 
 ---
 
@@ -489,6 +533,8 @@ Use `lang/en.js` and `lang/en.php` as reference — they contain every key with 
 
 ## Submissions API
 
+Examples use `&token=` for brevity. In scripts, prefer the header `X-BBF-Token: YOUR_TOKEN` so the token doesn't end up in server logs or browser history.
+
 ```bash
 # List all (JSON, paginated)
 GET submissions.php?form=kontakt&token=YOUR_TOKEN
@@ -654,11 +700,11 @@ Use two different addresses to test reply\_to: the notification arrives at `smok
 Validates forms in-process. No emails sent, nothing stored, no side effects.
 
 ```bash
-# All forms
-curl "https://example.com/smoketest.php?token=YOUR_TOKEN"
+# All forms (the token goes in a header, never in the URL)
+curl -H "X-BBF-Smoke-Token: YOUR_TOKEN" "https://example.com/smoketest.php"
 
 # Single form
-curl "https://example.com/smoketest.php?token=YOUR_TOKEN&form=kontakt"
+curl -H "X-BBF-Smoke-Token: YOUR_TOKEN" "https://example.com/smoketest.php?form=kontakt"
 
 # CLI (no token needed — you already have server access)
 php smoketest.php
@@ -684,14 +730,14 @@ Response:
 Submits forms through the full `submit.php` pipeline — stores submissions, sends real emails, fires webhooks. Confirmation emails go to `smoke_email` (the test submitter), notification emails go to `smoke_notify` (the test admin). Reply-To on the notification points back to `smoke_email`, so clicking Reply lets you verify the full flow.
 
 ```bash
-curl "https://example.com/smoketest.php?token=YOUR_TOKEN&live=1"
-curl "https://example.com/smoketest.php?token=YOUR_TOKEN&live=1&form=kontakt"
+curl -X POST -H "X-BBF-Smoke-Token: YOUR_TOKEN" "https://example.com/smoketest.php?live=1"
+curl -X POST -H "X-BBF-Smoke-Token: YOUR_TOKEN" "https://example.com/smoketest.php?live=1&form=kontakt"
 
 # CLI
 php smoketest.php --live
 ```
 
-Live mode requires `smoke_email` in config — refuses to run without it.
+Live mode requires `smoke_email`, a valid `smoke_token` and a fixed `diagnostic_base_url` in config — it refuses to run without them.
 
 ### What gets tested
 
@@ -757,7 +803,7 @@ Collect payments via Stripe Checkout — no SDK, no build step. Card data never 
 
 Amounts are server-owned integer minor units (`4990` = EUR 49.90). Use `mode: "catalog"` for trusted product/quantity/option pricing, or `mode: "donation"` with an allowlisted `amount_field`, matching `minor_units`, and server-side minimum/maximum bounds. Never restore the legacy client-authoritative `amount` contract.
 
-**Upgrade preflight:** Before replacing an existing installation, unpack the new release into a non-web-accessible staging directory, create a temporary `config.php` from the new `config.example.php` with no live credentials or data paths, and copy only the existing `forms/*.json` definitions into that staging copy. Run the new release's `php smoketest.php` there; dry mode validates the old definitions with the new runtime without storing submissions or sending email/webhooks. Migrate every payment error mentioning `mode`, `pricing_version`, `amount_minor`, `catalog`, or donation bounds before deployment—never bypass validation. Then back up the live installation, copy the validated release, and run dry mode once more after deployment.
+**Upgrading payment forms:** early payment forms (from `main` before September 2026) used a client-supplied `amount`/`amount_field`. That contract is gone. The [upgrade preflight](#upgrading) (`php smoketest.php` in staging) reports every payment form that needs `mode`, `pricing_version`, `amount_minor`, `catalog`, or donation bounds — migrate them before deploying.
 
 **Setup:** Add `stripe.secret_key` and `stripe.webhook_secret` to `config.php`. Register `payment.php` as a webhook endpoint in [Stripe Dashboard](https://dashboard.stripe.com/webhooks) (event: `checkout.session.completed`).
 
@@ -1068,39 +1114,123 @@ Validated both client-side (error in form message area) and server-side (422 res
 
 ---
 
+## Repeatable Groups
+
+Let respondents add rows — attendees, line items, rooms, children. A `group` with `"repeatable": true` submits an array of objects; the server validates every row and the `min_items`/`max_items` bounds (max 100).
+
+```json
+{
+    "name": "attendees", "type": "group", "label": "Attendees",
+    "repeatable": true, "min_items": 1, "max_items": 5,
+    "add_label": "Add attendee", "remove_label": "Remove",
+    "fields": [
+        { "name": "full_name", "type": "text", "label": "Name", "required": true },
+        { "name": "email", "type": "email", "label": "E-mail" }
+    ]
+}
+```
+
+The viewer shows each row separately.
+
+---
+
+## Save & Resume Drafts
+
+Long forms can offer **Save progress / Resume**. It is off by default and enabled per form:
+
+```json
+"drafts": {
+    "enabled": true,
+    "ttl_seconds": 604800,
+    "fields": ["full_name", "company", "message"]
+}
+```
+
+- Only fields listed in `fields` are ever written to a draft. Passwords, hidden fields and fields marked `"sensitive": true` are always excluded.
+- Saving returns a **resume code** (also remembered in the browser). The respondent enters it later to restore the form.
+- Drafts expire after `ttl_seconds` (5 minutes to 30 days, default 7 days) and are stored in `drafts_dir` (default `submissions/drafts/`), never in your submissions.
+
+---
+
+## Viewer Inbox, Delivery Log & Retry
+
+`viewer.php` is more than a list:
+
+- **Workflow status** — mark each submission `new`, `in-progress` or `done`, add private notes and tags, filter by them and save filters. This metadata is kept separately and never leaks into exports or webhooks.
+- **Delivery log** — each confirmation email, notification, webhook and custom action is recorded per submission with its result. If your SMTP server or webhook endpoint was down, you see it on the submission and can press **Retry**. The attempt limit and back-off are set in `config.php` → `delivery`.
+- **Form versions** — every submission remembers the version of the form it was filled in with, so renaming or removing a field later doesn't break how old answers are displayed.
+- **Scoped access** — besides the admin `api_token` you can issue per-form tokens with `read` / `export` / `delete` / `review` permissions and an expiry (`access_tokens` in `config.php`).
+
+---
+
+## Retention & Backups
+
+Both are command-line only (`maintenance.php`) and every destructive step is a dry run first:
+
+```bash
+php maintenance.php backup --form=kontakt                 # integrity-checked logical backup
+php maintenance.php restore --bundle=/path/to/bundle      # dry run: shows what would change
+php maintenance.php retention --form=kontakt              # dry run: lists what would be deleted
+php maintenance.php retention --form=kontakt --apply --confirm=<digest from the dry run>
+```
+
+Retention is **off** until you set `retention.enabled` and `retention.days` in `config.php`. Records are archived to `retention.archive_dir` before deletion. Keep the archive and backup directories outside the web root.
+
+---
+
+## Visit Attribution (UTM, Google Ads, Umami)
+
+Optional. Stores where a lead came from with every submission — without adding hidden fields to each form.
+
+1. Merge the keys from `config.attribution.example.php` into `config.php`. It enables `utm_*`, `gclid`/`gbraid`/`wbraid`, `landing_url`, `referrer` and `touch_at` as **system fields** that are added to every form automatically.
+2. To capture the click ID on landing pages **without** a form, include `gclid.js` on every page:
+   ```html
+   <script src="/bbf/gclid.js" defer></script>
+   ```
+   Pages with a form don't need it — `bbf.js` loads the capture script itself.
+3. With `'analytics' => ['umami' => true]` and an existing Umami tracker on the page, a successful submission sends a `form_submitted` event. Every successful submission also fires a `bbf:submitted` DOM event you can hook into yourself.
+
+Upgrading an installation that already had its own hidden `gclid`/`utm_*` fields? `php tools/migrate-system-fields.php --fields=gclid,gbraid,wbraid` shows which form files would change; add `--apply` to write them.
+
+---
+
 ## File Structure
+
+What you upload (the release ZIP):
 
 ```
 barebonesforms/
 ├── config.example.php  ← Copy to config.php, edit once
-├── submit.php          ← POST handler
+├── config.attribution.example.php ← Optional UTM / Google Ads keys to merge into config.php
+├── submit.php          ← POST handler (also serves form definitions and drafts)
 ├── payment.php         ← Stripe webhook handler
-├── bbf_functions.php   ← Shared functions (internal)
 ├── submissions.php     ← API: list/export submissions
-├── sandbox.php         ← Test forms without side effects
-├── smoketest.php       ← Validate all forms in one request (token-protected)
-├── viewer.php          ← Submissions dashboard (optional, delete if unused)
+├── viewer.php          ← Submissions dashboard + inbox (optional, delete if unused)
 ├── editor.php          ← Visual JSON form editor (optional, delete if unused)
-├── check.php           ← Installation diagnostics
-├── docs.html           ← Full documentation (standalone)
+├── sandbox.php         ← Test forms without side effects
+├── smoketest.php       ← Validate all forms (CLI or token-protected HTTP)
+├── check.php           ← Installation diagnostics (delete after use)
+├── maintenance.php     ← CLI: backup, restore, retention
+├── bbf_*.php           ← Internal libraries (not web entry points)
 ├── bbf.js              ← Form renderer (zero dependencies)
 ├── bbf.css             ← Default styles with --bbf-* CSS variables (auto-loaded by bbf.js)
 ├── bbf-theme.css       ← Example themes: dark, corporate, warm, minimal (copy & customize)
+├── bbf-context.js, gclid.js, bbf-analytics.js ← Optional visit attribution / Umami (auto-loaded when enabled)
 ├── .htaccess           ← Protects sensitive dirs (Apache)
-├── lang/               ← Language packs (32 languages)
-│   ├── en.js / en.php  ← English (reference)
-│   ├── de.js / de.php  ← German
-│   └── ...             ← 24 more languages
+├── docs.html           ← Full documentation (standalone)
+├── lang/               ← Language packs (32 languages, .js for browser + .php for server)
 ├── forms/
 │   ├── form.schema.json ← JSON Schema for IDE autocomplete
 │   └── kontakt.json     ← Your form definitions
-├── templates/
-│   ├── confirm.html    ← Email to submitter
-│   └── notify.html     ← Email to admin
-├── submissions/        ← Stored data (auto-created)
-├── logs/               ← Rate limit logs (auto-created)
-└── actions/            ← Custom post-submit actions (optional)
+├── templates/          ← Email templates (confirm/notify)
+├── actions/            ← Custom post-submit actions (optional)
+├── tools/              ← CLI migration helpers
+├── submissions/        ← Stored data (auto-created, never web-accessible)
+├── logs/               ← Rate-limit and audit logs (auto-created)
+└── demo*.html, index.html, api-psc.php, data/ ← Demos — safe to delete
 ```
+
+The git repository additionally contains `tests/` and `tools/package-deploy.php`; see [Development](#development).
 
 ---
 
@@ -1118,7 +1248,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 
 1. **This README** — you're here. Gives you the concept, JSON structure, field types, and `on_submit` pipeline.
 2. **[docs.html](docs.html)** — the full reference. Contains CSS class table (21 entries), `show_if` operators, `config.php` options, storage backends, per-form overrides, and everything not covered here.
-3. **At least one demo** (`demo1.html`–`demo8.html`) — see real embedding in context. Demo 1 is the simplest; Demo 4 is the feature showcase; Demo 8 shows reusable templates.
+3. **At least one demo** (`demo1.html`–`demo9.html`) — see real embedding in context. Demo 1 is the simplest; Demo 4 is the feature showcase; Demo 8 shows reusable templates.
 4. **[form.schema.json](forms/form.schema.json)** — the machine-readable schema. Use it to validate JSON you generate.
 
 **Common pitfalls to avoid:**
@@ -1157,6 +1287,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] **`check.php` deleted after verification** — it exposes PHP version, extensions, paths, and config details
 - [ ] `editor.php` deleted or protected — can modify form definitions
 - [ ] `viewer.php` deleted or protected — exposes submission data
+- [ ] Demos removed (`demo*.html`, `demo.css`, `index.html`, `forms/demo-*.json`, `api-psc.php`, `data/`) unless you want them public
 
 ---
 
@@ -1166,6 +1297,20 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - Extensions: `json`, `session` (required); `mbstring` recommended for complete Unicode case folding (the bundled PSČ demo has a Czech/Slovak fallback)
 - `pdo_sqlite` or `pdo_mysql` (depending on storage backend)
 - Any web hosting with PHP support
+
+---
+
+## Development
+
+```bash
+php tests/review-ci-test.php                               # the full CI gate: every PHP + Node suite, isolated temp installs
+php tests/review-access-mysql-test.php                     # extra MariaDB/MySQL matrix (needs a local server)
+php tools/package-deploy.php --destination ../barebonesforms   # build the upload-ready folder
+```
+
+Tests never touch your `config.php`, `forms/` or `submissions/` — each suite creates its own throw-away installation. Node 20+ and Python with `jsonschema` are needed for the browser-side and schema suites.
+
+**Releasing:** add a section to [CHANGELOG.md](CHANGELOG.md), then push a `vX.Y.Z` tag. The [Release workflow](.github/workflows/release.yml) builds `barebonesforms-vX.Y.Z.zip` from the same allowlist and publishes it on GitHub Releases with the changelog section as release notes.
 
 ---
 

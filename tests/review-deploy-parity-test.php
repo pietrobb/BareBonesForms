@@ -158,12 +158,6 @@ if (!mkdir($temp, 0700) || !mkdir($outside, 0700)) {
 }
 
 try {
-    $maintainedCheck = deploy_test_process([PHP_BINARY, $packager, '--check'], $root);
-    deploy_test_check(
-        $maintainedCheck['code'] === 0 && str_contains($maintainedCheck['stdout'], 'sorted path and SHA-256'),
-        'maintained deploy/barebonesforms snapshot has exact source parity'
-    );
-
     $build = deploy_test_process([PHP_BINARY, $packager, '--destination', $destination], $root);
     deploy_test_check($build['code'] === 0, 'packager builds a disposable destination');
     deploy_test_check(is_dir($destination) && !is_link($destination), 'build creates a real package directory');

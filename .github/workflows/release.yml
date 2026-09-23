@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Build upload-ready ZIP
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: Build package from the closed allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/barebonesforms"
+          php tools/package-deploy.php --destination "$out"
+          php tools/package-deploy.php --check --destination "$out"
+          rm "$out/.bbf-package"
+          (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}.zip" barebonesforms)
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.md"
+          awk -v head="## [${GITHUB_REF_NAME#v}]" '
+            index($0, head) == 1 {on=1; next}
+            on && /^## / {exit}
+            on {print}
+          ' CHANGELOG.md > "$notes"
+          [ -s "$notes" ] || echo "See CHANGELOG.md." > "$notes"
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}.zip" \
+            --title "$GITHUB_REF_NAME" --notes-file "$notes"

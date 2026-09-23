@@ -214,7 +214,7 @@ $missionInventory = [
         'failure' => [['tests/review-acceptance-test.php', '(?:bak|swp|save|orig|old)']],
     ],
     'G6.2 server-owned payment example and pre-deploy upgrade check' => [
-        'fixes' => [['README.md', 'Run the new release\'s `php smoketest.php`'], ['README.md', 'Never restore the legacy client-authoritative']],
+        'fixes' => [['README.md', 'validates your existing forms against the new version'], ['README.md', 'Never restore the legacy client-authoritative']],
         'positive' => [['tests/review-acceptance-test.php', 'payment documentation uses server-owned pricing']],
         'failure' => [['tests/review-payment-test.php', "'legacy fixed decimal amount' =>"]],
     ],
@@ -480,8 +480,8 @@ acceptance_check(str_contains($htaccess, 'BBF_BASE/') && str_contains($htaccess,
     && str_contains($readme, 'does not replace these sentinel-file probes'),
     'Nginx guidance protects config and backup variants while preserving language JavaScript and requiring sentinel probes');
 acceptance_check(str_contains($readme, '"pricing_version": "order-v1"')
-    && str_contains($readme, "Run the new release's `php smoketest.php`")
-    && str_contains($readme, 'non-web-accessible staging directory')
+    && str_contains($readme, 'validates your existing forms against the new version')
+    && str_contains($readme, 'staging folder** that is not web-accessible')
     && str_contains($readme, 'Never restore the legacy client-authoritative'),
     'payment documentation uses server-owned pricing and the new runtime for a non-invasive pre-deploy compatibility check');
 

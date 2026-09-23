@@ -3,9 +3,7 @@ logs/
 config.php
 *.log
 .DS_Store
-deploy/*
-!deploy/barebonesforms/
-!deploy/barebonesforms/**
+deploy/
 review/
 backups/
 .claude/
