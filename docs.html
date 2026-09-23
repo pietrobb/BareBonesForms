@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BareBonesForms v1.0.1 — Documentation</title>
+<title>BareBonesForms v2.0.0 — Documentation</title>
 <style>
 :root {
     --bg: #ffffff; --bg-sidebar: #f8f9fa; --bg-code: #f4f5f7; --bg-code-block: #1e1e2e;
@@ -97,8 +97,8 @@ details summary:hover { text-decoration: underline; }
 <body>
 
 <div class="header">
-    <h1>BareBonesForms <span>v1.0.1 Docs</span></h1>
-    <span class="ver">v1.0 &middot; PHP 8.1+ &middot; March 2026</span>
+    <h1>BareBonesForms <span>v2.0.0 Docs</span></h1>
+    <span class="ver">v2.0 &middot; PHP 8.1+ &middot; September 2026</span>
 </div>
 
 <nav class="sidebar">
@@ -106,6 +106,7 @@ details summary:hover { text-decoration: underline; }
     <a href="#overview">Overview</a>
     <a href="#genesis">The Genesis</a>
     <a href="#quick-start">Quick Start</a>
+    <a href="#upgrading">Upgrading</a>
     <a href="#file-structure">File Structure</a>
 
     <div class="group">Form Definition</div>
@@ -113,6 +114,10 @@ details summary:hover { text-decoration: underline; }
     <a href="#field-types">Field Types</a>
     <a href="#field-properties">Field Properties</a>
     <a href="#advanced-features">Advanced Features</a>
+    <a href="#repeatable">Repeatable Groups</a>
+    <a href="#drafts">Save &amp; Resume Drafts</a>
+    <a href="#lookup">Lookup &amp; Autocomplete</a>
+    <a href="#options-from">Dynamic Options</a>
     <a href="#on-submit">on_submit Actions</a>
 
     <div class="group">Frontend</div>
@@ -137,6 +142,9 @@ details summary:hover { text-decoration: underline; }
     <a href="#webhooks">Webhooks</a>
     <a href="#payments">Payments (Stripe)</a>
     <a href="#sandbox">Sandbox Mode</a>
+    <a href="#smoke-test">Smoke Test</a>
+    <a href="#maintenance">Retention &amp; Backups</a>
+    <a href="#attribution">Visit Attribution</a>
     <a href="#error-notify">Error Notifications</a>
     <a href="#production">Production Checklist</a>
 
@@ -149,6 +157,7 @@ details summary:hover { text-decoration: underline; }
     <a href="demo6.html">Demo 6 &mdash; Print Shop</a>
     <a href="demo7.html">Demo 7 &mdash; Quiz</a>
     <a href="demo8.html">Demo 8 &mdash; Templates</a>
+    <a href="demo9.html">Demo 9 &mdash; Postal Code Lookup</a>
 </nav>
 
 <main class="content">
@@ -169,6 +178,14 @@ details summary:hover { text-decoration: underline; }
     <li><strong>Conditional logic</strong> &mdash; show/hide fields based on other field values</li>
     <li><strong>Star ratings, sections, &ldquo;other&rdquo; option</strong> &mdash; the field types that matter</li>
     <li><strong>Sandbox mode</strong> &mdash; test everything without consequences</li>
+    <li><strong>Repeatable groups</strong> &mdash; attendees, line items, children; add and remove rows within bounds</li>
+    <li><strong>Save &amp; resume drafts</strong> &mdash; opt-in per form, only the fields you allow</li>
+    <li><strong>Lookup, autocomplete, dynamic options</strong> &mdash; fill fields from your own APIs</li>
+    <li><strong>Viewer inbox</strong> &mdash; status, notes, tags, delivery log and one-click retry of failed emails and webhooks</li>
+    <li><strong>Form versions</strong> &mdash; old submissions keep the form they were filled in with</li>
+    <li><strong>Stripe payments</strong> &mdash; server-owned prices, emails sent only after payment</li>
+    <li><strong>Backups and retention</strong> &mdash; command-line, dry run first</li>
+    <li><strong>Visit attribution</strong> &mdash; UTM, Google Ads click IDs and Umami events, no extra hidden fields</li>
 </ul>
 
 <div class="callout tip">
@@ -181,7 +198,8 @@ details summary:hover { text-decoration: underline; }
     <a href="demo5.html"><strong>Demo 5</strong> &mdash; Allergy remedy finder</a> &middot;
     <a href="demo6.html"><strong>Demo 6</strong> &mdash; Print shop order</a> &middot;
     <a href="demo7.html"><strong>Demo 7</strong> &mdash; Monty Python quiz</a> &middot;
-    <a href="demo8.html"><strong>Demo 8</strong> &mdash; Reusable templates</a><br><br>
+    <a href="demo8.html"><strong>Demo 8</strong> &mdash; Reusable templates</a> &middot;
+    <a href="demo9.html"><strong>Demo 9</strong> &mdash; Postal code lookup</a><br><br>
     Come back here when you want to know <em>why</em> the wheels turn. Or don't. I ain't your schoolmaster.
 </div>
 
@@ -206,8 +224,8 @@ details summary:hover { text-decoration: underline; }
 
 <p>Five steps. A man of moderate intelligence could manage it before his coffee goes cold.</p>
 
-<p><strong>1.</strong> Upload the <code>barebonesforms/</code> folder to your hosting.</p>
-<p><strong>2.</strong> Copy <code>config.example.php</code> &rarr; <code>config.php</code> and edit it. Once.</p>
+<p><strong>1.</strong> Download <code>barebonesforms-vX.Y.Z.zip</code> from <a href="https://github.com/pietrobb/BareBonesForms/releases/latest" target="_blank">GitHub Releases</a> and upload the <code>barebonesforms/</code> folder to your hosting. The ZIP holds only what belongs on a server &mdash; no tests, no dev tooling.</p>
+<p><strong>2.</strong> Copy <code>config.example.php</code> &rarr; <code>config.php</code> and edit it. Once. Set a long random <code>api_token</code>.</p>
 <p><strong>3.</strong> Open <code>check.php</code> in your browser &mdash; fix any errors it reports. Then <strong>delete check.php</strong> (it exposes server details to anyone who knows the URL).</p>
 <p><strong>4.</strong> Create a form JSON in <code>forms/</code>.</p>
 <p><strong>5.</strong> Embed it in your page:</p>
@@ -217,24 +235,57 @@ details summary:hover { text-decoration: underline; }
 
 <p>That's the full snippet. <code>bbf.js</code> auto-loads <code>bbf.css</code> from the same directory &mdash; no need for a separate <code>&lt;link&gt;</code> tag.</p>
 
-<p><strong>6.</strong> Done. The form renders, validates, and submits.</p>
+<p><strong>6.</strong> Verify with <code>php smoketest.php</code> (see <a href="#smoke-test">Smoke Test</a>) &mdash; every form should pass. Done. The form renders, validates, and submits.</p>
+
+<div class="callout info">
+    <strong>Working from a git clone?</strong>
+    Don't upload the whole repository. Build the upload-ready folder with <code>php tools/package-deploy.php --destination ../barebonesforms</code> &mdash; it copies exactly the runtime files from a closed allowlist, the same one the release ZIP is built from.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="upgrading">Upgrading</h2>
+
+<p>Your data lives in places an upgrade never needs to touch: <strong><code>config.php</code></strong>, <strong><code>forms/</code></strong>, <strong><code>templates/</code></strong> and <strong><code>submissions/</code></strong> &mdash; plus <code>actions/</code> if you wrote custom actions and <code>lang/</code> if you added a language. Everything else is replaceable code.</p>
+
+<p><strong>Before you start:</strong> read the <a href="https://github.com/pietrobb/BareBonesForms/blob/main/CHANGELOG.md" target="_blank">CHANGELOG</a> entries between your version and the new one. Items marked <strong>Breaking</strong> tell you exactly what to change.</p>
+
+<p><strong>1. Back up</strong> the whole installation folder:</p>
+<div class="code-block"><span class="lang">bash</span><pre>tar -czf bbf-backup-$(date +%F).tgz bbf/</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>2. Preflight in a staging folder</strong> that is not web-accessible: unzip the new release there, copy in your <code>forms/*.json</code> (and <code>templates/</code>, <code>actions/</code>), and create a temporary <code>config.php</code> from the new <code>config.example.php</code> <em>without</em> live credentials. Then run <code>php smoketest.php</code>. Dry mode validates your existing forms against the new version without storing anything or sending mail. Fix every reported error in your form JSON &mdash; never bypass validation.</p>
+
+<p><strong>3. Merge config:</strong> compare your <code>config.php</code> with the new <code>config.example.php</code> and add the keys you want. Keys you leave out fall back to safe defaults, so new features stay off until you opt in.</p>
+
+<p><strong>4. Replace the code:</strong> copy the new release over the live folder, <strong>excluding</strong> <code>config.php</code>, <code>forms/</code>, <code>templates/</code>, <code>submissions/</code>, <code>logs/</code> (and your own <code>actions/</code> / <code>lang/</code> files). If you customized <code>.htaccess</code>, merge it by hand. With SSH:</p>
+<div class="code-block"><span class="lang">bash</span><pre>rsync -a --exclude=config.php --exclude=forms/ --exclude=templates/ \
+      --exclude=submissions/ --exclude=logs/ barebonesforms/ /path/to/bbf/
+cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor autocomplete current</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>5. Verify:</strong> run <code>php smoketest.php</code> on the live folder, submit one real test form, and open it in <code>viewer.php</code>.</p>
+
+<p><strong>Rolling back</strong> = restoring the backup from step 1.</p>
 
 <!-- ============================================================ -->
 <h2 id="file-structure">File Structure</h2>
 
 <div class="file-tree">barebonesforms/
 ├── config.example.php  <span class="comment">&larr; Copy to config.php. Edit once. Then forget about it.</span>
-├── submit.php          <span class="comment">&larr; POST handler. Don't touch unless you know what you're doing.</span>
+├── config.attribution.example.php <span class="comment">&larr; Optional UTM / Google Ads keys to merge into config.php</span>
+├── submit.php          <span class="comment">&larr; POST handler (also serves form definitions and drafts)</span>
 ├── payment.php         <span class="comment">&larr; Stripe webhook handler (payment confirmation)</span>
-├── bbf_functions.php   <span class="comment">&larr; Shared functions (internal, blocked by .htaccess)</span>
 ├── submissions.php     <span class="comment">&larr; API: list/export submissions</span>
 ├── sandbox.php         <span class="comment">&larr; Test forms without consequences</span>
-├── viewer.php         <span class="comment">&larr; Submissions dashboard. Beautiful. Optional. Delete if unused.</span>
-├── editor.php         <span class="comment">&larr; Visual JSON form editor with live preview. Delete if unused.</span>
+├── smoketest.php       <span class="comment">&larr; Validate all forms (CLI or token-protected HTTP)</span>
+├── viewer.php          <span class="comment">&larr; Submissions dashboard + inbox. Optional. Delete if unused.</span>
+├── editor.php          <span class="comment">&larr; Visual JSON form editor with live preview. Delete if unused.</span>
 ├── check.php           <span class="comment">&larr; Installation diagnostics. Run it. Then delete it.</span>
+├── maintenance.php     <span class="comment">&larr; CLI only: backup, restore, retention</span>
+├── bbf_*.php           <span class="comment">&larr; Internal libraries (not web entry points)</span>
 ├── docs.html           <span class="comment">&larr; This very document</span>
 ├── bbf.js              <span class="comment">&larr; Form renderer (zero dependencies, as God intended)</span>
 ├── bbf.css             <span class="comment">&larr; Default styles (auto-loaded by bbf.js &mdash; override or replace as needed)</span>
+├── bbf-theme.css       <span class="comment">&larr; Example themes: dark, corporate, warm, minimal</span>
+├── bbf-context.js, gclid.js, bbf-analytics.js <span class="comment">&larr; Optional visit attribution / Umami</span>
 ├── .htaccess           <span class="comment">&larr; Protects sensitive dirs (Apache only)</span>
 ├── lang/               <span class="comment">&larr; Language packs (32 locales &times; 2 files each = 64 files)</span>
 │   ├── en.js / en.php  <span class="comment">&larr; English (reference)</span>
@@ -246,9 +297,11 @@ details summary:hover { text-decoration: underline; }
 ├── templates/
 │   ├── confirm.html    <span class="comment">&larr; Email to the person who submitted</span>
 │   └── notify.html     <span class="comment">&larr; Email to you, the administrator</span>
-├── submissions/        <span class="comment">&larr; Stored data (auto-created)</span>
-├── logs/               <span class="comment">&larr; Rate limit logs (auto-created)</span>
-└── actions/            <span class="comment">&larr; Custom post-submit actions (optional)</span></div>
+├── actions/            <span class="comment">&larr; Custom post-submit actions (optional)</span>
+├── tools/              <span class="comment">&larr; CLI migration helpers</span>
+├── submissions/        <span class="comment">&larr; Stored data and drafts (auto-created, never web-accessible)</span>
+├── logs/               <span class="comment">&larr; Rate-limit and audit logs (auto-created)</span>
+└── demo*.html, index.html, api-psc.php, data/ <span class="comment">&larr; Demos &mdash; safe to delete</span></div>
 
 <!-- ============================================================ -->
 <h2 id="form-json">Form JSON Reference</h2>
@@ -334,7 +387,7 @@ details summary:hover { text-decoration: underline; }
 
 <div class="callout info">
     <strong>options required</strong>
-    <code>select</code>, <code>radio</code>, and <code>checkbox</code> all require the <code>options</code> property. Forget it, and the server will remind you &mdash; less politely than I do.
+    <code>select</code>, <code>radio</code>, and <code>checkbox</code> all require the <code>options</code> property (or <code>options_from</code>). Forget it, and the server will remind you &mdash; less politely than I do.
 </div>
 
 <!-- ============================================================ -->
@@ -374,7 +427,16 @@ details summary:hover { text-decoration: underline; }
     <tr><td><code>fields</code></td><td>array</td><td>Child fields (group type only)</td></tr>
     <tr><td><code>use</code></td><td>string</td><td>Template name to clone as group children (group type only)</td></tr>
     <tr><td><code>prefix</code></td><td>string</td><td>Prefix for template field names (used with <code>use</code>)</td></tr>
+    <tr><td><code>repeatable</code></td><td>boolean</td><td>Group only: respondent can add/remove rows &mdash; see <a href="#repeatable">Repeatable Groups</a></td></tr>
+    <tr><td><code>min_items</code> / <code>max_items</code></td><td>integer</td><td>Row bounds for a repeatable group (defaults 1 / 10, max 100)</td></tr>
+    <tr><td><code>add_label</code> / <code>remove_label</code></td><td>string</td><td>Button texts for a repeatable group</td></tr>
+    <tr><td><code>sensitive</code></td><td>boolean</td><td>Never saved in <a href="#drafts">drafts</a>, even if listed</td></tr>
+    <tr><td><code>lookup</code></td><td>object</td><td>Fill other fields from an API &mdash; see <a href="#lookup">Lookup</a></td></tr>
+    <tr><td><code>autocomplete_from</code></td><td>string/object</td><td>Typeahead suggestions from a URL &mdash; see <a href="#lookup">Autocomplete</a></td></tr>
+    <tr><td><code>options_from</code></td><td>string</td><td>Load options from a URL &mdash; see <a href="#options-from">Dynamic Options</a></td></tr>
 </table>
+
+<p>Form-level properties besides those in the example above: <code>drafts</code> (<a href="#drafts">Save &amp; Resume</a>), <code>templates</code>, <code>validations</code>, <code>label_position</code>, <code>animate_conditions</code>, <code>preview_fields</code> and <code>storage</code>.</p>
 
 <!-- ============================================================ -->
 <h2 id="advanced-features">Advanced Features</h2>
@@ -733,6 +795,121 @@ details summary:hover { text-decoration: underline; }
 </table>
 
 <!-- ============================================================ -->
+<h2 id="repeatable">Repeatable Groups</h2>
+
+<p>Some questions come in herds &mdash; attendees, line items, rooms, children. A <code>group</code> with <code>"repeatable": true</code> lets the respondent add and remove rows. It submits an array of objects, one per row; the server validates every row and the row bounds.</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "attendees", "type": "group", "label": "Attendees",
+    "repeatable": true, "min_items": 1, "max_items": 5,
+    "add_label": "Add attendee", "remove_label": "Remove",
+    "fields": [
+        { "name": "full_name", "type": "text", "label": "Name", "required": true },
+        { "name": "email", "type": "email", "label": "E-mail" }
+    ]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Property</th><th>Default</th><th>Description</th></tr>
+    <tr><td><code>repeatable</code></td><td><code>false</code></td><td>Turns the group into a list of rows.</td></tr>
+    <tr><td><code>min_items</code></td><td><code>1</code></td><td>Minimum number of rows (0&ndash;100).</td></tr>
+    <tr><td><code>max_items</code></td><td><code>10</code></td><td>Maximum number of rows (1&ndash;100).</td></tr>
+    <tr><td><code>add_label</code> / <code>remove_label</code></td><td>translated</td><td>Button texts.</td></tr>
+</table>
+
+<p>Submitted data looks like <code>"attendees": [{"full_name": "Ann", "email": "ann@example.com"}, ...]</code>. The viewer shows each row separately.</p>
+
+<!-- ============================================================ -->
+<h2 id="drafts">Save &amp; Resume Drafts</h2>
+
+<p>Long forms can offer <strong>Save progress</strong> and <strong>Resume</strong>. Off by default; enable it per form and list exactly which fields may be saved:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>"drafts": {
+    "enabled": true,
+    "ttl_seconds": 604800,
+    "fields": ["full_name", "company", "message"]
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<ul>
+    <li>Only fields listed in <code>fields</code> are ever written to a draft. Passwords, hidden fields and fields marked <code>"sensitive": true</code> are always excluded &mdash; even if you list them.</li>
+    <li>Saving returns a <strong>resume code</strong> (also remembered in the browser). The respondent enters it later to restore the form.</li>
+    <li>Drafts expire after <code>ttl_seconds</code> (5 minutes to 30 days, default 7 days).</li>
+    <li>Drafts live in <code>drafts_dir</code> (default <code>submissions/drafts/</code>), never among your submissions.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="lookup">Lookup &amp; Autocomplete</h2>
+
+<h3>Lookup (auto-fill from an API)</h3>
+
+<p>Enter a value in one field (e.g. a company ID), fetch data from your API, and fill other fields with it:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "ico",
+    "type": "text",
+    "label": "Company ID",
+    "lookup": {
+        "url": "/api/company.php?ico={{value}}",
+        "trigger": 8,
+        "map": {
+            "company_name": "name",
+            "street": "address.street",
+            "city": "address.city",
+            "zip": "address.zip"
+        }
+    }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<table>
+    <tr><th>Property</th><th>Description</th></tr>
+    <tr><td><code>url</code></td><td>API endpoint. <code>{{value}}</code> is replaced with the field&rsquo;s current value (URL-encoded).</td></tr>
+    <tr><td><code>trigger</code></td><td><code>"blur"</code> (default), <code>"change"</code>, or a <strong>number</strong> &mdash; fire automatically once the field reaches N characters.</td></tr>
+    <tr><td><code>map</code></td><td><strong>Form field name</strong> &rarr; <strong>response JSON key</strong>. Dot notation reads nested objects (<code>"address.street"</code>).</td></tr>
+</table>
+
+<p>Filled fields fire <code>input</code> and <code>change</code> events, so conditions react. If the request fails or returns 404, nothing happens &mdash; no error is shown.</p>
+
+<h3>Autocomplete (typeahead suggestions)</h3>
+
+<p>Show suggestions as the user types:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "city",
+    "type": "text",
+    "label": "City",
+    "autocomplete_from": {
+        "url": "/api/cities.php?q={{value}}",
+        "min_length": 2,
+        "debounce": 300,
+        "map": { "psc": "psc" }
+    }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>A plain string (<code>"autocomplete_from": "/api/cities.php?q={{value}}"</code>) works too. The endpoint returns an array of <code>{"value": ..., "label": ...}</code> objects. <code>min_length</code> defaults to 2, <code>debounce</code> to 300&nbsp;ms. The optional <code>map</code> fills other fields from the selected item &mdash; e.g. picking a city also fills the postal code. Arrow keys navigate, Enter selects, Escape closes. <a href="demo9.html">Demo 9</a> shows lookup and autocomplete working both ways.</p>
+
+<!-- ============================================================ -->
+<h2 id="options-from">Dynamic Options (<code>options_from</code>)</h2>
+
+<p>Load <code>select</code>, <code>radio</code> or <code>checkbox</code> options from a URL at render time instead of listing them in the JSON:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>{
+    "name": "country",
+    "type": "select",
+    "label": "Country",
+    "required": true,
+    "options_from": "/api/countries.php"
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>The URL must return <code>Content-Type: application/json</code> and an array of <code>{"value": ..., "label": ...}</code> objects &mdash; the same format as static <code>options</code>. Relative, absolute and cross-origin (with CORS) URLs all work.</p>
+
+<ul>
+    <li><code>bbf.js</code> fetches all <code>options_from</code> URLs in parallel before rendering.</li>
+    <li>If a fetch fails, the field renders with no options and a console warning.</li>
+    <li>Server-side option validation is skipped for these fields &mdash; the server doesn&rsquo;t know the valid values.</li>
+    <li>Use <code>options_from</code> <em>or</em> <code>options</code>. If both are present, <code>options_from</code> wins.</li>
+</ul>
+
+<!-- ============================================================ -->
 <h2 id="on-submit">on_submit Actions</h2>
 
 <p>The <code>on_submit</code> object governs what happens after a valid submission passes through the gates. Think of it as the chain of command &mdash; each action fires in order, and each does its appointed duty:</p>
@@ -740,12 +917,26 @@ details summary:hover { text-decoration: underline; }
 <table>
     <tr><th>Property</th><th>Type</th><th>Description</th></tr>
     <tr><td><code>store</code></td><td>boolean</td><td>Store submission (default: <code>true</code>)</td></tr>
-    <tr><td><code>confirm_email</code></td><td>object</td><td>Send email to respondent (<code>to</code>, <code>subject</code>, <code>template</code>)</td></tr>
-    <tr><td><code>notify</code></td><td>object</td><td>Send email to admin (<code>to</code> &mdash; string or array of strings, <code>subject</code>, <code>template</code>)</td></tr>
-    <tr><td><code>webhooks</code></td><td>array</td><td>URLs to POST submission data to</td></tr>
+    <tr><td><code>confirm_email</code></td><td>object</td><td>Send email to respondent (<code>to</code>, <code>subject</code>, <code>template</code>, optional <code>reply_to</code>)</td></tr>
+    <tr><td><code>notify</code></td><td>object</td><td>Send email to admin (<code>to</code> &mdash; string or array of strings, <code>subject</code>, <code>template</code>, optional <code>reply_to</code>)</td></tr>
+    <tr><td><code>webhooks</code></td><td>array</td><td>HTTPS URLs to POST submission data to (port 443; plain <code>http://</code> is rejected)</td></tr>
     <tr><td><code>redirect</code></td><td>string</td><td>URL to redirect after submission</td></tr>
     <tr><td><code>actions</code></td><td>array</td><td>Custom server-side actions</td></tr>
+    <tr><td><code>payment</code></td><td>object</td><td>Stripe Checkout &mdash; see <a href="#payments">Payments</a></td></tr>
 </table>
+
+<h3>Reply-To</h3>
+
+<p>Set <code>reply_to</code> on <code>notify</code> to <code>"{{email}}"</code> and the admin can simply press Reply to answer the submitter. Without it, Reply-To is <code>mail.from_email</code> from <code>config.php</code>.</p>
+
+<div class="code-block"><span class="lang">json</span><pre>"notify": {
+    "to": "admin@example.com",
+    "subject": "New: {{name}}",
+    "reply_to": "{{email}}",
+    "template": "notify.html"
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Every email, webhook and custom action is recorded per submission. If one fails, the viewer shows it and lets you retry &mdash; see <a href="#viewer">Submissions Viewer</a>.</p>
 
 <p>All string properties support <code>{{field_name}}</code> interpolation. The subject line <code>"New contact: {{name}}"</code> becomes <code>"New contact: John"</code> at the moment of sending.</p>
 
@@ -1158,6 +1349,38 @@ if ($url) {
     Actions run as PHP includes with full server access. They are not sandboxed. Only place code you trust in the <code>actions/</code> directory. If you let a stranger put files there, whatever follows is on your own head.
 </div>
 
+<h3>Action response override</h3>
+
+<p>An action can add fields to the JSON response the browser receives by writing to <code>$actionResponse</code>:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>// actions/create-order.php
+$orderId = 'ORD-' . strtoupper(substr($submission['id'], 4, 8));
+$actionResponse['order_id'] = $orderId;
+$actionResponse['redirect'] = '/thank-you?order=' . $orderId;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<ul>
+    <li>The fields are merged into the standard response; <code>status</code> and <code>submission_id</code> are always present.</li>
+    <li><code>$actionResponse['redirect']</code> takes precedence over <code>on_submit.redirect</code>.</li>
+    <li>Several actions may write to it &mdash; later ones overwrite earlier ones.</li>
+</ul>
+
+<h3><code>onSuccess</code> / <code>onError</code> callbacks</h3>
+
+<div class="code-block"><span class="lang">javascript</span><pre>BBF.render('order', '#checkout', {
+    onSuccess: function(response) {
+        document.getElementById('order-result').textContent = 'Order ' + response.order_id + ' placed!';
+        return false; // skip the default success message, redirect and reset
+    },
+    onError: function(response) {
+        console.error('Submission failed:', response.message);
+        // default error handling still runs afterwards
+    }
+});</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><code>onSuccess</code> runs when <code>response.status === 'ok'</code> (not for sandbox previews) and receives the full response, custom action fields included. Return <code>false</code> to skip the default handling. <code>onError</code> runs on validation or server errors; field errors are shown regardless.</p>
+
+<p>Every successful submission also dispatches a <code>bbf:submitted</code> event on <code>document</code> with <code>detail.form</code> and <code>detail.submission_id</code> &mdash; handy for analytics without touching the embed code.</p>
+
 <!-- ============================================================ -->
 <h2 id="viewer">Submissions Viewer</h2>
 
@@ -1178,9 +1401,36 @@ if ($url) {
     <tr><td><strong>Search</strong></td><td>Client-side text search across loaded submissions</td></tr>
     <tr><td><strong>Date filter</strong></td><td>Server-side from/to date range filtering</td></tr>
     <tr><td><strong>CSV export</strong></td><td>Download filtered results. Supports <code>?last=</code> shorthand.</td></tr>
-    <tr><td><strong>Delete</strong></td><td>Delete individual submissions (file, SQLite, MySQL &mdash; not CSV)</td></tr>
+    <tr><td><strong>Delete</strong></td><td>Delete individual or selected submissions (file, SQLite, MySQL &mdash; not CSV)</td></tr>
+    <tr><td><strong>Card / table view</strong></td><td>Switch between preview cards and a compact table</td></tr>
+    <tr><td><strong>Forward &amp; print</strong></td><td>Forward a submission by email, or print it</td></tr>
     <tr><td><strong>Dark mode</strong></td><td>Follows system preference automatically</td></tr>
 </table>
+
+<h3>Inbox workflow</h3>
+<p>Mark each submission <code>new</code>, <code>in-progress</code> or <code>done</code>, add private notes and tags, filter by them and save the filters you use often. This metadata is kept apart from the submission itself and never leaks into exports or webhooks.</p>
+
+<h3>Delivery log &amp; retry</h3>
+<p>Each confirmation email, notification, webhook and custom action is recorded per submission together with its result. If your SMTP server or webhook endpoint was down, you see it on the submission and press <strong>Retry</strong>. The attempt limit and delay are set in <code>config.php</code>:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'delivery' => [
+    'max_attempts'  => 3,    // capped at 10
+    'retry_delay'   => 60,   // seconds
+    'lease_seconds' => 300,
+],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Form versions</h3>
+<p>Every submission remembers the version of the form it was filled in with. Rename or remove a field later and old answers still display with their original labels.</p>
+
+<h3>Scoped access tokens</h3>
+<p>Besides the admin <code>api_token</code>, you can hand out per-form tokens &mdash; to a colleague who only reads one form&rsquo;s leads, or an integration that only exports:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'access_tokens' => [
+    ['id' => 'sales-reader', 'token' => 'LONG_RANDOM_SECRET', 'forms' => ['contact'],
+     'permissions' => ['read', 'review'], 'expires_at' => '2027-01-01T00:00:00Z', 'revoked' => false],
+],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Permissions: <code>read</code>, <code>export</code> (CSV, forwarding, print), <code>delete</code>, <code>review</code> (inbox status, notes, tags). Export, delete and review each require <code>read</code> as well. The editor stays admin-only. Every access is recorded in <code>logs/access-audit.php</code>.</p>
 
 <h3>Direct CSV export</h3>
 <p>You can also call the export endpoint directly for automation or bookmarks:</p>
@@ -1237,13 +1487,15 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
     <tr><td><strong>Email header injection</strong></td><td>To/Subject sanitized, emails validated.</td></tr>
     <tr><td><strong>Signed webhooks</strong></td><td>HMAC-SHA256 via <code>X-BBF-Signature</code>.</td></tr>
     <tr><td><strong>CORS control</strong></td><td>Configurable <code>allowed_origins</code>. Empty = same origin only.</td></tr>
-    <tr><td><strong>API authentication</strong></td><td>Token required. Disabled until you configure it.</td></tr>
+    <tr><td><strong>API authentication</strong></td><td>Token required (<code>X-BBF-Token</code> header preferred over the URL). Disabled until you configure it. Optional per-form scoped tokens with expiry; every access is audited.</td></tr>
     <tr><td><strong>SQL injection</strong></td><td>PDO prepared statements. Every single one.</td></tr>
-    <tr><td><strong>Directory access</strong></td><td><code>.htaccess</code> blocks 7 directories, all config files, editor backups, and dotfiles.</td></tr>
+    <tr><td><strong>Directory access</strong></td><td><code>.htaccess</code> blocks 7 directories, form and language source files, all config files, editor backups, and dotfiles.</td></tr>
     <tr><td><strong>CSV formula injection</strong></td><td>Cells starting with <code>=</code> <code>+</code> <code>-</code> <code>@</code> are prefixed. Your spreadsheet is safe.</td></tr>
     <tr><td><strong>Config protection</strong></td><td><code>defined('BBF_LOADED') || exit;</code> guard &mdash; even if <code>.htaccess</code> fails, direct access outputs nothing.</td></tr>
     <tr><td><strong>Template traversal</strong></td><td><code>basename()</code> on all template paths &mdash; <code>../../config.php</code> in form JSON is neutralized.</td></tr>
-    <tr><td><strong>SSRF protection</strong></td><td>Webhook URLs validated against private/reserved IP ranges (127.x, 10.x, 172.16.x, 192.168.x, 169.254.x).</td></tr>
+    <tr><td><strong>SSRF protection</strong></td><td>Webhooks must be HTTPS on port 443; URLs resolving to private/reserved IP ranges (127.x, 10.x, 172.16.x, 192.168.x, 169.254.x) are blocked.</td></tr>
+    <tr><td><strong>Server-owned prices</strong></td><td>Payment amounts come from the form definition on the server, never from the browser.</td></tr>
+    <tr><td><strong>Draft privacy</strong></td><td>Only allowlisted fields are saved; passwords, hidden and <code>sensitive</code> fields never are.</td></tr>
     <tr><td><strong>Error suppression</strong></td><td><code>display_errors</code> forced OFF &mdash; PHP errors logged to server, never shown to browsers.</td></tr>
     <tr><td><strong>Definition stripping</strong></td><td>Form definition API strips <code>on_submit</code> and <code>storage</code> &mdash; webhook URLs, emails, and actions are not exposed.</td></tr>
 </table>
@@ -1251,9 +1503,9 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
 <h3>What <code>.htaccess</code> blocks</h3>
 <p>The included <code>.htaccess</code> is comprehensive. Here is what it denies:</p>
 <ul>
-    <li><strong>Directories:</strong> <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>backups/</code></li>
-    <li><strong>Files:</strong> <code>config*</code> (all variants), <code>forms/*.json</code>, <code>lang/*.php</code></li>
-    <li><strong>Editor backups:</strong> <code>*.bak</code>, <code>*.swp</code>, <code>*.save</code>, <code>*.orig</code>, <code>*~</code></li>
+    <li><strong>Directories:</strong> <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>backups/</code>, <code>tests/</code>, <code>data/</code></li>
+    <li><strong>Files:</strong> <code>config*</code> (all variants), <code>bbf_functions.php</code>, <code>forms/*.json</code>, <code>lang/*.php</code></li>
+    <li><strong>Editor backups:</strong> <code>*.bak</code>, <code>*.bak_*</code>, <code>*.swp</code>, <code>*.save</code>, <code>*.orig</code>, <code>*.old</code>, <code>*~</code></li>
     <li><strong>Dotfiles:</strong> <code>.git/</code>, <code>.env</code>, <code>.htpasswd</code> &mdash; everything starting with a dot</li>
     <li><strong>Directory listing:</strong> OFF globally (<code>Options -Indexes</code>)</li>
 </ul>
@@ -1261,12 +1513,18 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
 <h3>Web server compatibility</h3>
 <p>The <code>.htaccess</code> works on <strong>Apache only</strong>. If you run Nginx or LiteSpeed, you need equivalent rules &mdash; fail to add them and your credentials, submissions, and templates will be accessible to anyone who guesses the URL:</p>
 
-<div class="code-block"><span class="lang">nginx</span><pre># Add to your server {} block
-location ~ ^/config        { deny all; return 403; }
-location ~ ^/(submissions|logs|templates|actions|backups|lang)/ { deny all; return 403; }
-location ~ /forms/.*\.json$ { deny all; return 403; }
-location ~ /\.(git|env|htaccess|htpasswd) { deny all; return 403; }
+<div class="code-block"><span class="lang">nginx</span><pre># Add to your server {} block. Replace BBF_BASE/ with the installation path:
+# for /bbf use ^/bbf/ ; for a domain-root install remove BBF_BASE/ and keep ^/
+location ~ ^/BBF_BASE/config { deny all; }
+location = /BBF_BASE/bbf_functions.php { deny all; }
+location ~ ^/BBF_BASE/(submissions|logs|templates|actions|backups|tests|data)/ { deny all; }
+location ~ ^/BBF_BASE/forms/.*\.json$ { deny all; }
+location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
+location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak[-_]|~$|/#[^/]*#$)" { deny all; }
+location ~ /\. { deny all; }
 autoindex off;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Do not block <code>lang/*.js</code> &mdash; only <code>lang/*.php</code> is private. Then verify the <em>running</em> server, not just the file: place a throw-away file in <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>backups/</code>, <code>tests/</code> and <code>data/</code>, request each one plus a form JSON and <code>lang/en.php</code> &mdash; every request must return 403 or 404, while <code>lang/en.js</code> returns 200. Remove the files afterwards.</p>
 
 <h3>Daily security self-check</h3>
 <p><code>submit.php</code> runs a lightweight self-check once every 24 hours. Non-blocking, log-only &mdash; no forms affected, no users aware. It writes warnings to PHP's <code>error_log</code> when it detects:</p>
@@ -1315,6 +1573,8 @@ autoindex off;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</butt
 <p>When <code>webhook_secret</code> is set in <code>config.php</code>, every webhook POST carries a signature &mdash; so the receiving end knows the message is genuine and not some impostor's forgery:</p>
 
 <div class="code-block"><span class="lang">http</span><pre>X-BBF-Signature: sha256=&lt;hex-encoded-hmac&gt;</pre></div>
+
+<p>Webhook URLs must use <strong>HTTPS on port 443</strong>; plain <code>http://</code> URLs are rejected. For stored submissions a failed webhook is recorded in the delivery log and can be retried from the viewer, up to <code>delivery.max_attempts</code>.</p>
 
 <p>Verify on the receiving end. Trust, but verify. Actually &mdash; just verify:</p>
 
@@ -1389,7 +1649,9 @@ if (!hash_equals($expected, $received)) {
 <div class="code-block"><span class="lang">json</span><pre>"on_submit": {
     "payment": {
         "provider": "stripe",
-        "amount_field": "order_total",
+        "mode": "fixed",
+        "pricing_version": "order-v1",
+        "amount_minor": 4990,
         "currency": "eur",
         "product_name": "Order from {{customer_name}}",
         "success_url": "/thank-you.html",
@@ -1398,6 +1660,8 @@ if (!hash_equals($expected, $received)) {
     "confirm_email": { ... },
     "notify": { ... }
 }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Amounts are <strong>integer minor units owned by the server</strong>: <code>4990</code> = EUR 49.90. The browser never decides the price &mdash; a tampered form cannot pay one cent.</p>
 
 <p><strong>3.</strong> Register the webhook in <a href="https://dashboard.stripe.com/webhooks" target="_blank">Stripe Dashboard</a>:</p>
 <ul>
@@ -1411,10 +1675,15 @@ if (!hash_equals($expected, $received)) {
 <table>
     <thead><tr><th>Property</th><th>Required</th><th>Description</th></tr></thead>
     <tbody>
-        <tr><td><code>provider</code></td><td>Yes</td><td>Payment provider. Currently: <code>"stripe"</code></td></tr>
-        <tr><td><code>amount_field</code></td><td>*</td><td>Form field containing the total (e.g. <code>"order_total"</code>). Value in main currency unit (25.00 = &euro;25).</td></tr>
-        <tr><td><code>amount</code></td><td>*</td><td>Fixed amount if not using a field (e.g. <code>25.00</code>). One of <code>amount_field</code> or <code>amount</code> is required.</td></tr>
-        <tr><td><code>currency</code></td><td>No</td><td>ISO 4217 currency code. Default: <code>"eur"</code></td></tr>
+        <tr><td><code>provider</code></td><td>No</td><td>Payment provider. Currently: <code>"stripe"</code></td></tr>
+        <tr><td><code>mode</code></td><td>Yes</td><td><code>"fixed"</code>, <code>"catalog"</code> or <code>"donation"</code> (see below).</td></tr>
+        <tr><td><code>pricing_version</code></td><td>Yes</td><td>Your label for the price list (e.g. <code>"order-v1"</code>). Change it whenever prices change; it is stored with the payment.</td></tr>
+        <tr><td><code>currency</code></td><td>Yes</td><td>Lower-case ISO 4217 code supported by Stripe, e.g. <code>"eur"</code>.</td></tr>
+        <tr><td><code>amount_minor</code></td><td>fixed</td><td>Price in minor units (<code>4990</code> = 49.90).</td></tr>
+        <tr><td><code>catalog</code></td><td>catalog</td><td>Server-side price list: products, quantities, options, discounts and fees.</td></tr>
+        <tr><td><code>amount_field</code></td><td>donation</td><td>Field where the donor types the amount.</td></tr>
+        <tr><td><code>minor_units</code></td><td>donation</td><td>Decimal places of the currency (<code>2</code> for EUR, <code>0</code> for JPY).</td></tr>
+        <tr><td><code>min_amount_minor</code> / <code>max_amount_minor</code></td><td>donation</td><td>Allowed donation range in minor units.</td></tr>
         <tr><td><code>product_name</code></td><td>No</td><td>Product name on Stripe page. Supports <code>{{field}}</code> interpolation. Default: form name.</td></tr>
         <tr><td><code>email_field</code></td><td>No</td><td>Field with customer email (pre-fills Stripe). Default: <code>"email"</code></td></tr>
         <tr><td><code>success_url</code></td><td>No</td><td>Redirect after payment. Default: referring page.</td></tr>
@@ -1422,12 +1691,59 @@ if (!hash_equals($expected, $received)) {
     </tbody>
 </table>
 
+<h3>Catalog mode</h3>
+
+<p>For order forms: the respondent picks a product, quantity and options; the server computes the price from the catalog. Option multipliers are in basis points (<code>10000</code> = &times;1.0, <code>15000</code> = &times;1.5). Shortened from <a href="demo6.html">Demo 6</a>:</p>
+
+<div class="code-block"><span class="lang">json</span><pre>"payment": {
+    "provider": "stripe",
+    "mode": "catalog",
+    "pricing_version": "demo-print-v1",
+    "currency": "eur",
+    "catalog": {
+        "product_field": "product",
+        "products": {
+            "business_cards": {
+                "quantity_field": "cards_qty",
+                "min_quantity": 100, "max_quantity": 10000,
+                "unit_amount_minor": 5,
+                "options": {
+                    "cards_paper": {
+                        "standard": { "multiplier_bps": 10000 },
+                        "premium":  { "multiplier_bps": 15000 }
+                    }
+                }
+            }
+        },
+        "discounts": [{ "min_quantity": 1000, "discount_bps": 1000 }]
+    }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Donation mode</h3>
+
+<div class="code-block"><span class="lang">json</span><pre>"payment": {
+    "provider": "stripe",
+    "mode": "donation",
+    "pricing_version": "donate-v1",
+    "currency": "eur",
+    "minor_units": 2,
+    "amount_field": "amount",
+    "min_amount_minor": 500,
+    "max_amount_minor": 100000
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="callout warn">
+    <strong>Upgrading payment forms from v1.x</strong>
+    The old client-supplied <code>amount</code> / <code>amount_field</code> contract is gone. Run <code>php smoketest.php</code> with the new release in a staging folder (see <a href="#upgrading">Upgrading</a>) &mdash; it lists every payment form that needs <code>mode</code>, <code>pricing_version</code>, <code>amount_minor</code>, a <code>catalog</code>, or donation bounds. Migrate them before deploying.
+</div>
+
 <h3>Submission metadata</h3>
 
 <p>After payment confirmation, the submission's <code>meta</code> is updated with:</p>
 <ul>
     <li><code>payment_status</code> &mdash; <code>"pending"</code> &rarr; <code>"paid"</code></li>
     <li><code>payment_id</code> &mdash; Stripe Payment Intent ID</li>
+    <li><code>payment_amount_minor</code>, <code>payment_minor_units</code> &mdash; exact amount paid</li>
     <li><code>payment_amount</code> &mdash; amount paid (in main unit)</li>
     <li><code>payment_currency</code> &mdash; currency code</li>
     <li><code>payment_time</code> &mdash; ISO 8601 timestamp</li>
@@ -1444,6 +1760,92 @@ if (!hash_equals($expected, $received)) {
     <strong>CSV storage not supported for payments.</strong>
     CSV is append-only &mdash; payment status cannot be updated. Use <code>file</code>, <code>sqlite</code>, or <code>mysql</code> storage with payment forms.
 </div>
+
+<!-- ============================================================ -->
+<h2 id="smoke-test">Smoke Test</h2>
+
+<p><code>smoketest.php</code> checks every form in one go: it generates valid test data for each field type, runs it through the same validation as <code>submit.php</code>, and reports pass/fail per form. Run it after every deploy and before every upgrade.</p>
+
+<h3>Dry run (default)</h3>
+<p>Nothing is stored, no email is sent, no webhook fires.</p>
+
+<div class="code-block"><span class="lang">bash</span><pre># CLI &mdash; no token needed, you already have server access
+php smoketest.php
+php smoketest.php kontakt
+
+# HTTP &mdash; the token goes in a header, never in the URL
+curl -H "X-BBF-Smoke-Token: YOUR_TOKEN" "https://example.com/bbf/smoketest.php"
+curl -H "X-BBF-Smoke-Token: YOUR_TOKEN" "https://example.com/bbf/smoketest.php?form=kontakt"</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>The CLI exits with code 0 when every form passes &mdash; usable in any deploy script.</p>
+
+<h3>Live mode</h3>
+<p>Sends forms through the full pipeline: stores submissions, sends real emails, fires webhooks. Every email address is replaced by your test addresses, so it cannot be abused to mail strangers.</p>
+
+<div class="code-block"><span class="lang">bash</span><pre>php smoketest.php --live
+curl -X POST -H "X-BBF-Smoke-Token: YOUR_TOKEN" "https://example.com/bbf/smoketest.php?live=1"</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<h3>Setup</h3>
+
+<div class="code-block"><span class="lang">php</span><pre>// Generate: php -r "echo bin2hex(random_bytes(16));"
+'smoke_token'  => 'a1b2c3d4e5f6...',       // HTTP access; empty = endpoint returns 404
+'smoke_email'  => 'tester@example.com',     // "submitter" &mdash; receives confirmation emails
+'smoke_notify' => 'admin@example.com',      // "admin" &mdash; receives notifications (test Reply-To)
+'diagnostic_base_url' => 'https://example.com/bbf',  // required for live mode</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>With two different addresses you can test Reply-To: the notification arrives at <code>smoke_notify</code>, you press Reply, and it goes to <code>smoke_email</code>. Failed token attempts are rate-limited (5 per minute) and compared in constant time.</p>
+
+<div class="callout warn">
+    <strong>Live mode creates real submissions.</strong> Use it to test SMTP and webhooks, not as a monitor. For regular checks, dry run is enough.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="maintenance">Retention &amp; Backups</h2>
+
+<p>Both are command-line only, through <code>maintenance.php</code>. Every destructive step is a dry run first and needs the exact confirmation digest the dry run printed:</p>
+
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php backup --form=kontakt                 # integrity-checked logical backup
+php maintenance.php restore --bundle=/path/to/bundle      # dry run: shows what would change
+php maintenance.php restore --bundle=/path/to/bundle --apply --confirm=&lt;digest&gt;
+php maintenance.php retention --form=kontakt              # dry run: lists what would be deleted
+php maintenance.php retention --form=kontakt --apply --confirm=&lt;digest&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<div class="code-block"><span class="lang">php</span><pre>'retention' => [
+    'enabled'     => false,   // OFF until you switch it on
+    'days'        => 0,       // delete submissions older than N days
+    'batch_limit' => 100,
+    'archive_dir' => dirname(__DIR__) . '/barebonesforms-private/retention',
+],
+'backup' => [
+    'directory' => dirname(__DIR__) . '/barebonesforms-private/backups',
+],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>Records are archived to <code>archive_dir</code> before deletion. Backups are per form and contain no access credentials. Keep both directories <strong>outside the web root</strong>.</p>
+
+<!-- ============================================================ -->
+<h2 id="attribution">Visit Attribution (UTM, Google Ads, Umami)</h2>
+
+<p>Optional. Stores where a lead came from with every submission &mdash; without adding hidden fields to each form.</p>
+
+<p><strong>1.</strong> Merge the keys from <code>config.attribution.example.php</code> into <code>config.php</code>. It turns <code>utm_*</code>, <code>gclid</code> / <code>gbraid</code> / <code>wbraid</code>, <code>landing_url</code>, <code>referrer</code> and <code>touch_at</code> into <strong>system fields</strong> added to every form automatically:</p>
+
+<div class="code-block"><span class="lang">php</span><pre>'system_fields' => array_map(static fn($name) => ['name' => $name, 'type' => 'hidden', 'value' => ''], [
+    'gclid', 'gbraid', 'wbraid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term',
+    'utm_content', 'landing_url', 'referrer', 'touch_at',
+]),
+'visit_context' => [
+    'trigger_params' => ['gclid', 'gbraid', 'wbraid'],
+    'params' => ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'],
+],
+'analytics' => ['umami' => true],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>2.</strong> To capture the click ID on landing pages that have <em>no</em> form, include <code>gclid.js</code> on every page. Pages with a form don&rsquo;t need it &mdash; <code>bbf.js</code> loads the capture script itself.</p>
+
+<div class="code-block"><span class="lang">html</span><pre>&lt;script src="/bbf/gclid.js" defer&gt;&lt;/script&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><strong>3.</strong> With <code>'analytics' =&gt; ['umami' =&gt; true]</code> and an existing Umami tracker on the page, each successful submission sends a <code>form_submitted</code> event. BareBonesForms never loads Umami itself.</p>
+
+<p>Upgrading an installation whose forms already carry their own hidden <code>gclid</code> / <code>utm_*</code> fields? Run <code>php tools/migrate-system-fields.php --fields=gclid,gbraid,wbraid</code> to see which form files would change, then add <code>--apply</code>.</p>
 
 <!-- ============================================================ -->
 <h2 id="error-notify">Error Notifications</h2>
@@ -1476,10 +1878,14 @@ if (!hash_equals($expected, $received)) {
     <li>Set <code>error_notify</code> to receive alerts when form processing fails</li>
     <li>Set <code>stripe</code> keys if using payment forms</li>
     <li>Disable sandbox mode: <code>'sandbox' => false</code></li>
+    <li>Set <code>smoke_token</code> if you want HTTP smoke tests after deploys (leave empty to disable)</li>
+    <li>Keep <code>retention.archive_dir</code> and <code>backup.directory</code> outside the web root</li>
+    <li>Run <code>php smoketest.php</code> &mdash; every form passes</li>
     <li>Run <code>check.php</code> to verify installation (remote access requires <code>?token=&lt;api_token&gt;</code>)</li>
     <li><strong>Delete <code>check.php</code> after verification</strong> &mdash; it exposes PHP version, extensions, directory paths, and configuration details</li>
     <li><strong>Delete or protect <code>editor.php</code></strong> &mdash; can modify form definitions on the server</li>
     <li><strong>Delete or protect <code>viewer.php</code></strong> &mdash; exposes submission data to anyone with the token</li>
+    <li>Remove the demos (<code>demo*.html</code>, <code>demo.css</code>, <code>index.html</code>, <code>forms/demo-*.json</code>, <code>api-psc.php</code>, <code>data/</code>) unless you want them public</li>
 </ul>
 
 </main>
