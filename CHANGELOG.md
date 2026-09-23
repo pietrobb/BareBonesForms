@@ -3,6 +3,19 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.0.3] — 2026-09-23
+
+Fixes from a second first-install test of 2.0.2.
+
+### Fixed
+- **`check.php` reported a false ERROR for `tests/`**, which does not exist in a release: `php -S` (and Nginx with an SPA `try_files … /index.html` fallback) answer a missing file with `index.html` and HTTP 200. Missing directories are now skipped, and a 200 whose content is not the probed file counts as a fallback page, not a leak.
+- **`config.php` answering an empty HTTP 200** (PHP ran it and the `BBF_LOADED` guard stopped it) is now a warning — nothing leaked, but the server rule is still missing — instead of an error.
+- **Sign-in page** is titled "Sign in" instead of "Access denied." before the first attempt, and says "Invalid token" after a rejected one.
+
+### Changed
+- `config.example.php`: `api_token` and `diagnostic_base_url` moved to the top of the array (same values).
+- README and docs: one line on what "bare bones" means; `editor.php` is described as a JSON editor with live preview, not a form builder. "Try it locally" explains how to run the `check.php` probes on Windows, where `php -S` has no workers.
+
 ## [2.0.2] — 2026-09-23
 
 Fixes from a first-install test that followed the README step by step.

@@ -155,15 +155,20 @@ check('Security', '.htaccess present', file_exists(__DIR__ . '/.htaccess'),
     'Protects config.php and data dirs on Apache. For Nginx, see .htaccess for equivalent rules.', 'warn');
 
 // Check that config.php is not web-accessible (active probe)
-$probeCode = bbf_diagnostic_probe($config ?? [], 'config.php');
+$probeUnverified = 0;
+$probeCode = bbf_diagnostic_probe($config ?? [], 'config.php', $probeBody);
 $probeBlocked = in_array($probeCode, [403, 404], true);
+// PHP executed the file and the BBF_LOADED guard exited: nothing leaked, but the server rule is missing.
+$probeGuarded = $probeCode === 200 && trim((string)$probeBody) === '';
+if ($probeCode === null) $probeUnverified++;
 $probeDetail = $probeCode === null
     ? 'Not verified. Set diagnostic_base_url to the fixed installation URL and ensure it is reachable.'
     : ($probeBlocked ? 'Direct HTTP access to config.php is denied.'
-        : 'Not verified as blocked (HTTP ' . $probeCode . '). Check server access rules.');
+        : ($probeGuarded ? 'Served as an empty page (HTTP 200): the BBF_LOADED guard works, nothing leaked. Add the server rule from .htaccess anyway.'
+        : 'Not verified as blocked (HTTP ' . $probeCode . '). Check server access rules.'));
 check('Security', 'config.php blocked via HTTP', $probeBlocked,
     $probeDetail,
-    $probeCode === null ? 'warn' : 'error'
+    $probeCode === null || $probeGuarded ? 'warn' : 'error'
 );
 
 // Check that core files exist
@@ -207,27 +212,39 @@ $probeFiles = ['submissions' => null, 'logs' => null, 'templates' => 'templates/
     'actions' => 'actions/README.md', 'forms' => 'forms/form.schema.json', 'tests' => null];
 $canProbe = bbf_diagnostic_base_url($config ?? []) !== null;
 foreach ($probeFiles as $probeDir => $probeFile) {
-    $sentinel = null;
+    // A directory absent from the web root (e.g. tests/ in a release) has nothing to expose.
+    if (!is_dir(__DIR__ . '/' . $probeDir)) {
+        check('Security', "$probeDir/ blocked via HTTP", true, 'Not present in the web root; nothing to protect.');
+        continue;
+    }
+    $sentinel = $expected = null;
     if ($probeFile !== null && !is_file(__DIR__ . '/' . $probeFile)) $probeFile = null;
-    if ($probeFile === null && $canProbe && in_array($probeDir, ['submissions', 'logs', 'templates', 'actions'], true)) {
+    if ($probeFile !== null) $expected = (string)file_get_contents(__DIR__ . '/' . $probeFile);
+    if ($probeFile === null && $canProbe && in_array($probeDir, ['submissions', 'logs', 'templates', 'actions', 'tests'], true)) {
         $realDir = realpath($dirs[$probeDir] ?? __DIR__ . '/' . $probeDir);
         // Only a directory at its default web path can be reached by URL.
         if ($realDir !== false && $realDir === realpath(__DIR__ . '/' . $probeDir) && is_writable($realDir)) {
             $name = 'bbf-check-' . bin2hex(random_bytes(16)) . '.txt';
-            if (@file_put_contents($realDir . '/' . $name, "BareBonesForms check.php sentinel\n") !== false) {
+            $content = "BareBonesForms check.php sentinel $name\n";
+            if (@file_put_contents($realDir . '/' . $name, $content) !== false) {
                 $sentinel = $realDir . '/' . $name;
                 $probeFile = "$probeDir/$name";
+                $expected = $content;
             }
         }
     }
-    $probeCode = bbf_diagnostic_probe($config ?? [], $probeFile ?? "$probeDir/");
+    $probeCode = bbf_diagnostic_probe($config ?? [], $probeFile ?? "$probeDir/", $probeBody);
     if ($sentinel !== null) @unlink($sentinel);
-    $dirBlocked = in_array($probeCode, [403, 404], true);
+    // HTTP 200 with other content is a catch-all page (php -S, SPA try_files), not the file itself.
+    $fallback = $probeCode === 200 && $expected !== null && $probeBody !== substr($expected, 0, 1048576);
+    $dirBlocked = in_array($probeCode, [403, 404], true) || $fallback;
+    if ($probeCode === null) $probeUnverified++;
     $detail = $probeCode === null ? 'Not verified; configure a reachable diagnostic_base_url.'
+        : ($fallback ? 'A file inside is not served: HTTP 200 returned a different page (catch-all fallback).'
         : ($dirBlocked ? ($probeFile !== null ? 'A file inside is not served (HTTP ' . $probeCode . ').' : 'Directory listing denied.')
         : ($probeCode === 200 && $probeFile !== null
             ? 'Not verified as blocked: files inside are publicly readable (HTTP 200). Add the server rules from .htaccess (Nginx: see its comments).'
-            : 'Not verified as blocked (HTTP ' . $probeCode . ').'));
+            : 'Not verified as blocked (HTTP ' . $probeCode . ').')));
     check('Security', "$probeDir/ blocked via HTTP", $dirBlocked,
         $detail, $probeCode === null ? 'warn' : 'error');
 }
@@ -425,7 +442,7 @@ $warnCount  = count(array_filter($results, fn($r) => $r['level'] === 'warn'));
 $errorCount = count(array_filter($results, fn($r) => $r['level'] === 'error'));
 $totalCount = count($results);
 $allGood    = $errorCount === 0;
-$unverified = count(array_filter($results, fn($r) => str_ends_with($r['name'], 'blocked via HTTP') && $r['level'] === 'warn'));
+$unverified = $probeUnverified;
 
 // Group results
 $grouped = [];

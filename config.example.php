@@ -5,7 +5,8 @@
  * Copy this file to config.php and edit.
  * BareBonesForms will not run without config.php.
  *
- * MINIMUM SETUP — change these four, everything else has safe defaults:
+ * MINIMUM SETUP — change these four, everything else has safe defaults
+ * (1 and 2 are right at the top of the array below, 3 and 4 follow):
  *   1. 'api_token'           long random secret; signs you into check.php, viewer.php, editor.php
  *   2. 'diagnostic_base_url' public URL of this folder, so check.php can verify your server protects data
  *   3. 'mail' → 'from_email' (and SMTP settings for reliable delivery)
@@ -16,6 +17,15 @@
 defined('BBF_LOADED') || exit;
 
 return [
+
+    // ─── Minimum setup: set these two first ─────────────────────
+    // Admin token for check.php, viewer.php, editor.php and submissions.php — required even on localhost.
+    // Generate: php -r "echo bin2hex(random_bytes(32));"   Scripts send it in the X-BBF-Token header.
+    'api_token' => '',
+
+    // Fixed operator-owned installation URL for check.php probes and live smoke POSTs.
+    // No Host-derived fallback or redirects; empty disables outgoing diagnostics.
+    'diagnostic_base_url' => '', // e.g. https://forms.example.com/bbf (no credentials/query/fragment)
 
     // ─── Storage ────────────────────────────────────────────────
     // "file"   = JSON files in /submissions (zero config, works everywhere)
@@ -91,10 +101,7 @@ return [
     'error_notify' => '',
 
     // ─── API & management access ────────────────────────────────
-    // Admin token for check.php, viewer.php, editor.php and submissions.php — required even on localhost.
-    // Generate: php -r "echo bin2hex(random_bytes(32));"   Scripts send it in the X-BBF-Token header.
-    'api_token' => '',
-
+    // (api_token is at the top of this file.)
     // Optional per-form tokens with limited permissions (read, export, delete, review). Example:
     // ['id'=>'reader-1', 'token'=>'RANDOM_SECRET', 'forms'=>['contact'], 'permissions'=>['read'], 'expires_at'=>'2027-01-01T00:00:00Z', 'revoked'=>false]
     // read+export for CSV/forward, read+delete for deletion, read+review for inbox metadata; empty lists grant nothing.
@@ -106,9 +113,7 @@ return [
     'auth_session_idle' => 1800,
     'auth_session_absolute' => 28800,
 
-    // Fixed operator-owned installation URL for check.php probes and live smoke POSTs.
-    // No Host-derived fallback or redirects; empty disables outgoing diagnostics.
-    'diagnostic_base_url' => '', // e.g. https://forms.example.com/bbf (no credentials/query/fragment)
+    // ─── Smoke test (diagnostic_base_url is at the top of this file) ───
     // Smoke uses a SEPARATE credential, only in X-BBF-Smoke-Token; never URL tokens.
     // Dry: GET smoketest.php; live (real storage/emails): POST smoketest.php?live=1.
     // Admin/scoped cookies and X-BBF-Token cannot authorize smoke. Config refreshed per request.

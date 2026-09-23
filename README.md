@@ -4,6 +4,8 @@
 
 Define a form as JSON. Upload one folder. Embed with two lines. Submissions land on *your* server.
 
+*Bare bones means: no form builder — forms are JSON files you write by hand (an optional JSON editor with live preview is included). No dependencies, no build step, no database required.*
+
 PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 32 Languages · ~22 KB gzipped JS
 
 **[Download →](https://github.com/pietrobb/BareBonesForms/releases/latest)** · **[Documentation →](docs.html)** · **[Changelog →](CHANGELOG.md)** · **[Upgrading →](#upgrading)** · **[Live Demos →](demo1.html)**
@@ -48,7 +50,7 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 - **Honeypot + rate limiting** — Built-in bot protection. No external services needed.
 - **Submissions API** — List, filter, export as JSON or CSV. Token-authenticated. Quick export via `?last=7d`.
 - **Submissions Viewer** — Built-in dashboard (`viewer.php`) for browsing, searching, and exporting submissions.
-- **Form Editor** — Visual JSON editor (`editor.php`) with live preview, schema validation, and field snippets.
+- **JSON Editor** — Optional `editor.php`: a text editor for the form JSON with live preview, schema validation, and field snippets. Not a drag-and-drop form builder.
 - **Save & resume drafts** — Respondents can save a long form and come back later with a resume code. Opt-in per form, allowlisted fields only.
 - **Repeatable groups** — "Add another" rows (family members, line items, rooms…) with min/max limits, validated on the server.
 - **Viewer inbox** — Mark submissions *new / in-progress / done*, add private notes and tags, filter by them.
@@ -113,7 +115,7 @@ PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8000
 
 Open `http://127.0.0.1:8000/demo1.html`, submit the form, then see it in `http://127.0.0.1:8000/viewer.php`. Without a mail server the emails fail, but the submission is kept and the viewer offers **Retry**.
 
-- `PHP_CLI_SERVER_WORKERS` (Linux/macOS) lets `check.php` request its own URLs; with a single worker those probes cannot complete.
+- `PHP_CLI_SERVER_WORKERS` (Linux/macOS) lets `check.php` request its own URLs; with a single worker those probes cannot complete. Windows has no workers: start a second `php -S 127.0.0.1:8001` in the same folder and set `diagnostic_base_url` to `http://127.0.0.1:8001`.
 - `php -S` ignores `.htaccess`, so `submissions/` **is readable** over HTTP — `check.php` will say so. Use it only for local testing.
 
 ---
@@ -663,7 +665,7 @@ Run `check.php` after installation to verify your setup. It tests:
 - PHP version, extensions, and configuration
 - Storage backend connectivity (file/SQLite/MySQL/CSV)
 - Form JSON validity and field definitions
-- Whether files inside `submissions/`, `logs/`, `templates/`, `actions/` and `forms/` are served over HTTP: it requests a shipped file (e.g. `templates/notify.html`) or writes a disposable sentinel file, requests it and deletes it (needs `diagnostic_base_url`)
+- Whether files inside `submissions/`, `logs/`, `templates/`, `actions/` and `forms/` are served over HTTP: it requests a shipped file (e.g. `templates/notify.html`) or writes a disposable sentinel file, requests it and deletes it (needs `diagnostic_base_url`). A 200 response with different content (a catch-all page such as `index.html`) is not counted as a leak; directories that do not exist (e.g. `tests/` in a release) are skipped. An empty 200 for `config.php` means PHP ran it and the `BBF_LOADED` guard stopped it — reported as a warning to add the server rule
 - `config.php` accessibility via HTTP
 - If `diagnostic_base_url` is missing or unreachable, the verdict says protection is **not verified** instead of "All checks passed"
 - `BBF_LOADED` guard presence in `config.php`
@@ -1220,7 +1222,7 @@ barebonesforms/
 ├── payment.php         ← Stripe webhook handler
 ├── submissions.php     ← API: list/export submissions
 ├── viewer.php          ← Submissions dashboard + inbox (optional, delete if unused)
-├── editor.php          ← Visual JSON form editor (optional, delete if unused)
+├── editor.php          ← JSON editor with live preview (optional, delete if unused)
 ├── sandbox.php         ← Test forms without side effects
 ├── smoketest.php       ← Validate all forms (CLI or token-protected HTTP)
 ├── check.php           ← Installation diagnostics (delete after use)

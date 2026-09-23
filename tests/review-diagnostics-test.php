@@ -131,7 +131,10 @@ $leak = is_file(__DIR__ . '/probe/leak') && preg_match('#\A/[a-z]+/[^/]+\z#', $p
 $status = $leak ? 200 : (int)file_get_contents(__DIR__ . '/probe/status');
 http_response_code($status);
 if ($status === 302) header('Location: /trap.php');
-echo $leak ? 'leaked' : 'mock diagnostic response';
+// 200 serves the real file (a leak) unless the fallback flag mimics a catch-all index page.
+$file = __DIR__ . $path;
+$real = $status === 200 && !is_file(__DIR__ . '/probe/fallback') && $path !== '/config.php' && is_file($file);
+echo $real ? file_get_contents($file) : (is_file(__DIR__ . '/probe/empty') ? '' : 'mock diagnostic response');
 PHP);
     file_put_contents($root . '/trap.php', <<<'PHP'
 <?php
@@ -210,13 +213,15 @@ PHP);
         'on_submit' => ['store' => false],
     ], JSON_THROW_ON_ERROR));
     [$exit, $output] = diagnostic_cli($root, ['--anonymous'], false, 'run-check.php');
-    diagnostic_check(str_contains($output, 'Access denied'), 'check rejects hostile localhost SERVER_NAME without credentials');
+    diagnostic_check(str_contains($output, '<h1>Sign in</h1>') && !str_contains($output, 'Invalid token')
+        && !str_contains($output, 'blocked via HTTP'), 'check rejects hostile localhost SERVER_NAME without credentials');
     $response = bbf_test_http($server, $base . '/check.php');
     diagnostic_check($response['code'] === 403, 'check rejects anonymous loopback HTTP request');
     diagnostic_check(str_contains($response['body'], '<form method="post" action="check.php">')
         && !str_contains($response['body'], 'diagnostic-test-admin'), 'anonymous check page offers a POST sign-in form without secrets');
     $login = bbf_test_http($server, $base . '/check.php', ['token' => 'wrong-token']);
-    diagnostic_check($login['code'] === 403, 'sign-in form rejects a wrong token');
+    diagnostic_check($login['code'] === 403 && str_contains($login['body'], 'Invalid token'), 'sign-in form rejects a wrong token and says so');
+    diagnostic_check(!str_contains($response['body'], 'Invalid token'), 'first sign-in page shows no failure message');
     $login = bbf_test_http($server, $base . '/check.php', ['token' => 'diagnostic-test-admin']);
     diagnostic_check($login['code'] === 303 && preg_match('/^Location: check\.php\r?$/mi', $login['headers']) === 1
         && preg_match('/^Set-Cookie: /mi', $login['headers']) === 1, 'sign-in form POST starts a session and redirects to a clean URL');
@@ -256,6 +261,35 @@ PHP);
         'submissions/ is probed with a real sentinel file, not only the directory URL');
     diagnostic_check(glob($root . '/submissions/bbf-check-*') === [] && glob($root . '/logs/bbf-check-*') === [],
         'check.php removes its sentinel files');
+    // Catch-all fallback (php -S, SPA try_files): HTTP 200, but not the requested file.
+    file_put_contents($root . '/probe/fallback', '1');
+    file_put_contents($root . '/probe/empty', '1');
+    file_put_contents($root . '/probe/status', '200');
+    bbf_test_verify_server($server);
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-check.php');
+    $rows = array_column(json_decode($output, true) ?: [], null, 'name');
+    foreach (['submissions', 'logs', 'templates', 'actions', 'forms', 'tests'] as $dir) {
+        diagnostic_check(($rows["$dir/ blocked via HTTP"]['pass'] ?? false) === true
+            && str_contains($rows["$dir/ blocked via HTTP"]['detail'] ?? '', 'fallback'),
+            "$dir/ is not reported as exposed when HTTP 200 returns a fallback page");
+    }
+    $cfgRow = $rows['config.php blocked via HTTP'] ?? [];
+    diagnostic_check(($cfgRow['level'] ?? '') === 'warn' && str_contains($cfgRow['detail'] ?? '', 'guard works'),
+        'empty HTTP 200 for config.php is a warning (guard works), not an error');
+    unlink($root . '/probe/fallback');
+    unlink($root . '/probe/empty');
+    file_put_contents($root . '/probe/status', '403');
+    // A directory missing from the release (tests/ in the ZIP) has nothing to probe.
+    rename($root . '/actions', $root . '/actions-off');
+    try {
+        [$exit, $output] = diagnostic_cli($root, [], false, 'run-check.php');
+    } finally {
+        rename($root . '/actions-off', $root . '/actions');
+    }
+    $rows = array_column(json_decode($output, true) ?: [], null, 'name');
+    diagnostic_check(($rows['actions/ blocked via HTTP']['pass'] ?? false) === true
+        && str_contains($rows['actions/ blocked via HTTP']['detail'] ?? '', 'Not present'),
+        'absent directory is skipped instead of flagged by a fallback response');
     unlink($root . '/probe/leak');
     // Failed TLS negotiation on our still-owned HTTP listener: no released-port race.
     bbf_test_verify_server($server);

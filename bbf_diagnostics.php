@@ -12,19 +12,24 @@ function bbf_diagnostic_base_url(array $config): ?string {
     return rtrim($url, '/');
 }
 
-/** A failed connection or redirect is not evidence that server access is denied. */
-function bbf_diagnostic_probe(array $config, string $path): ?int {
+/**
+ * A failed connection or redirect is not evidence that server access is denied.
+ * $body receives the (size-capped) response so callers can tell a served file from a fallback page.
+ */
+function bbf_diagnostic_probe(array $config, string $path, ?string &$body = null): ?int {
+    $body = null;
     $base = bbf_diagnostic_base_url($config);
     if ($base === null || (!in_array($path, ['config.php', 'submissions/', 'logs/',
         'templates/', 'actions/', 'forms/', 'tests/', 'templates/notify.html', 'actions/README.md',
         'forms/form.schema.json'], true)
-        && !preg_match('#\A(?:submissions|logs|templates|actions)/bbf-check-[0-9a-f]{32}\.txt\z#D', $path))) return null;
+        && !preg_match('#\A(?:submissions|logs|templates|actions|tests)/bbf-check-[0-9a-f]{32}\.txt\z#D', $path))) return null;
     $context = stream_context_create(['http' => [
         'timeout' => 3, 'ignore_errors' => true, 'follow_location' => 0,
     ]]);
     $http_response_header = [];
-    @file_get_contents($base . '/' . $path, false, $context);
+    $response = @file_get_contents($base . '/' . $path, false, $context, 0, 1048576);
     if (preg_match('/^HTTP\/\d(?:\.\d)?\s+(\d{3})\b/', $http_response_header[0] ?? '', $match)) {
+        $body = is_string($response) ? $response : '';
         return (int)$match[1];
     }
     return null;

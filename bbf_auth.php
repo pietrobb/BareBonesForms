@@ -33,7 +33,9 @@ function bbf_auth_fail(int $code = 403): void {
         echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<title>BareBonesForms: sign in</title><style>body{font-family:system-ui,sans-serif;max-width:420px;margin:12vh auto;padding:0 20px;color:#1a1a2e}'
             . 'input,button{font:inherit;padding:8px 10px;width:100%;box-sizing:border-box;margin-top:8px}code{background:#f1f3f5;padding:1px 4px;border-radius:3px}</style></head><body>'
-            . '<h1>Access denied.</h1><p>' . $hint . '</p>'
+            . '<h1>Sign in</h1>'
+            . (!empty($login['failed']) ? '<p role="alert" style="color:#c92a2a"><strong>Invalid token.</strong> It was not accepted for this page.</p>' : '')
+            . '<p>' . $hint . '</p>'
             . '<form method="post" action="' . htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? ''), ENT_QUOTES) . '">'
             . '<label for="bbf-token">Access token</label><input id="bbf-token" name="token" type="password" autocomplete="current-password" required autofocus>'
             . '<button type="submit">Sign in</button></form></body></html>';
@@ -130,6 +132,7 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
         }
     }
     if ($principal && ($principal['revoked'] || $principal['expires'] <= $now)) $principal = null;
+    if ($html && $explicit && !$principal) $GLOBALS['bbf_auth_login_page']['failed'] = true;
     if ($session) {
         if (!$principal) unset($_SESSION['bbf_access']);
         elseif ($explicit) {

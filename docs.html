@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BareBonesForms v2.0.2 — Documentation</title>
+<title>BareBonesForms v2.0.3 — Documentation</title>
 <style>
 :root {
     --bg: #ffffff; --bg-sidebar: #f8f9fa; --bg-code: #f4f5f7; --bg-code-block: #1e1e2e;
@@ -97,7 +97,7 @@ details summary:hover { text-decoration: underline; }
 <body>
 
 <div class="header">
-    <h1>BareBonesForms <span>v2.0.2 Docs</span></h1>
+    <h1>BareBonesForms <span>v2.0.3 Docs</span></h1>
     <span class="ver">v2.0 &middot; PHP 8.1+ &middot; September 2026</span>
 </div>
 
@@ -134,7 +134,7 @@ details summary:hover { text-decoration: underline; }
 
     <div class="group">Developer Tools</div>
     <a href="#viewer">Submissions Viewer</a>
-    <a href="#editor">Form Editor</a>
+    <a href="#editor">JSON Editor</a>
 
     <div class="group">Security &amp; Ops</div>
     <a href="#security">Security Model</a>
@@ -208,6 +208,11 @@ details summary:hover { text-decoration: underline; }
     Plain PHP hosting, small and medium websites, and developers who want control without some bloated form system telling them how to live their life. Not built for drag-and-drop form building, enterprise workflow suites, or hoopleheads who need a GUI to tie their boots.
 </div>
 
+<div class="callout info">
+    <strong>What &ldquo;bare bones&rdquo; means</strong>
+    No form builder &mdash; forms are JSON files you write by hand (an optional JSON editor with live preview is included). No dependencies, no build step, no database required.
+</div>
+
 <!-- ============================================================ -->
 <h2 id="genesis">The Genesis</h2>
 
@@ -277,7 +282,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 ├── sandbox.php         <span class="comment">&larr; Test forms without consequences</span>
 ├── smoketest.php       <span class="comment">&larr; Validate all forms (CLI or token-protected HTTP)</span>
 ├── viewer.php          <span class="comment">&larr; Submissions dashboard + inbox. Optional. Delete if unused.</span>
-├── editor.php          <span class="comment">&larr; Visual JSON form editor with live preview. Delete if unused.</span>
+├── editor.php          <span class="comment">&larr; JSON editor with live preview (not a form builder). Delete if unused.</span>
 ├── check.php           <span class="comment">&larr; Installation diagnostics. Run it. Then delete it.</span>
 ├── maintenance.php     <span class="comment">&larr; CLI only: backup, restore, retention</span>
 ├── bbf_*.php           <span class="comment">&larr; Internal libraries (not web entry points)</span>
@@ -1446,9 +1451,9 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
 </div>
 
 <!-- ============================================================ -->
-<h2 id="editor">Form Editor</h2>
+<h2 id="editor">JSON Editor</h2>
 
-<p><code>editor.php</code> is a visual JSON editor with live preview. A developer tool, not a drag-and-drop builder &mdash; you edit the JSON directly with instant feedback, syntax validation, field snippets, and a live-rendered form preview.</p>
+<p><code>editor.php</code> is a text editor for the form JSON with live preview. A developer tool, not a drag-and-drop builder &mdash; you edit the JSON directly with instant feedback, syntax validation, field snippets, and a live-rendered form preview.</p>
 
 <h3>Access</h3>
 <p>Same as the viewer: open <code>editor.php</code> and sign in with the admin <code>api_token</code> (scoped tokens cannot edit). Session-persisted.</p>
@@ -1540,7 +1545,7 @@ autoindex off;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</butt
     <li>PHP version, extensions, and configuration</li>
     <li>Storage backend connectivity</li>
     <li>Form JSON validity and field definitions</li>
-    <li><strong>Active HTTP probes</strong> on <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>forms/</code> &mdash; requests a real file inside each (a shipped file such as <code>templates/notify.html</code>, or a disposable sentinel it writes and deletes), because a denied directory URL says nothing about the files in it. Needs <code>diagnostic_base_url</code>; without it the verdict says protection is <em>not verified</em>.</li>
+    <li><strong>Active HTTP probes</strong> on <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>forms/</code> &mdash; requests a real file inside each (a shipped file such as <code>templates/notify.html</code>, or a disposable sentinel it writes and deletes), because a denied directory URL says nothing about the files in it. A 200 with different content (a catch-all fallback page) is not a leak, and directories that do not exist are skipped. Needs <code>diagnostic_base_url</code>; without it the verdict says protection is <em>not verified</em>.</li>
     <li><code>config.php</code> accessibility via HTTP</li>
     <li><code>BBF_LOADED</code> guard presence in <code>config.php</code></li>
     <li><code>display_errors</code> state</li>
