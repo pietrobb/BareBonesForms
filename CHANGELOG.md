@@ -3,6 +3,16 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.0.4] — 2026-09-23
+
+Found by installing 2.0.3 on real shared hosting (Hetzner, Apache, PHP 8.2).
+
+### Fixed
+- **`check.php` could not verify anything on hosts with `allow_url_fopen=0`** (common on shared hosting). The HTTP probes now use cURL when available, like the smoke test already did. When `diagnostic_base_url` is set but the request fails, the message says so instead of asking you to set it.
+
+### Documentation
+- **The Genesis** (README and `docs.html`) now names MachForm as the system BareBonesForms replaced, and says plainly what the move was about: forms in files instead of a database, upgrades that leave data alone, and forms you can carry from host to host.
+
 ## [2.0.3] — 2026-09-23
 
 Fixes from a second first-install test of 2.0.2.

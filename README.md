@@ -1332,13 +1332,13 @@ Tests never touch your `config.php`, `forms/` or `submissions/` — each suite c
 
 ## The Genesis
 
-On the eighth day of March, in the year of our Lord 2026, after dragging several godforsaken websites — each shackled to a different version of some commercial form system — through migrations that would test the patience of a saint and the sanity of a PHP developer alike, I poured myself a glass and spoke plainly to the empty room: *Enough.*
+On the eighth day of March, in the year of our Lord 2026, after dragging several godforsaken websites through migrations that would test the patience of a saint and the sanity of a PHP developer alike, I poured myself a glass and spoke plainly to the empty room: *Enough.*
 
-Each site running its own damned version. Each version demanding a different PHP. Each update breaking something that worked perfectly fine the day before.
+For years those sites ran on MachForm, and it did its job. My quarrel was never with the product — it was with the way of life it demanded. Every form lived inside a database. Every upgrade was an operation of its own, and each site ended up on its own version, wanting its own PHP. Moving a form from one host to another was never a matter of copying a file; it was export, import, and prayer.
 
-BareBonesForms is what emerged from that resolve. JSON in, form out, submissions stored. Simplicity ain't a weakness — it's the only honest architecture.
+BareBonesForms is what emerged from that resolve. A form is one JSON file. No database unless you want one. An upgrade replaces the code and leaves your forms and submissions alone. Moving to another host means copying a folder. Simplicity ain't a weakness — it's the only honest architecture.
 
-Now, since I hold the belief that others in this wretched camp of web development may suffer the same afflictions, I'm putting this out in the open. Take it. Use it. Bend it to your purposes. It's MIT licensed.
+Now, since I hold the belief that others in this wretched camp of web development may suffer the same afflictions — perhaps you, too, went looking for a MachForm alternative that lives in plain files — I'm putting this out in the open. Take it. Use it. Bend it to your purposes. It's MIT licensed.
 
 ---
 

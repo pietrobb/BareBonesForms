@@ -156,13 +156,16 @@ check('Security', '.htaccess present', file_exists(__DIR__ . '/.htaccess'),
 
 // Check that config.php is not web-accessible (active probe)
 $probeUnverified = 0;
+$probeFailedDetail = bbf_diagnostic_base_url($config ?? []) === null
+    ? 'Not verified. Set diagnostic_base_url to the fixed installation URL and ensure it is reachable.'
+    : 'Not verified: the request to diagnostic_base_url failed (unreachable, TLS error, or neither cURL nor allow_url_fopen is available).';
 $probeCode = bbf_diagnostic_probe($config ?? [], 'config.php', $probeBody);
 $probeBlocked = in_array($probeCode, [403, 404], true);
 // PHP executed the file and the BBF_LOADED guard exited: nothing leaked, but the server rule is missing.
 $probeGuarded = $probeCode === 200 && trim((string)$probeBody) === '';
 if ($probeCode === null) $probeUnverified++;
 $probeDetail = $probeCode === null
-    ? 'Not verified. Set diagnostic_base_url to the fixed installation URL and ensure it is reachable.'
+    ? $probeFailedDetail
     : ($probeBlocked ? 'Direct HTTP access to config.php is denied.'
         : ($probeGuarded ? 'Served as an empty page (HTTP 200): the BBF_LOADED guard works, nothing leaked. Add the server rule from .htaccess anyway.'
         : 'Not verified as blocked (HTTP ' . $probeCode . '). Check server access rules.'));
@@ -239,7 +242,7 @@ foreach ($probeFiles as $probeDir => $probeFile) {
     $fallback = $probeCode === 200 && $expected !== null && $probeBody !== substr($expected, 0, 1048576);
     $dirBlocked = in_array($probeCode, [403, 404], true) || $fallback;
     if ($probeCode === null) $probeUnverified++;
-    $detail = $probeCode === null ? 'Not verified; configure a reachable diagnostic_base_url.'
+    $detail = $probeCode === null ? $probeFailedDetail
         : ($fallback ? 'A file inside is not served: HTTP 200 returned a different page (catch-all fallback).'
         : ($dirBlocked ? ($probeFile !== null ? 'A file inside is not served (HTTP ' . $probeCode . ').' : 'Directory listing denied.')
         : ($probeCode === 200 && $probeFile !== null
@@ -526,7 +529,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 <div class="verdict <?= $allGood && $unverified === 0 ? 'ok' : 'problems' ?>">
     <?= $allGood
-        ? ($unverified > 0 ? "No errors, but web access protection is NOT verified ($unverified check(s)). Set diagnostic_base_url in config.php and run again."
+        ? ($unverified > 0 ? "No errors, but web access protection is NOT verified ($unverified check(s)). " . ($canProbe ? 'The probe requests failed; see the Security details below.' : 'Set diagnostic_base_url in config.php and run again.')
         : ($warnCount > 0 ? "All checks passed with $warnCount warning(s). Review warnings for production." : 'All checks passed. Ready to go.'))
         : "$errorCount check(s) failed. Fix errors before going live." ?>
 </div>

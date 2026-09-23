@@ -197,6 +197,16 @@ PHP);
     }
     diagnostic_check(!file_exists($root . '/logs/trap'), 'installation probe never follows a redirect');
     diagnostic_check(bbf_diagnostic_probe(['diagnostic_base_url' => $base], '../trap.php') === null, 'probe path cannot choose arbitrary endpoints');
+    if (function_exists('curl_init')) {
+        // Shared hosts (e.g. Hetzner) run with allow_url_fopen=0; probes must still reach the server.
+        file_put_contents($root . '/probe/status', '403');
+        file_put_contents($root . '/fopen-off.php', '<?php define("BBF_LOADED", true); require __DIR__ . "/bbf_diagnostics.php";'
+            . ' echo json_encode(bbf_diagnostic_probe(["diagnostic_base_url" => ' . var_export($base . '/probe', true) . '], "config.php"));');
+        $fopenOff = proc_open([PHP_BINARY, '-d', 'allow_url_fopen=0', '-d', 'display_errors=stderr', $root . '/fopen-off.php'],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $fopenPipes, $root);
+        $fopenOut = stream_get_contents($fopenPipes[1]); fclose($fopenPipes[1]); fclose($fopenPipes[2]); proc_close($fopenOff);
+        diagnostic_check(trim($fopenOut) === '403', 'probe works with allow_url_fopen=0 via cURL');
+    }
     $config = [
         'storage' => 'file', 'api_token' => 'diagnostic-test-admin', 'smoke_token' => 'diagnostic-test-smoke',
         'smoke_email' => 'test@example.test', 'smoke_notify' => 'notify@example.test',
