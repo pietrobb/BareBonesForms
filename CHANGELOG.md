@@ -3,6 +3,17 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.0.1] — 2026-09-23
+
+Documentation-only release. No code changes; upgrading from 2.0.0 means replacing `docs.html`.
+
+### Fixed
+- **`docs.html` payments section** still described the removed client-supplied `amount` / `amount_field` contract. It now documents server-owned pricing (`fixed`, `catalog`, `donation`) with validated examples.
+- **`docs.html` Nginx rules** now match `.htaccess`: installation-path prefix, `bbf_functions.php`, `tests/`, `data/`, backup-file variants and all dotfiles are blocked, while `lang/*.js` stays public (the old rules blocked the whole `lang/` directory, which broke translations). Added a way to verify the rules on the live server.
+
+### Added
+- `docs.html` now covers everything in 2.0.0 and the March features it was missing: upgrading, repeatable groups, drafts, lookup / autocomplete, `options_from`, viewer inbox and delivery retry, form versions, scoped tokens, smoke test, retention and backups, visit attribution, `reply_to`, action response override, `onSuccess` / `onError`, `bbf:submitted`.
+
 ## [2.0.0] — 2026-09-23
 
 Everything since v1.0.1 (March 2026): six months of production use on several business sites, a full security/reliability review, and the features below.
