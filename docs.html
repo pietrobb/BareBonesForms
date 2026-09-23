@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BareBonesForms v2.0.1 — Documentation</title>
+<title>BareBonesForms v2.0.2 — Documentation</title>
 <style>
 :root {
     --bg: #ffffff; --bg-sidebar: #f8f9fa; --bg-code: #f4f5f7; --bg-code-block: #1e1e2e;
@@ -97,7 +97,7 @@ details summary:hover { text-decoration: underline; }
 <body>
 
 <div class="header">
-    <h1>BareBonesForms <span>v2.0.1 Docs</span></h1>
+    <h1>BareBonesForms <span>v2.0.2 Docs</span></h1>
     <span class="ver">v2.0 &middot; PHP 8.1+ &middot; September 2026</span>
 </div>
 
@@ -225,8 +225,8 @@ details summary:hover { text-decoration: underline; }
 <p>Five steps. A man of moderate intelligence could manage it before his coffee goes cold.</p>
 
 <p><strong>1.</strong> Download <code>barebonesforms-vX.Y.Z.zip</code> from <a href="https://github.com/pietrobb/BareBonesForms/releases/latest" target="_blank">GitHub Releases</a> and upload the <code>barebonesforms/</code> folder to your hosting. The ZIP holds only what belongs on a server &mdash; no tests, no dev tooling.</p>
-<p><strong>2.</strong> Copy <code>config.example.php</code> &rarr; <code>config.php</code> and edit it. Once. Set a long random <code>api_token</code>.</p>
-<p><strong>3.</strong> Open <code>check.php</code> in your browser &mdash; fix any errors it reports. Then <strong>delete check.php</strong> (it exposes server details to anyone who knows the URL).</p>
+<p><strong>2.</strong> Copy <code>config.example.php</code> &rarr; <code>config.php</code> and edit it. Once. Set a long random <code>api_token</code> and <code>diagnostic_base_url</code> (the public URL of this folder, e.g. <code>https://example.com/bbf</code>).</p>
+<p><strong>3.</strong> Open <code>check.php</code> in your browser, sign in with your <code>api_token</code> and fix any errors it reports. Then <strong>delete check.php</strong> (it exposes server details to anyone who knows the URL).</p>
 <p><strong>4.</strong> Create a form JSON in <code>forms/</code>.</p>
 <p><strong>5.</strong> Embed it in your page:</p>
 
@@ -1387,9 +1387,7 @@ $actionResponse['redirect'] = '/thank-you?order=' . $orderId;</pre><button class
 <p><code>viewer.php</code> is a built-in dashboard for browsing, searching, and exporting form submissions. It reads directly from your configured storage backend &mdash; no extra setup needed.</p>
 
 <h3>Access</h3>
-<p>Localhost: unrestricted. Remote: requires <code>api_token</code> in the URL. Authentication persists in the session &mdash; AJAX calls work without repeating the token.</p>
-
-<div class="code-block"><span class="lang">url</span><pre>viewer.php?token=YOUR_API_TOKEN</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>Required on every host, including localhost. Open <code>viewer.php</code> and sign in with your <code>api_token</code> (or a scoped token). Authentication persists in the session &mdash; AJAX calls work without repeating the token. Scripts can send the <code>X-BBF-Token</code> header instead.</p>
 
 <h3>Features</h3>
 <table>
@@ -1453,9 +1451,7 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
 <p><code>editor.php</code> is a visual JSON editor with live preview. A developer tool, not a drag-and-drop builder &mdash; you edit the JSON directly with instant feedback, syntax validation, field snippets, and a live-rendered form preview.</p>
 
 <h3>Access</h3>
-<p>Same as the viewer: localhost unrestricted, remote requires <code>api_token</code>. Session-persisted.</p>
-
-<div class="code-block"><span class="lang">url</span><pre>editor.php?token=YOUR_API_TOKEN</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>Same as the viewer: open <code>editor.php</code> and sign in with the admin <code>api_token</code> (scoped tokens cannot edit). Session-persisted.</p>
 
 <h3>Features</h3>
 <table>
@@ -1544,14 +1540,14 @@ autoindex off;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</butt
     <li>PHP version, extensions, and configuration</li>
     <li>Storage backend connectivity</li>
     <li>Form JSON validity and field definitions</li>
-    <li><strong>Active HTTP probes</strong> on <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>forms/</code> &mdash; verifies each one is actually blocked</li>
+    <li><strong>Active HTTP probes</strong> on <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>forms/</code> &mdash; requests a real file inside each (a shipped file such as <code>templates/notify.html</code>, or a disposable sentinel it writes and deletes), because a denied directory URL says nothing about the files in it. Needs <code>diagnostic_base_url</code>; without it the verdict says protection is <em>not verified</em>.</li>
     <li><code>config.php</code> accessibility via HTTP</li>
     <li><code>BBF_LOADED</code> guard presence in <code>config.php</code></li>
     <li><code>display_errors</code> state</li>
     <li>Sandbox mode state</li>
     <li>Leftover diagnostic files (<code>phpinfo.php</code>, <code>test.php</code>, etc.)</li>
 </ul>
-<p>Access: localhost = unrestricted. Remote = requires <code>?token=&lt;api_token&gt;</code>.</p>
+<p>Access: <code>api_token</code> is required on every host, including localhost. The page shows a sign-in form.</p>
 <div class="callout warn">
     <strong>Delete <code>check.php</code> after verification.</strong>
     It exposes PHP version, loaded extensions, directory paths, storage backend details, and form structure. Even with token protection, this file has no business existing on a production server.
@@ -1881,7 +1877,7 @@ php maintenance.php retention --form=kontakt --apply --confirm=&lt;digest&gt;</p
     <li>Set <code>smoke_token</code> if you want HTTP smoke tests after deploys (leave empty to disable)</li>
     <li>Keep <code>retention.archive_dir</code> and <code>backup.directory</code> outside the web root</li>
     <li>Run <code>php smoketest.php</code> &mdash; every form passes</li>
-    <li>Run <code>check.php</code> to verify installation (remote access requires <code>?token=&lt;api_token&gt;</code>)</li>
+    <li>Set <code>diagnostic_base_url</code>, run <code>check.php</code> (sign in with <code>api_token</code>) and confirm protection is verified</li>
     <li><strong>Delete <code>check.php</code> after verification</strong> &mdash; it exposes PHP version, extensions, directory paths, and configuration details</li>
     <li><strong>Delete or protect <code>editor.php</code></strong> &mdash; can modify form definitions on the server</li>
     <li><strong>Delete or protect <code>viewer.php</code></strong> &mdash; exposes submission data to anyone with the token</li>

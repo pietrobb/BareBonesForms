@@ -1408,7 +1408,8 @@
                         opt.value = '';
                         opt.textContent = field.placeholder;
                         opt.disabled = true;
-                        opt.selected = true;
+                        // defaultSelected: form.reset() after a successful submit returns to the placeholder.
+                        opt.selected = opt.defaultSelected = true;
                         input.appendChild(opt);
                     }
                     var selOpts = field.options || [];

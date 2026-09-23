@@ -16,8 +16,11 @@ require_once __DIR__ . '/bbf_diagnostics.php';
 require_once __DIR__ . '/bbf_auth.php';
 $configFile = __DIR__ . '/config.php';
 if (!is_file($configFile)) {
+    // The most common installation error; saying so reveals nothing sensitive.
     bbf_auth_headers();
-    bbf_auth_fail();
+    http_response_code(503);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit("config.php not found. Copy config.example.php to config.php, set api_token, then open check.php again.\n");
 }
 $config = bbf_auth_load_config($configFile);
 if (!is_array($config)) {
@@ -198,11 +201,33 @@ check('Security', 'display_errors is OFF', $dispOff,
 // Missing configuration and network failures are explicitly unverified.
 // A redirect is reported, not followed to an unconfigured target.
 // Probes carry no authentication credentials.
-foreach (['submissions', 'logs', 'templates', 'actions', 'forms', 'tests'] as $probeDir) {
-    $probeCode = bbf_diagnostic_probe($config ?? [], "$probeDir/");
+// A denied directory URL proves nothing about the files inside (Nginx without rules, php -S),
+// so request a real file: a shipped one, or a disposable sentinel written only for this probe.
+$probeFiles = ['submissions' => null, 'logs' => null, 'templates' => 'templates/notify.html',
+    'actions' => 'actions/README.md', 'forms' => 'forms/form.schema.json', 'tests' => null];
+$canProbe = bbf_diagnostic_base_url($config ?? []) !== null;
+foreach ($probeFiles as $probeDir => $probeFile) {
+    $sentinel = null;
+    if ($probeFile !== null && !is_file(__DIR__ . '/' . $probeFile)) $probeFile = null;
+    if ($probeFile === null && $canProbe && in_array($probeDir, ['submissions', 'logs', 'templates', 'actions'], true)) {
+        $realDir = realpath($dirs[$probeDir] ?? __DIR__ . '/' . $probeDir);
+        // Only a directory at its default web path can be reached by URL.
+        if ($realDir !== false && $realDir === realpath(__DIR__ . '/' . $probeDir) && is_writable($realDir)) {
+            $name = 'bbf-check-' . bin2hex(random_bytes(16)) . '.txt';
+            if (@file_put_contents($realDir . '/' . $name, "BareBonesForms check.php sentinel\n") !== false) {
+                $sentinel = $realDir . '/' . $name;
+                $probeFile = "$probeDir/$name";
+            }
+        }
+    }
+    $probeCode = bbf_diagnostic_probe($config ?? [], $probeFile ?? "$probeDir/");
+    if ($sentinel !== null) @unlink($sentinel);
     $dirBlocked = in_array($probeCode, [403, 404], true);
     $detail = $probeCode === null ? 'Not verified; configure a reachable diagnostic_base_url.'
-        : ($dirBlocked ? 'Directory listing denied.' : 'Not verified as blocked (HTTP ' . $probeCode . ').');
+        : ($dirBlocked ? ($probeFile !== null ? 'A file inside is not served (HTTP ' . $probeCode . ').' : 'Directory listing denied.')
+        : ($probeCode === 200 && $probeFile !== null
+            ? 'Not verified as blocked: files inside are publicly readable (HTTP 200). Add the server rules from .htaccess (Nginx: see its comments).'
+            : 'Not verified as blocked (HTTP ' . $probeCode . ').'));
     check('Security', "$probeDir/ blocked via HTTP", $dirBlocked,
         $detail, $probeCode === null ? 'warn' : 'error');
 }
@@ -400,6 +425,7 @@ $warnCount  = count(array_filter($results, fn($r) => $r['level'] === 'warn'));
 $errorCount = count(array_filter($results, fn($r) => $r['level'] === 'error'));
 $totalCount = count($results);
 $allGood    = $errorCount === 0;
+$unverified = count(array_filter($results, fn($r) => str_ends_with($r['name'], 'blocked via HTTP') && $r['level'] === 'warn'));
 
 // Group results
 $grouped = [];
@@ -481,9 +507,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="stat fail"><div class="num"><?= $errorCount ?></div><div class="lbl">Failed</div></div>
 </div>
 
-<div class="verdict <?= $allGood ? 'ok' : 'problems' ?>">
+<div class="verdict <?= $allGood && $unverified === 0 ? 'ok' : 'problems' ?>">
     <?= $allGood
-        ? ($warnCount > 0 ? "All checks passed with $warnCount warning(s). Review warnings for production." : 'All checks passed. Ready to go.')
+        ? ($unverified > 0 ? "No errors, but web access protection is NOT verified ($unverified check(s)). Set diagnostic_base_url in config.php and run again."
+        : ($warnCount > 0 ? "All checks passed with $warnCount warning(s). Review warnings for production." : 'All checks passed. Ready to go.'))
         : "$errorCount check(s) failed. Fix errors before going live." ?>
 </div>
 

@@ -112,7 +112,7 @@ function deploy_test_remove_tree(string $directory): void
 function deploy_test_expected_files(): array
 {
     $files = [
-        '.bbf-package', '.gitignore', '.htaccess', 'LICENSE', 'README.md', 'actions/README.md',
+        '.bbf-package', '.gitignore', '.htaccess', 'CHANGELOG.md', 'LICENSE', 'README.md', 'actions/README.md',
         'api-psc.php', 'bbf-theme.css', 'bbf.css', 'bbf.js', 'bbf_auth.php', 'bbf_backup.php',
         'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php', 'bbf_functions.php',
         'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_versions.php', 'check.php', 'config.example.php',
@@ -164,11 +164,19 @@ try {
     if (!is_dir($destination)) {
         throw new RuntimeException('Disposable package was not created: ' . $build['stderr']);
     }
+    if (DIRECTORY_SEPARATOR === '/') {
+        deploy_test_check((fileperms($destination) & 0777) === 0755, 'published package root is world-readable (0755), not the private staging mode');
+    }
+    // README documents `--destination ../barebonesforms`; ".." segments must resolve, not be rejected as links.
+    mkdir($outside . DIRECTORY_SEPARATOR . 'work', 0700);
+    $relative = deploy_test_process([PHP_BINARY, $packager, '--destination', '../relative-package'], $outside . DIRECTORY_SEPARATOR . 'work');
+    deploy_test_check($relative['code'] === 0 && is_dir($outside . DIRECTORY_SEPARATOR . 'relative-package'),
+        'a relative destination with ".." builds next to the working directory');
 
     $expected = deploy_test_expected_files();
     $actual = deploy_test_files($destination);
     deploy_test_check($actual === $expected, 'package has the exact independently specified sorted file set');
-    deploy_test_check(count($actual) === 137, 'package manifest contains exactly 137 files');
+    deploy_test_check(count($actual) === 138, 'package manifest contains exactly 138 files');
 
     foreach ([
         'bbf_auth.php', 'bbf_backup.php', 'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php',

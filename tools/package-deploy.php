@@ -33,6 +33,7 @@ function bbf_deploy_manifest(string $root): array
     // This is deliberately a closed list. Never replace it with a recursive root copy.
     $topLevel = [
         '.htaccess',
+        'CHANGELOG.md',
         'LICENSE',
         'README.md',
         'api-psc.php',
@@ -312,6 +313,15 @@ function bbf_deploy_absolute_destination(string $destination, string $root, stri
     }
 
     $destination = rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $destination), '/\\');
+    // Collapse "." and ".." lexically (e.g. ../barebonesforms); link checks below run on the result.
+    $prefix = DIRECTORY_SEPARATOR === '\\' ? substr($destination, 0, 3) : DIRECTORY_SEPARATOR;
+    $segments = [];
+    foreach (explode(DIRECTORY_SEPARATOR, substr($destination, strlen($prefix))) as $segment) {
+        if ($segment === '' || $segment === '.') continue;
+        if ($segment === '..') { array_pop($segments); continue; }
+        $segments[] = $segment;
+    }
+    $destination = $prefix . implode(DIRECTORY_SEPARATOR, $segments);
     $leaf = basename($destination);
     $parent = dirname($destination);
     if ($leaf === '' || $leaf === '.' || $leaf === '..') {
@@ -516,6 +526,10 @@ function bbf_deploy_build(string $destination, array $manifest): void
         if (getenv('BBF_DEPLOY_TEST_FAIL_ACTIVATION') === '1'
             && $tempRoot !== false && bbf_deploy_is_within($destination, $tempRoot)) {
             throw new RuntimeException('Injected deployment activation failure.');
+        }
+        // Staging is private (0700); the published package must be readable by the web server user.
+        if (!chmod($stage, 0755)) {
+            throw new RuntimeException("Cannot set package permissions: $stage");
         }
         if (!rename($stage, $destination)) {
             throw new RuntimeException("Cannot activate staged package: $destination");

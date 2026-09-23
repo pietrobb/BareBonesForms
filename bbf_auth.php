@@ -22,6 +22,23 @@ function bbf_auth_headers(): void {
 
 function bbf_auth_fail(int $code = 403): void {
     http_response_code($code);
+    $login = $GLOBALS['bbf_auth_login_page'] ?? null;
+    if ($code === 403 && is_array($login)) {
+        // Management pages get a usable sign-in form instead of a bare JSON error.
+        header('Content-Type: text/html; charset=utf-8');
+        $hint = $login['configured']
+            ? 'Enter the <code>api_token</code> from <code>config.php</code>.'
+            : 'No valid access token is configured. Set a long random <code>api_token</code> in <code>config.php</code> '
+                . '(a malformed <code>access_tokens</code> list disables all tokens).';
+        echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+            . '<title>BareBonesForms: sign in</title><style>body{font-family:system-ui,sans-serif;max-width:420px;margin:12vh auto;padding:0 20px;color:#1a1a2e}'
+            . 'input,button{font:inherit;padding:8px 10px;width:100%;box-sizing:border-box;margin-top:8px}code{background:#f1f3f5;padding:1px 4px;border-radius:3px}</style></head><body>'
+            . '<h1>Access denied.</h1><p>' . $hint . '</p>'
+            . '<form method="post" action="' . htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? ''), ENT_QUOTES) . '">'
+            . '<label for="bbf-token">Access token</label><input id="bbf-token" name="token" type="password" autocomplete="current-password" required autofocus>'
+            . '<button type="submit">Sign in</button></form></body></html>';
+        exit;
+    }
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['error' => $code === 503 ? 'Access audit unavailable.' : 'Access denied.']);
     exit;
@@ -90,8 +107,11 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
     bbf_auth_headers();
     $registry = bbf_auth_registry($config);
     if ($session) bbf_auth_session();
-    $explicit = array_key_exists('HTTP_X_BBF_TOKEN', $_SERVER) || array_key_exists('token', $_GET);
-    $provided = $_SERVER['HTTP_X_BBF_TOKEN'] ?? ($_GET['token'] ?? null);
+    // HTML management pages accept the sign-in form POST so the token stays out of URLs and logs.
+    $formLogin = $html && $session && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && array_key_exists('token', $_POST);
+    if ($html) $GLOBALS['bbf_auth_login_page'] = ['configured' => $registry !== []];
+    $explicit = array_key_exists('HTTP_X_BBF_TOKEN', $_SERVER) || array_key_exists('token', $_GET) || $formLogin;
+    $provided = $_SERVER['HTTP_X_BBF_TOKEN'] ?? ($_GET['token'] ?? ($formLogin ? $_POST['token'] : null));
     $principal = null; $now = time();
     if ($explicit) {
         if (is_string($provided) && $provided !== '') {
@@ -118,7 +138,7 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
                 'created' => $now, 'seen' => $now, 'csrf' => $csrf];
         } else $_SESSION['bbf_access']['seen'] = $now;
     }
-    if ($principal && $session && $html && array_key_exists('token', $_GET)) {
+    if ($principal && $session && $html && (array_key_exists('token', $_GET) || $formLogin)) {
         bbf_audit_write($config, $principal, 'login', '', [], 'allowed', 'attempted', 0);
         bbf_audit_write($config, $principal, 'login', '', [], 'allowed', 'completed', 0);
         // Never reflect arbitrary query values (including redundant credentials).

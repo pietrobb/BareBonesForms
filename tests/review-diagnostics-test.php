@@ -201,6 +201,13 @@ PHP);
     diagnostic_check(str_contains($output, 'Access denied'), 'check rejects hostile localhost SERVER_NAME without credentials');
     $response = bbf_test_http($server, $base . '/check.php');
     diagnostic_check($response['code'] === 403, 'check rejects anonymous loopback HTTP request');
+    diagnostic_check(str_contains($response['body'], '<form method="post" action="check.php">')
+        && !str_contains($response['body'], 'diagnostic-test-admin'), 'anonymous check page offers a POST sign-in form without secrets');
+    $login = bbf_test_http($server, $base . '/check.php', ['token' => 'wrong-token']);
+    diagnostic_check($login['code'] === 403, 'sign-in form rejects a wrong token');
+    $login = bbf_test_http($server, $base . '/check.php', ['token' => 'diagnostic-test-admin']);
+    diagnostic_check($login['code'] === 303 && preg_match('/^Location: check\.php\r?$/mi', $login['headers']) === 1
+        && preg_match('/^Set-Cookie: /mi', $login['headers']) === 1, 'sign-in form POST starts a session and redirects to a clean URL');
     foreach ([null, 403, 404, 200, 302, 500, 'tls-failure'] as $status) {
         $config['diagnostic_base_url'] = $status === null ? '' : ($status === 'tls-failure' ? str_replace('http:', 'https:', $base) : $base) . '/probe';
         if (is_int($status)) file_put_contents($root . '/probe/status', (string)$status);
@@ -215,6 +222,29 @@ PHP);
         }
     }
     diagnostic_check(!file_exists($root . '/logs/trap'), 'check runtime never follows redirect');
+    // Server without rules (Nginx, php -S): directory URLs deny, but files inside are served.
+    $config['diagnostic_base_url'] = $base . '/probe';
+    diagnostic_config($root, $config);
+    file_put_contents($root . '/probe/status', '403');
+    file_put_contents($root . '/logs/probe-requests', '');
+    foreach (['templates/notify.html', 'actions/README.md', 'forms/form.schema.json'] as $leaked) {
+        if (!is_file($root . '/' . $leaked)) bbf_test_copy(dirname(__DIR__) . '/' . $leaked, $root . '/' . $leaked);
+        file_put_contents($root . '/probe/' . $leaked, 'leaked');
+    }
+    bbf_test_verify_server($server);
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-check.php');
+    $rows = array_column(json_decode($output, true) ?: [], null, 'name');
+    foreach (['templates', 'actions', 'forms'] as $dir) {
+        diagnostic_check(($rows["$dir/ blocked via HTTP"]['pass'] ?? true) === false
+            && str_contains($rows["$dir/ blocked via HTTP"]['detail'] ?? '', 'publicly readable'),
+            "$dir/ fails when the directory URL is denied but a file inside is served");
+    }
+    $requests = (string)file_get_contents($root . '/logs/probe-requests');
+    diagnostic_check(preg_match('#/probe/submissions/bbf-check-[0-9a-f]{32}\.txt#', $requests) === 1,
+        'submissions/ is probed with a real sentinel file, not only the directory URL');
+    diagnostic_check(glob($root . '/submissions/bbf-check-*') === [] && glob($root . '/logs/bbf-check-*') === [],
+        'check.php removes its sentinel files');
+    foreach (['templates/notify.html', 'actions/README.md', 'forms/form.schema.json'] as $leaked) unlink($root . '/probe/' . $leaked);
     // Failed TLS negotiation on our still-owned HTTP listener: no released-port race.
     bbf_test_verify_server($server);
     diagnostic_check(bbf_diagnostic_probe(['diagnostic_base_url' => str_replace('http:', 'https:', $base) . '/probe'], 'config.php') === null,

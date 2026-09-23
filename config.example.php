@@ -4,6 +4,12 @@
  *
  * Copy this file to config.php and edit.
  * BareBonesForms will not run without config.php.
+ *
+ * MINIMUM SETUP — change these four, everything else has safe defaults:
+ *   1. 'api_token'           long random secret; signs you into check.php, viewer.php, editor.php
+ *   2. 'diagnostic_base_url' public URL of this folder, so check.php can verify your server protects data
+ *   3. 'mail' → 'from_email' (and SMTP settings for reliable delivery)
+ *   4. 'storage'             'file' works out of the box; 'sqlite' / 'mysql' for more volume
  */
 
 // Security: prevent direct browser access (only included by BBF scripts)
@@ -11,7 +17,7 @@ defined('BBF_LOADED') || exit;
 
 return [
 
-    'system_fields' => [], 'visit_context' => [], 'analytics' => ['umami' => false], // Optional hidden fields, {trigger_params, params}, existing Umami tracker.
+    // ─── Storage ────────────────────────────────────────────────
     // "file"   = JSON files in /submissions (zero config, works everywhere)
     // "sqlite" = SQLite database (file-based, zero config, SQL capable)
     // "mysql"  = MySQL / MariaDB (fill in credentials below)
@@ -84,11 +90,21 @@ return [
     // Leave empty to disable.
     'error_notify' => '',
 
-    // ─── API ────────────────────────────────────────────────────
-    // Legacy unrestricted admin; required even on loopback. Prefer X-BBF-Token over URL credentials.
-    // Scoped records: ['id'=>'reader-1', 'token'=>'RANDOM_SECRET', 'forms'=>['contact'], 'permissions'=>['read'], 'expires_at'=>'2027-01-01T00:00:00Z', 'revoked'=>false].
-    // Exact form IDs; read+export for CSV/forward, read+delete for deletion, read+review for inbox metadata; empty lists grant nothing. Malformed/duplicate records disable all access. Editor is legacy-admin only.
-    'api_token' => '', 'access_tokens' => [], 'auth_session_idle' => 1800, 'auth_session_absolute' => 28800, // Seconds; config is re-resolved each request. logs_dir/access-audit.php must be writable; failure blocks access.
+    // ─── API & management access ────────────────────────────────
+    // Admin token for check.php, viewer.php, editor.php and submissions.php — required even on localhost.
+    // Generate: php -r "echo bin2hex(random_bytes(32));"   Scripts send it in the X-BBF-Token header.
+    'api_token' => '',
+
+    // Optional per-form tokens with limited permissions (read, export, delete, review). Example:
+    // ['id'=>'reader-1', 'token'=>'RANDOM_SECRET', 'forms'=>['contact'], 'permissions'=>['read'], 'expires_at'=>'2027-01-01T00:00:00Z', 'revoked'=>false]
+    // read+export for CSV/forward, read+delete for deletion, read+review for inbox metadata; empty lists grant nothing.
+    // A malformed or duplicate record disables ALL access, including api_token. The editor accepts only api_token.
+    'access_tokens' => [],
+
+    // Sign-in session limits in seconds (idle, absolute). Access is audited in logs_dir/access-audit.php,
+    // which must be writable — if it is not, access is blocked.
+    'auth_session_idle' => 1800,
+    'auth_session_absolute' => 28800,
 
     // Fixed operator-owned installation URL for check.php probes and live smoke POSTs.
     // No Host-derived fallback or redirects; empty disables outgoing diagnostics.
@@ -150,5 +166,12 @@ return [
     'submissions_dir' => __DIR__ . '/submissions',
     'templates_dir'   => __DIR__ . '/templates',
     'logs_dir'        => __DIR__ . '/logs',
+
+    // ─── Visit attribution (optional) ───────────────────────────
+    // Hidden fields added to every form (UTM, gclid, …), which URL parameters start a visit,
+    // and an Umami "form_submitted" event. Ready-made values: config.attribution.example.php.
+    'system_fields' => [],
+    'visit_context' => [],
+    'analytics'     => ['umami' => false],
 
 ];

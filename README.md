@@ -88,8 +88,8 @@ Demos 1–3 cover backend configuration. Demo 4 showcases the form engine's core
 1. **Download** `barebonesforms-vX.Y.Z.zip` from [Releases](https://github.com/pietrobb/BareBonesForms/releases/latest) and unzip it.
    It contains only the files needed on a server — no tests, no dev tooling.
 2. **Upload** the `barebonesforms/` folder to your hosting (e.g. `https://example.com/bbf/`).
-3. **Configure:** copy `config.example.php` → `config.php`, fill in storage and mail settings, set a long random `api_token`.
-4. **Check:** open `check.php` in the browser and fix anything it reports. Then **delete `check.php`** — it exposes server details.
+3. **Configure:** copy `config.example.php` → `config.php`, fill in storage and mail settings, set a long random `api_token` (`php -r "echo bin2hex(random_bytes(32));"`) and `diagnostic_base_url` (the public URL of this folder, e.g. `https://example.com/bbf`).
+4. **Check:** open `check.php` in the browser, sign in with your `api_token` and fix anything it reports. It requests real files inside `submissions/`, `logs/`, `templates/`… to prove your server does not serve them. Then **delete `check.php`** — it exposes server details.
 5. **Create a form:** put a JSON file in `forms/` (start from `forms/kontakt.json`).
 6. **Embed** it on any page:
    ```html
@@ -102,6 +102,19 @@ Before going live, run through the [Production Checklist](#production-checklist)
 
 > **Working from a git clone instead?** Don't upload the whole repository. Build the upload-ready folder with
 > `php tools/package-deploy.php --destination ../barebonesforms` — it copies exactly the runtime files from a closed allowlist.
+
+### Try it locally in 2 minutes
+
+```bash
+cd barebonesforms
+cp config.example.php config.php        # set api_token; diagnostic_base_url = http://127.0.0.1:8000
+PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8000
+```
+
+Open `http://127.0.0.1:8000/demo1.html`, submit the form, then see it in `http://127.0.0.1:8000/viewer.php`. Without a mail server the emails fail, but the submission is kept and the viewer offers **Retry**.
+
+- `PHP_CLI_SERVER_WORKERS` (Linux/macOS) lets `check.php` request its own URLs; with a single worker those probes cannot complete.
+- `php -S` ignores `.htaccess`, so `submissions/` **is readable** over HTTP — `check.php` will say so. Use it only for local testing.
 
 ---
 
@@ -650,14 +663,15 @@ Run `check.php` after installation to verify your setup. It tests:
 - PHP version, extensions, and configuration
 - Storage backend connectivity (file/SQLite/MySQL/CSV)
 - Form JSON validity and field definitions
-- HTTP status diagnostics for 6 directory URLs (submissions, logs, templates, actions, forms, tests); these detect exposed listings but do not prove that files below the directories are denied
-- `config.php` accessibility via HTTP; use the sentinel procedure above for complete denial verification
+- Whether files inside `submissions/`, `logs/`, `templates/`, `actions/` and `forms/` are served over HTTP: it requests a shipped file (e.g. `templates/notify.html`) or writes a disposable sentinel file, requests it and deletes it (needs `diagnostic_base_url`)
+- `config.php` accessibility via HTTP
+- If `diagnostic_base_url` is missing or unreachable, the verdict says protection is **not verified** instead of "All checks passed"
 - `BBF_LOADED` guard presence in `config.php`
 - `display_errors` state
 - Sandbox mode state
 - Leftover diagnostic files (`phpinfo.php`, `test.php`, etc.)
 
-Access control: localhost = unrestricted. Remote = requires `?token=<api_token>`.
+Access control: `api_token` is required everywhere, including localhost. `check.php`, `viewer.php` and `editor.php` show a sign-in form; scripts can send the `X-BBF-Token` header instead.
 
 **Delete `check.php` after verification** — it exposes PHP version, extensions, directory paths, storage details, and form structure.
 
@@ -1283,7 +1297,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] `stripe` keys set if using payments
 - [ ] `'sandbox' => false` for production
 - [ ] `smoke_token` set if you want post-deploy smoke testing (leave empty to disable)
-- [ ] `check.php` run, all checks passed *(remote access requires `?token=<api_token>`)*
+- [ ] `diagnostic_base_url` set and `check.php` run: all checks passed, protection **verified** (sign in with `api_token`)
 - [ ] **`check.php` deleted after verification** — it exposes PHP version, extensions, paths, and config details
 - [ ] `editor.php` deleted or protected — can modify form definitions
 - [ ] `viewer.php` deleted or protected — exposes submission data

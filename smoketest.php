@@ -184,6 +184,23 @@ function smokePost(string $url, array $data, string $token): array {
 }
 
 // ─── Test data generator ────────────────────────────────────────
+/** First candidate that satisfies the field's pattern and length rules, checked like submit.php does. */
+function smokeTextValue(array $field): string {
+    $min = (int)($field['minlength'] ?? 0);
+    $max = (int)($field['maxlength'] ?? 0);
+    $candidates = [];
+    if (is_string($field['placeholder'] ?? null) && $field['placeholder'] !== '') $candidates[] = $field['placeholder'];
+    array_push($candidates, 'Test Value', str_repeat('Test data. ', (int)ceil(max($min, 11) / 11)), 'REF-A1B2C3', 'test', 'ABC123');
+    foreach (range(1, 20) as $length) $candidates[] = substr(str_repeat('1234567890', 2), 0, $length);
+    foreach ($candidates as $value) {
+        $length = function_exists('mb_strlen') ? mb_strlen($value) : strlen($value);
+        if ($length < $min || ($max > 0 && $length > $max)) continue;
+        if (!empty($field['pattern']) && @preg_match('/' . $field['pattern'] . '/', $value) !== 1) continue;
+        return $value;
+    }
+    return 'Test Value';
+}
+
 function generateSmokeData(array $form, string $emailOverride = ''): array {
     $data   = [];
     $fields = smokeFlat($form['fields'] ?? []);
@@ -195,14 +212,7 @@ function generateSmokeData(array $form, string $emailOverride = ''): array {
         if (!$name || in_array($type, ['section', 'page_break', 'group'], true)) continue;
 
         switch ($type) {
-            case 'text':
-                $val = 'Test Value';
-                if (!empty($field['minlength']) && $field['minlength'] > 10)
-                    $val = str_repeat('Test data. ', (int)ceil($field['minlength'] / 11));
-                if (!empty($field['pattern']) && str_contains($field['pattern'], 'REF-'))
-                    $val = 'REF-A1B2C3';
-                $data[$name] = $val;
-                break;
+            case 'text':     $data[$name] = smokeTextValue($field); break;
             case 'email':    $data[$name] = $email; break;
             case 'tel':      $data[$name] = '+421900123456'; break;
             case 'url':      $data[$name] = 'https://example.com'; break;

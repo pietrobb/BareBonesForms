@@ -36,7 +36,7 @@
             "label": "Postal Code",
             "required": true,
             "size": "small",
-            "placeholder": "811 01",
+            "placeholder": "81101",
             "pattern": "^[0-9]{5}$",
             "pattern_message": "Postal code must be 5 digits.",
             "maxlength": 5,

@@ -3,6 +3,23 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.0.2] — 2026-09-23
+
+Fixes from a first-install test that followed the README step by step.
+
+### Fixed
+- **`check.php` could report a false "blocked".** It only requested directory URLs, which return 403/404 even on servers that serve the files inside (Nginx without rules, `php -S`). It now requests a real file in each protected directory — a shipped one such as `templates/notify.html`, or a disposable sentinel it writes and deletes — and fails when the file is readable. Without a reachable `diagnostic_base_url` the verdict now says protection is **not verified** instead of "All checks passed".
+- **Sign-in for `check.php`, `viewer.php` and `editor.php`.** They showed a bare `{"error":"Access denied."}`; they now show a sign-in form (token sent by POST, not in the URL). `check.php` without `config.php` says so instead of "Access denied". README and docs no longer claim localhost is unrestricted — a token has always been required.
+- **Smoke test failed right after install** on the PSČ demo: generated text ignored `pattern` / `maxlength`. Test values now satisfy the field's rules, and the demo placeholder (`811 01`) no longer contradicts its own pattern.
+- **`php tools/package-deploy.php --destination ../barebonesforms`** (the command from the README) was rejected; relative paths with `..` now work.
+- **Release ZIP root folder had mode 0700**, so unpacking it over SSH could make everything return 403. It is now 0755.
+- The ZIP now includes `CHANGELOG.md`, which the README's upgrade steps link to.
+- A select with a placeholder returned to its first option instead of the placeholder after a successful submit.
+
+### Changed
+- `config.example.php` starts with the four settings a new install must change, and the crowded token/attribution lines are split into commented entries (same values).
+- README: "Try it locally in 2 minutes" with `php -S`.
+
 ## [2.0.1] — 2026-09-23
 
 Documentation-only release. No code changes; upgrading from 2.0.0 means replacing `docs.html`.

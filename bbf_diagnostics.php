@@ -15,8 +15,10 @@ function bbf_diagnostic_base_url(array $config): ?string {
 /** A failed connection or redirect is not evidence that server access is denied. */
 function bbf_diagnostic_probe(array $config, string $path): ?int {
     $base = bbf_diagnostic_base_url($config);
-    if ($base === null || !in_array($path, ['config.php', 'submissions/', 'logs/',
-        'templates/', 'actions/', 'forms/', 'tests/'], true)) return null;
+    if ($base === null || (!in_array($path, ['config.php', 'submissions/', 'logs/',
+        'templates/', 'actions/', 'forms/', 'tests/', 'templates/notify.html', 'actions/README.md',
+        'forms/form.schema.json'], true)
+        && !preg_match('#\A(?:submissions|logs|templates|actions)/bbf-check-[0-9a-f]{32}\.txt\z#D', $path))) return null;
     $context = stream_context_create(['http' => [
         'timeout' => 3, 'ignore_errors' => true, 'follow_location' => 0,
     ]]);
