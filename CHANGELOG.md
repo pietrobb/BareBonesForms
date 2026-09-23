@@ -3,6 +3,11 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [Unreleased]
+
+### Documentation
+- README now answers the questions a first reviewer asks before trusting file storage: how concurrent submissions are written (lock, temp file, atomic rename), when to switch from files to SQLite or MySQL, how to keep submissions outside the web root, what retention does and why you might want it, and how the JSON Schema catches typos in the editor. File uploads are listed as not supported yet.
+
 ## [2.0.4] — 2026-09-23
 
 Found by installing 2.0.3 on real shared hosting (Hetzner, Apache, PHP 8.2).

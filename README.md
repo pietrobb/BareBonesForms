@@ -56,12 +56,17 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 - **Viewer inbox** — Mark submissions *new / in-progress / done*, add private notes and tags, filter by them.
 - **Delivery log with retry** — Every email, webhook and action is recorded per submission. A failed delivery shows in the viewer with a Retry button instead of disappearing into a log.
 - **Form versions** — Submissions keep the form definition they were filled in with, so old answers still display correctly after you edit the form.
-- **Retention & backups** — Optional automatic deletion of old submissions (archive first, confirm by digest) and per-form logical backups with dry-run restore.
+- **Retention & backups** — Optional deletion of submissions older than N days (dry run, archive first, confirm by digest) and per-form logical backups with dry-run restore. See [Retention & Backups](#retention--backups).
+- **Safe concurrent writes** — File storage writes each submission under an exclusive lock to a temp file and publishes it with an atomic rename. See [Concurrent submissions](#concurrent-submissions).
 - **Visit attribution** — Optionally store UTM parameters, Google Ads click IDs (`gclid`, `gbraid`, `wbraid`), landing page and referrer with each lead. Optional Umami event on success.
 
 **Built for:** PHP shared hosting, small–medium websites, developers who want control.
 
 **Not for:** Drag-and-drop form builders, enterprise workflow suites, or dashboards with seventeen menu items.
+
+**Not yet:** File upload fields. They are the next planned feature.
+
+**Storage in one sentence:** file storage is the zero-setup default for small forms; use SQLite (also zero setup) once a form collects more than about a thousand submissions or you need reporting. See [Which backend should I use?](#which-backend-should-i-use)
 
 ---
 
@@ -166,7 +171,9 @@ One JSON file in, the whole pipeline out. No build step. No bundler. No twelve c
 
 ## Form JSON Reference
 
-Every form uses `schema_version: 1`. The included `form.schema.json` provides IDE autocomplete.
+Every form uses `schema_version: 1`. The included `forms/form.schema.json` is a JSON Schema for the form file.
+
+**Catch typos while you type, not at runtime.** Keep the `"$schema": "form.schema.json"` line at the top of each form. VS Code, PhpStorm and other editors that support JSON Schema then autocomplete property names and underline unknown properties, wrong types and invalid values as you type. The optional `editor.php` validates as you type with the same checks the server uses and refuses to publish a form with errors. Before deploying, `php smoketest.php` loads every form, checks it and runs generated test data through server-side validation (see [Smoke Test](#smoke-test)).
 
 ```json
 {
@@ -605,6 +612,43 @@ Four backends. One config line:
 | **Performance** | < 1000/form          | < 100k/form          | Any volume           | < 5000/form          |
 | **Queries**     | Basic (list, CSV)    | Full SQL             | Full SQL             | Sequential only      |
 | **Best for**    | Prototypes, small    | Medium sites         | Production           | Spreadsheet export   |
+
+### Which backend should I use?
+
+- **File** stores one JSON file per submission (`submissions/<form>/<id>.json`). It needs nothing and is easy to inspect, back up and copy. The cost is reporting: "form X, last 30 days" means scanning and parsing a directory. That is fine for a contact form with a few hundred leads; it is the wrong tool beyond ~1000 submissions per form.
+- **SQLite** is the answer for anything more than a trickle. Still zero setup (one file, WAL mode), but filtering, paging and exports are indexed SQL queries. Needs `pdo_sqlite`.
+- **MySQL / MariaDB** when you already have a database server or expect high volume.
+- **CSV** only if you want a spreadsheet-shaped file per form. It is append-oriented and cannot be used with payments.
+
+Switching is `'storage' => 'sqlite'` in `config.php`. Existing file submissions are not migrated automatically, so pick the backend before you go live.
+
+### Concurrent submissions
+
+Two people submitting at the same moment cannot corrupt or lose each other's data:
+
+- **File:** every submission gets its own file with a random ID (`bbf_` + 16 hex characters), so two submissions never write to the same file. Each write takes an exclusive `flock()` on a sidecar `.lock` file, writes the complete JSON to a temporary file in the same directory, flushes it and publishes it with an atomic `rename()`. A reader sees either no file or the complete file, never truncated JSON. Updates to an existing record (payment status, workflow notes) use the same lock + temp file + rename path, so they cannot interleave. See `bbf_storage_locked()` and `bbf_storage_replace()` in `bbf_storage.php`.
+- **CSV:** appends run under the same exclusive lock, so rows from parallel requests are never interleaved.
+- **SQLite / MySQL:** each submission is one `INSERT` inside the database's own locking; SQLite runs in WAL mode.
+
+If storing fails for any reason (disk full, permissions, lock unavailable), the respondent gets an error instead of a success message, the admin gets an email (if `error_notify` is set), and no confirmation email or webhook is sent for a submission that was not saved. A lead does not silently disappear.
+
+The rename is atomic, not a power-loss guarantee: BareBonesForms does not `fsync` the directory. For that level of durability use MySQL.
+
+### Keep data outside the web root (recommended)
+
+By default `submissions/` and `logs/` live inside the installation folder, because on much shared hosting that is the only place PHP can write. They are protected by `.htaccess`, and `check.php` requests real files there to prove the server refuses them. But "the folder is blocked" is one misconfigured vhost, a move to Nginx or a missing `AllowOverride` away from being false.
+
+If your hosting lets you write to a directory above the web root, put the data there and nothing can be downloaded over HTTP, whatever the server configuration:
+
+```php
+// config.php (web root is /home/user/public_html, BBF is in /home/user/public_html/bbf)
+'submissions_dir' => '/home/user/bbf-data/submissions',
+'logs_dir'        => '/home/user/bbf-data/logs',
+'drafts_dir'      => '/home/user/bbf-data/submissions/drafts',
+'sqlite'          => ['path' => '/home/user/bbf-data/submissions/bbf.sqlite'],
+```
+
+Move all four paths together: `drafts_dir` and `sqlite.path` have their own settings and do not follow `submissions_dir`. Retention archives and backups already default to `../barebonesforms-private/`, outside the installation folder.
 
 ---
 
@@ -1190,7 +1234,26 @@ php maintenance.php retention --form=kontakt              # dry run: lists what 
 php maintenance.php retention --form=kontakt --apply --confirm=<digest from the dry run>
 ```
 
-Retention is **off** until you set `retention.enabled` and `retention.days` in `config.php`. Records are archived to `retention.archive_dir` before deletion. Keep the archive and backup directories outside the web root.
+**By default nothing is ever deleted.** Submissions are kept until you remove them. That is a deliberate choice: no one should lose leads because of a setting they didn't know about.
+
+**Why you might want retention:** submissions contain names, e-mail addresses and whatever else your form asks for. Privacy laws such as the EU GDPR say personal data should not be kept longer than you need it, so many sites must be able to say "contact requests are deleted after 12 months". Retention lets you do that without writing your own cleanup script.
+
+**How it works:**
+
+```php
+'retention' => [
+    'enabled'     => true,
+    'days'        => 365,          // delete submissions older than this
+    'batch_limit' => 100,          // max records per run
+    'archive_dir' => dirname(__DIR__) . '/barebonesforms-private/retention',
+],
+```
+
+1. The dry run (`php maintenance.php retention --form=kontakt`) lists what would be deleted and prints a confirmation digest.
+2. The destructive run needs `--apply` **and** that exact digest. If the set of records changed since the dry run (or the UTC day changed), the digest no longer matches and nothing is deleted.
+3. Before deleting, the records are written to an integrity-checked archive in `retention.archive_dir`. The submission's workflow notes and delivery log are archived and removed together with it.
+
+Retention works per form and with every storage backend. It is intentionally not unattended: a person runs the dry run and confirms it, typically once a month. Keep the archive and backup directories outside the web root.
 
 ---
 
@@ -1293,7 +1356,9 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] `.htaccess` verified (or Nginx/LiteSpeed equivalent)
 - [ ] HTTPS enabled
 - [ ] `rate_limit` set for your traffic
-- [ ] `submissions/` and `logs/` not web-accessible
+- [ ] `submissions/` and `logs/` not web-accessible — ideally moved outside the web root ([how](#keep-data-outside-the-web-root-recommended))
+- [ ] Storage backend matches expected volume (SQLite or MySQL beyond ~1000 submissions per form)
+- [ ] Retention period decided (`retention` in `config.php`) if your privacy policy promises one
 - [ ] `allowed_origins` set if embedding cross-domain
 - [ ] `error_notify` set for admin error alerts (max 1/day)
 - [ ] `stripe` keys set if using payments
