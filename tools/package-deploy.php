@@ -318,6 +318,10 @@ function bbf_deploy_absolute_destination(string $destination, string $root, stri
         throw new RuntimeException("Unsafe destination: $destination");
     }
     bbf_deploy_assert_no_link_components($parent);
+    if (bbf_deploy_same_path($destination, $defaultDestination) && !file_exists($parent) && !is_link($parent)
+        && !mkdir($parent, 0775) && !is_dir($parent)) {
+        throw new RuntimeException("Cannot create deploy directory: $parent");
+    }
     $realParent = realpath($parent);
     if ($realParent === false || !is_dir($realParent)) {
         throw new RuntimeException("Destination parent must already exist: $parent");
@@ -326,11 +330,11 @@ function bbf_deploy_absolute_destination(string $destination, string $root, stri
     bbf_deploy_assert_no_link_components($resolved);
 
     $realRoot = realpath($root);
-    $realDefaultParent = realpath(dirname($defaultDestination));
-    if ($realRoot === false || $realDefaultParent === false) {
+    if ($realRoot === false) {
         throw new RuntimeException('Cannot resolve repository deployment paths.');
     }
-    $resolvedDefault = $realDefaultParent . DIRECTORY_SEPARATOR . basename($defaultDestination);
+    // deploy/ is git-ignored, so a fresh checkout does not have it.
+    $resolvedDefault = $realRoot . DIRECTORY_SEPARATOR . 'deploy' . DIRECTORY_SEPARATOR . basename($defaultDestination);
     if (bbf_deploy_is_within($resolved, $realRoot) && !bbf_deploy_same_path($resolved, $resolvedDefault)) {
         throw new RuntimeException('A repository-local destination is allowed only at deploy/barebonesforms.');
     }
