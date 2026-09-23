@@ -3,7 +3,7 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
-## [2.0.0] — unreleased
+## [2.0.0] — 2026-09-23
 
 Everything since v1.0.1 (March 2026): six months of production use on several business sites, a full security/reliability review, and the features below.
 
