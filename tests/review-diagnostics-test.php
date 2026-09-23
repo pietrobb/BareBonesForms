@@ -121,6 +121,18 @@ PHP;
         mkdir($root . '/probe/' . $dir, 0700);
         file_put_contents($root . '/probe/' . $dir . '/index.php', $probe);
     }
+    // PATH_INFO mock: php -S falls back to a parent index.php for missing files only on some
+    // platforms/versions, so file probes (sentinels, shipped files) need a script endpoint.
+    file_put_contents($root . '/probe.php', <<<'PHP'
+<?php
+$path = $_SERVER['PATH_INFO'] ?? '';
+file_put_contents(__DIR__ . '/logs/probe-requests', $_SERVER['REQUEST_URI'] . "\n", FILE_APPEND);
+$leak = is_file(__DIR__ . '/probe/leak') && preg_match('#\A/[a-z]+/[^/]+\z#', $path);
+$status = $leak ? 200 : (int)file_get_contents(__DIR__ . '/probe/status');
+http_response_code($status);
+if ($status === 302) header('Location: /trap.php');
+echo $leak ? 'leaked' : 'mock diagnostic response';
+PHP);
     file_put_contents($root . '/trap.php', <<<'PHP'
 <?php
 file_put_contents(__DIR__ . '/logs/trap', "visited\n", FILE_APPEND);
@@ -209,7 +221,7 @@ PHP);
     diagnostic_check($login['code'] === 303 && preg_match('/^Location: check\.php\r?$/mi', $login['headers']) === 1
         && preg_match('/^Set-Cookie: /mi', $login['headers']) === 1, 'sign-in form POST starts a session and redirects to a clean URL');
     foreach ([null, 403, 404, 200, 302, 500, 'tls-failure'] as $status) {
-        $config['diagnostic_base_url'] = $status === null ? '' : ($status === 'tls-failure' ? str_replace('http:', 'https:', $base) : $base) . '/probe';
+        $config['diagnostic_base_url'] = $status === null ? '' : ($status === 'tls-failure' ? str_replace('http:', 'https:', $base) : $base) . '/probe.php';
         if (is_int($status)) file_put_contents($root . '/probe/status', (string)$status);
         diagnostic_config($root, $config);
         bbf_test_verify_server($server);
@@ -223,13 +235,13 @@ PHP);
     }
     diagnostic_check(!file_exists($root . '/logs/trap'), 'check runtime never follows redirect');
     // Server without rules (Nginx, php -S): directory URLs deny, but files inside are served.
-    $config['diagnostic_base_url'] = $base . '/probe';
+    $config['diagnostic_base_url'] = $base . '/probe.php';
     diagnostic_config($root, $config);
     file_put_contents($root . '/probe/status', '403');
+    file_put_contents($root . '/probe/leak', '1');
     file_put_contents($root . '/logs/probe-requests', '');
     foreach (['templates/notify.html', 'actions/README.md', 'forms/form.schema.json'] as $leaked) {
         if (!is_file($root . '/' . $leaked)) bbf_test_copy(dirname(__DIR__) . '/' . $leaked, $root . '/' . $leaked);
-        file_put_contents($root . '/probe/' . $leaked, 'leaked');
     }
     bbf_test_verify_server($server);
     [$exit, $output] = diagnostic_cli($root, [], false, 'run-check.php');
@@ -240,11 +252,11 @@ PHP);
             "$dir/ fails when the directory URL is denied but a file inside is served");
     }
     $requests = (string)file_get_contents($root . '/logs/probe-requests');
-    diagnostic_check(preg_match('#/probe/submissions/bbf-check-[0-9a-f]{32}\.txt#', $requests) === 1,
+    diagnostic_check(preg_match('#/probe\.php/submissions/bbf-check-[0-9a-f]{32}\.txt#', $requests) === 1,
         'submissions/ is probed with a real sentinel file, not only the directory URL');
     diagnostic_check(glob($root . '/submissions/bbf-check-*') === [] && glob($root . '/logs/bbf-check-*') === [],
         'check.php removes its sentinel files');
-    foreach (['templates/notify.html', 'actions/README.md', 'forms/form.schema.json'] as $leaked) unlink($root . '/probe/' . $leaked);
+    unlink($root . '/probe/leak');
     // Failed TLS negotiation on our still-owned HTTP listener: no released-port race.
     bbf_test_verify_server($server);
     diagnostic_check(bbf_diagnostic_probe(['diagnostic_base_url' => str_replace('http:', 'https:', $base) . '/probe'], 'config.php') === null,
