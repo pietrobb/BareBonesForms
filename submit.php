@@ -33,6 +33,7 @@ if (!empty($missing)) {
 require_once __DIR__ . '/bbf_functions.php';
 require_once __DIR__ . '/bbf_versions.php';
 require_once __DIR__ . '/bbf_drafts.php'; require_once __DIR__ . '/bbf_context.php';
+require_once __DIR__ . '/bbf_read.php'; require_once __DIR__ . '/bbf_submit_tx.php';
 
 require_once __DIR__ . '/bbf_auth.php'; $config = bbf_auth_load_config(__DIR__ . '/config.php');
 
@@ -163,6 +164,24 @@ if (!$formId) {
     respond(400, 'Missing ?form= parameter.');
 }
 
+// ─── Parse input ────────────────────────────────────────────────
+$contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+if (stripos($contentType, 'application/json') !== false) {
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+} else {
+    $input = $_POST;
+}
+if (!is_array($input)) $input = [];
+
+// ─── Submit transaction: step 0 and step A (no definition, no CSRF, no session) ─
+$rawInput = $input;
+$submitKey = $input['_bbf_submit_key'] ?? null;
+unset($input['_bbf_submit_key']);
+if ($submitKey !== null && !bbf_tx_valid_key($submitKey)) respond(400, 'Invalid submit key.');
+$txKey = $submitKey !== null ? hash('sha256', $submitKey) : null;
+$isDraftAction = in_array($_GET['action'] ?? '', ['draft_save', 'draft_load', 'draft_delete'], true);
+if (!$isSandbox && !$isDraftAction && $txKey !== null) bbf_submit_step_a($config, $formId, $txKey, $rawInput);
+
 $formFile = $config['forms_dir'] . "/$formId.json";
 if (!file_exists($formFile)) {
     respond(404, "Form '$formId' not found.");
@@ -180,14 +199,7 @@ if (!empty($schemaErrors)) {
     respond(500, 'Invalid form definition.', ['schema_errors' => $schemaErrors]);
 }
 $form = bbfSystemDefinition($form, $config); $publishedDefinitionVersion = bbf_version_id($form);
-
-// ─── Parse input ────────────────────────────────────────────────
-$contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-if (stripos($contentType, 'application/json') !== false) {
-    $input = json_decode(file_get_contents('php://input'), true) ?? [];
-} else {
-    $input = $_POST;
-}
+$versionedForm = $form; // exactly the definition hashed into definition_version
 
 // ─── Honeypot check ─────────────────────────────────────────────
 $hpField = $config['honeypot_field'];
@@ -402,6 +414,22 @@ if (!empty($form['on_submit']['payment'])) {
     $meta['payment_quote'] = $paymentQuote['snapshot'];
 }
 
+// ─── Process on_submit (store, email, webhooks, actions) ────────
+$onSubmit = $form['on_submit'] ?? [];
+$GLOBALS['_bbf_errors'] = [];  // collect non-fatal errors for admin notification
+
+$storeConfig = bbf_effective_storage_config($config, $formId, $form);
+$storeEnabled = ($onSubmit['store'] ?? true) !== false;
+$isPayment = !empty($onSubmit['payment']);
+if ($isPayment && (!$storeEnabled || $storeConfig['storage'] === 'csv')) {
+    respond(500, 'Payment requires durable file, SQLite or MySQL storage with store enabled.');
+}
+if ($storeEnabled) {
+    // A request without a key gets a server-generated one: its intent serves recovery only.
+    $txKey ??= hash('sha256', bin2hex(random_bytes(16)));
+    $meta['submit_key_hash'] = $txKey;
+}
+
 $submission = [
     'id'        => $submissionId,
     'form'      => $formId,
@@ -409,122 +437,68 @@ $submission = [
     'meta'      => $meta,
 ];
 
-// ─── Process on_submit (store, email, webhooks, actions) ────────
-$onSubmit = $form['on_submit'] ?? [];
-$GLOBALS['_bbf_errors'] = [];  // collect non-fatal errors for admin notification
-
-$storeConfig = bbf_effective_storage_config($config, $formId, $form);
-$storeEnabled = ($onSubmit['store'] ?? true) !== false;
-if (!empty($onSubmit['payment']) && (!$storeEnabled || $storeConfig['storage'] === 'csv')) {
-    respond(500, 'Payment requires durable file, SQLite or MySQL storage with store enabled.');
-}
-// Payment keeps its existing submission-first flow; payment delivery is deferred to payment.php.
-if (!empty($onSubmit['payment']) && !store($submission, $storeConfig, $form['fields'])) {
-    bbfNotifyError($formId, 'Storage failed', $storeConfig['storage'] . ' backend returned false', $config);
-    respond(500, 'Submission could not be saved. Please try again later.');
-}
-
-// ─── Payment (Stripe Checkout) ───────────────────────────────────
-if (!empty($onSubmit['payment'])) {
+// ─── Payment: freeze every Checkout parameter before anything is stored ─
+$checkoutParams = null;
+if ($isPayment) {
     $payment = $onSubmit['payment'];
     $provider = $payment['provider'] ?? 'stripe';
-
-    if ($provider === 'stripe') {
-        $stripeKey = $config['stripe']['secret_key'] ?? '';
-        if ($stripeKey === '') {
-            bbfNotifyError($formId, 'Payment config error', 'stripe.secret_key is not set in config.php', $config);
-            respond(500, 'Payment is not configured. Please contact the site administrator.');
-        }
-
-        $productName = interpolate($payment['product_name'] ?? ($form['name'] ?? $formId), $data);
-
-        // Build success/cancel URLs
-        $baseHost = ($_SERVER['REQUEST_SCHEME'] ?? 'https') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
-        $referer = $_SERVER['HTTP_REFERER'] ?? $baseHost;
-        $successUrl = $payment['success_url'] ?? $referer;
-        $cancelUrl  = $payment['cancel_url'] ?? $referer;
-        // Relative URLs → absolute
-        if (!str_starts_with($successUrl, 'http')) $successUrl = rtrim($baseHost, '/') . '/' . ltrim($successUrl, '/');
-        if (!str_starts_with($cancelUrl, 'http'))  $cancelUrl  = rtrim($baseHost, '/') . '/' . ltrim($cancelUrl, '/');
-
-        $checkout = createStripeCheckout($stripeKey, [
-            'amount'       => $paymentQuote['amount_minor'],
-            'currency'     => $paymentQuote['currency'],
-            'product_name' => $productName,
-            'success_url'  => $successUrl,
-            'cancel_url'   => $cancelUrl,
-            'metadata'     => [
-                'bbf_submission_id' => $submissionId,
-                'bbf_form_id'       => $formId,
-            ],
-            'customer_email' => $data[$payment['email_field'] ?? 'email'] ?? null,
-        ], $config['stripe']['transport'] ?? null);
-
-        if (!$checkout) {
-            bbfNotifyError($formId, 'Stripe error', 'Checkout session creation failed', $config);
-            respond(500, 'Payment session could not be created. Please try again later.');
-        }
-        if (!updateSubmissionPaymentMetadata($submissionId, $formId,
-            ['payment_checkout_session_id' => $checkout['id']], $config)) {
-            bbfNotifyError($formId, 'Payment persistence error', 'Checkout session ID could not be saved', $config);
-            respond(500, 'Payment session could not be saved. Please try again later.');
-        }
-        $submission['meta']['payment_checkout_session_id'] = $checkout['id'];
-
-        // Freeze the original delivery plan and backend before returning the Checkout redirect.
-        try {
-            $paymentBindings = bbf_delivery_payment_template_bindings();
-            $paymentTemplateData = bbf_delivery_template_data($form, $submission, $paymentBindings + [
-                '_bbf_payment_bindings' => $paymentBindings,
-            ]);
-            $paymentJobs = bbf_delivery_prepare_jobs($form, $submission, $storeConfig, $paymentTemplateData);
-            $paymentOutboxPath = bbf_outbox_path($storeConfig, $formId, $submissionId);
-            $paymentOutbox = $paymentOutboxPath !== ''
-                ? bbf_outbox_init($paymentOutboxPath, "$formId:$submissionId", $paymentJobs,
-                    (int)($storeConfig['delivery']['max_attempts'] ?? 3), null,
-                    ['storage' => $storeConfig['storage']])
-                : ['ok' => false];
-        } catch (Throwable $error) {
-            $paymentOutbox = ['ok' => false];
-        }
-        if (!($paymentOutbox['ok'] ?? false)) {
-            bbfNotifyError($formId, 'Payment delivery error', 'Immutable paid-delivery plan could not be saved', $config);
-            respond(500, 'Payment delivery could not be prepared. Please try again later.');
-        }
-
-        // Payment forms: the persisted immutable plan runs only after payment confirmation.
-        respond(200, 'OK', ['submission_id' => $submissionId, 'redirect' => $checkout['url']]);
+    if ($provider !== 'stripe') respond(500, "Unsupported payment provider: $provider");
+    // A missing stripe.secret_key keeps the lead: the record is stored, then answered as payment_unavailable.
+    // Referer and Host differ between retries; a retry must send Stripe identical parameters.
+    $baseHost = ($_SERVER['REQUEST_SCHEME'] ?? 'https') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    $referer = $_SERVER['HTTP_REFERER'] ?? $baseHost;
+    $successUrl = $payment['success_url'] ?? $referer;
+    $cancelUrl  = $payment['cancel_url'] ?? $referer;
+    if (!str_starts_with($successUrl, 'http')) $successUrl = rtrim($baseHost, '/') . '/' . ltrim($successUrl, '/');
+    if (!str_starts_with($cancelUrl, 'http'))  $cancelUrl  = rtrim($baseHost, '/') . '/' . ltrim($cancelUrl, '/');
+    $checkoutParams = [
+        'amount'       => $paymentQuote['amount_minor'],
+        'currency'     => $paymentQuote['currency'],
+        'product_name' => interpolate($payment['product_name'] ?? ($form['name'] ?? $formId), $data),
+        'success_url'  => $successUrl,
+        'cancel_url'   => $cancelUrl,
+        'metadata'     => ['bbf_submission_id' => $submissionId, 'bbf_form_id' => $formId],
+        'customer_email' => $data[$payment['email_field'] ?? 'email'] ?? null,
+    ];
+    // Recovery after a definition change finishes the payment with the exact definition used now.
+    try {
+        $versionPaths = bbf_version_paths($config, $formId);
+        bbf_version_prepare_directory($versionPaths);
+        bbf_version_store_blob($versionPaths, $versionedForm);
+    } catch (Throwable $error) {
+        error_log('BareBonesForms: definition version for payment recovery not stored: ' . $error->getMessage());
     }
-
-    respond(500, "Unsupported payment provider: $provider");
 }
 
 // ─── Prepare ordinary delivery before any submission persistence ─
-$templateData = bbf_delivery_template_data($form, $submission);
-$deliveryForm = $form;
-// Smoke submissions must use the safe recipient override in either execution mode.
-$smokeNotifyOverride = $_smokeAuth ? ($config['smoke_notify'] ?? $config['smoke_email'] ?? '') : '';
-if ($smokeNotifyOverride !== '' && is_array($deliveryForm['on_submit']['notify'] ?? null)) {
-    $deliveryForm['on_submit']['notify']['to'] = $smokeNotifyOverride;
-}
-$deliveryAttention = ['ok' => false, 'state' => 'attention_required', 'settled' => false, 'jobs' => []];
-try {
-    $deliveryJobs = bbf_delivery_prepare_jobs($deliveryForm, $submission, $storeConfig, $templateData);
-} catch (Throwable $error) {
-    error_log('BareBonesForms: Delivery plan preparation failed for ' . $submissionId);
-    if ($storeEnabled) respond(500, 'Submission delivery could not be prepared. Please try again later.');
-    $deliveryStatus = $deliveryAttention + [
-        'durable' => false,
-        'retry_available' => false,
-        'note' => 'No submission or retry record was stored; delivery cannot be administered from the viewer.',
-    ];
-    $extra = ['delivery' => $deliveryStatus];
-    if (!empty($onSubmit['redirect'])) $extra['redirect'] = interpolate($onSubmit['redirect'], $data);
-    respond(202, 'OK', $extra);
-}
-
+$deliveryJobs = [];
 $actionResponse = []; // Actions can add custom fields to the first response.
 $deliveryStatus = ['ok' => true, 'state' => 'none', 'settled' => true, 'jobs' => []];
+$deliveryAttention = ['ok' => false, 'state' => 'attention_required', 'settled' => false, 'jobs' => []];
+if (!$isPayment) {
+    $templateData = bbf_delivery_template_data($form, $submission);
+    $deliveryForm = $form;
+    // Smoke submissions must use the safe recipient override in either execution mode.
+    $smokeNotifyOverride = $_smokeAuth ? ($config['smoke_notify'] ?? $config['smoke_email'] ?? '') : '';
+    if ($smokeNotifyOverride !== '' && is_array($deliveryForm['on_submit']['notify'] ?? null)) {
+        $deliveryForm['on_submit']['notify']['to'] = $smokeNotifyOverride;
+    }
+    try {
+        $deliveryJobs = bbf_delivery_prepare_jobs($deliveryForm, $submission, $storeConfig, $templateData);
+    } catch (Throwable $error) {
+        error_log('BareBonesForms: Delivery plan preparation failed for ' . $submissionId);
+        if ($storeEnabled) respond(500, 'Submission delivery could not be prepared. Please try again later.');
+        $deliveryStatus = $deliveryAttention + [
+            'durable' => false,
+            'retry_available' => false,
+            'note' => 'No submission or retry record was stored; delivery cannot be administered from the viewer.',
+        ];
+        $extra = ['delivery' => $deliveryStatus];
+        if (!empty($onSubmit['redirect'])) $extra['redirect'] = interpolate($onSubmit['redirect'], $data);
+        respond(202, 'OK', $extra);
+    }
+}
+
 if (!$storeEnabled) {
     $inlineResults = [];
     foreach ($deliveryJobs as $job) {
@@ -535,6 +509,52 @@ if (!$storeEnabled) {
     }
     $deliveryStatus = bbf_delivery_inline_status($inlineResults);
 } else {
+    // Unencodable data (invalid UTF-8) fails every attempt: a permanent 500, never a retryable intent.
+    try { bbf_storage_json($submission); } catch (JsonException $error) { respond(500, 'Submission could not be saved.'); }
+    // ─── Step B tail: open the intent (spec §5) ─────────────────
+    ignore_user_abort(true);
+    $tx = null;
+    $mysqlPdo = null;
+    try {
+        $txState = [
+            'v' => 1, 'state' => 'open', 'submission_id' => $submissionId,
+            'P' => bbf_tx_payload_fingerprint($config, $formId, $rawInput),
+            'created' => time(), 'definition_version' => $publishedDefinitionVersion,
+            'storage_fingerprint' => bbf_tx_storage_fingerprint($storeConfig), 'backend' => $storeConfig['storage'],
+            'payment' => $isPayment,
+        ];
+        if ($isPayment) {
+            $txState['checkout'] = $checkoutParams;
+        } else {
+            $txState['response'] = ['submission_id' => $submissionId];
+            if (!empty($onSubmit['redirect'])) $txState['response']['redirect'] = interpolate($onSubmit['redirect'], $data);
+        }
+        for ($attempt = 0; $tx === null; $attempt++) {
+            bbf_tx_deadline_start($config);
+            $txState['deadline'] = (int)ceil($GLOBALS['_bbf_tx_deadline']);
+            if ($storeConfig['storage'] === 'mysql') {
+                $mysqlPdo = bbf_tx_mysql_connect($storeConfig['mysql'], $dbInfo);
+                $txState['db'] = $dbInfo;
+            }
+            $created = bbf_tx_create($config, $formId, $txKey, $txState);
+            if ($created['ok']) {
+                $tx = $created['h'];
+                break;
+            }
+            $mysqlPdo = null;
+            bbf_tx_deadline_clear();
+            if ($created['reason'] !== 'exists' || $attempt >= 2) throw new RuntimeException('Submit intent could not be created.');
+            // A concurrent request with the same key created the intent meanwhile: back to step A.
+            bbf_submit_step_a($config, $formId, $txKey, $rawInput);
+        }
+    } catch (Throwable $error) {
+        error_log('BareBonesForms: submit transaction could not start: ' . $error->getMessage());
+        $mysqlPdo = null;
+        bbf_tx_deadline_clear();
+        respond(503, 'Submission could not be saved. Please try again.');
+    }
+    if (bbf_tx_remaining() <= 0) bbf_submit_tx_stop($tx, bbf_tx_state($txState, 'aborted'), 503, 'Submission could not be saved. Please submit again.');
+
     $outboxPath = '';
     if ($deliveryJobs !== []) {
         $outboxPath = bbf_outbox_path($storeConfig, $formId, $submissionId);
@@ -544,13 +564,20 @@ if (!$storeEnabled) {
             : ['ok' => false, 'reason' => 'path'];
         if (!($initialized['ok'] ?? false)) {
             error_log('BareBonesForms: Delivery plan persistence failed for ' . $submissionId);
-            respond(500, 'Submission delivery could not be saved. Please try again later.');
+            $mysqlPdo = null;
+            bbf_submit_tx_stop($tx, bbf_tx_state($txState, 'aborted'), 500, 'Submission delivery could not be saved. Please try again later.');
         }
     }
 
-    // The complete immutable ledger exists before storage; no delivery effect can run before this succeeds.
-    if (!store($submission, $storeConfig, $form['fields'])) {
-        bbfNotifyError($formId, 'Storage failed', $storeConfig['storage'] . ' backend returned false', $config);
+    // ─── Step E: store; step F: decide ──────────────────────────
+    // Non-payment: the complete immutable ledger exists before storage; no delivery effect can run before this succeeds.
+    bbf_tx_hook('before_store');
+    // Test hooks: 'store' = backend refused without writing; 'store_result' = written, but reported as failed.
+    $stored = bbf_tx_hook('store') && store($submission, $storeConfig, $form['fields'], $mysqlPdo) && bbf_tx_hook('store_result');
+    $mysqlPdo = null; // closed before any late-commit kill from a new connection
+    if (!$stored) {
+        bbf_tx_notice($formId, 'Storage failed', $storeConfig['storage'] . ' backend returned false');
+        $existence = bbf_record_exists($storeConfig, $formId, $submissionId, $txState['db'] ?? null);
         $storageError = [];
         if ($outboxPath !== '') {
             $deliveryStatus = bbf_delivery_abort_for_storage($outboxPath, $deliveryJobs, $storeConfig);
@@ -559,16 +586,39 @@ if (!$storeEnabled) {
                 error_log('BareBonesForms: Storage-failure ledger could not be made attention-required for ' . $submissionId);
             }
         }
-        respond(500, 'Submission could not be saved. Please try again later.', $storageError);
+        if ($existence !== 'exists') {
+            bbf_submit_tx_stop($tx, $existence === 'not_found' ? bbf_tx_state($txState, 'aborted') : null,
+                503, 'Submission could not be saved. Please submit again.', $storageError);
+        }
+    }
+    bbf_tx_hook('after_store');
+
+    if ($isPayment) {
+        $committed = bbf_tx_state($txState, 'committed', ['committed_at' => time(), 'checkout' => $checkoutParams]);
+        if (!bbf_tx_write_state($tx, $committed)) bbf_submit_tx_stop($tx, null, 503, 'Payment could not be prepared. Please try again.', ['code' => 'submit_pending', 'retry_after' => 5]);
+        bbf_tx_hook('after_committed');
+        // ─── Step G: finish the payment; the redirect goes only to this key's holder ─
+        $finished = bbf_tx_finish_payment($config, $formId, $tx, $committed, $form);
+        bbf_submit_tx_end($tx, $config, $formId);
+        bbf_submit_payment_response($finished, false);
     }
 
-    if ($outboxPath !== '') {
+    if (!bbf_tx_marker_create($tx) || !bbf_tx_write_state($tx, bbf_tx_state($txState, 'complete', ['response' => $txState['response']]))) {
+        bbf_submit_tx_stop($tx, null, 503, 'Your submission could not be confirmed. Please submit again; it will not be duplicated.',
+            ['code' => 'submit_pending', 'retry_after' => 5]);
+    }
+    bbf_tx_hook('after_complete');
+
+    // ─── Step H: release, deliver, respond (today's order) ──────
+    bbf_submit_tx_end($tx, $config, $formId);
+    if ($stored && $outboxPath !== '') {
         foreach ($deliveryJobs as $job) {
             bbf_delivery_run_job($outboxPath, (string)$job['key'], $storeConfig, $actionResponse);
         }
         $deliveryStatus = bbf_outbox_status($outboxPath);
         if (!($deliveryStatus['ok'] ?? false)) $deliveryStatus = $deliveryAttention;
     }
+    @unlink($tx['deliver']);
 }
 
 // ─── Success / accepted with unsettled delivery ─────────────────
@@ -590,6 +640,120 @@ function respond(int $code, string $message, array $extra = []): void {
     http_response_code($code);
     echo json_encode(array_merge(['status' => $code < 400 ? 'ok' : 'error', 'message' => $message], $extra), JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+// ─── Submit transactions (docs/SUBMIT-TRANSACTIONS.md) ───────────
+
+/** Release the intent, send queued owner notices, and schedule bounded opportunistic recovery. */
+function bbf_submit_tx_end(array &$tx, array $config, string $formId): void {
+    bbf_tx_release($tx);
+    bbf_tx_deadline_clear();
+    bbf_tx_flush_notices($config);
+    static $scheduled = false;
+    $budget = (int)($config['submit_recovery_budget'] ?? 5);
+    if ($scheduled || $budget <= 0) return;
+    $scheduled = true;
+    register_shutdown_function(static function () use ($config, $formId, $budget): void {
+        if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
+        bbf_tx_sweep($config, $formId, [$budget, 1.0]);
+    });
+}
+
+/** Stop the transaction before its next effect: optional final state, release, respond. */
+function bbf_submit_tx_stop(array &$tx, ?array $next, int $code, string $message, array $extra = []): never {
+    global $config, $formId;
+    if ($next !== null && bbf_tx_write_state($tx, $next) && $next['state'] === 'aborted') @unlink($tx['deliver']);
+    bbf_submit_tx_end($tx, $config, $formId);
+    respond($code, $message, $extra);
+}
+
+function bbf_submit_payment_response(array $finished, bool $replay): never {
+    $state = $finished['state'];
+    $response = (array)($state['response'] ?? []);
+    $flag = $replay ? ['already_submitted' => true] : [];
+    if ($finished['retry'] ?? false) {
+        respond(503, 'The payment could not be started yet. Please try again; your submission will not be duplicated.',
+            ['code' => 'submit_pending', 'retry_after' => 5] + $flag);
+    }
+    if (isset($response['payment_unavailable'])) {
+        respond(502, 'Your submission was saved, but the payment could not be started. The organiser has been notified.',
+            ['code' => 'payment_unavailable', 'submission_id' => $state['submission_id']] + $flag);
+    }
+    respond(200, 'OK', $flag + ['submission_id' => $state['submission_id'], 'redirect' => $response['redirect'] ?? null]);
+}
+
+/**
+ * Step A: look up the key before definition, CSRF and session. Responds for a known key,
+ * returns (to step B) for an unknown, deleted or aborted one. Creates no file for an unknown key.
+ */
+function bbf_submit_step_a(array $config, string $formId, string $k, array $rawInput): void {
+    try {
+        $dir = bbf_tx_form_dir($config, $formId, false);
+        if ($dir === null || !file_exists(bbf_tx_paths($dir, $k)['lock'])) return;
+        if (!checkRateLimit('replay:' . $k, (int)($config['submit_replay_rate'] ?? 30), $config['logs_dir'])) {
+            respond(429, 'Too many retries. Try again later.', ['retry_after' => 60]);
+        }
+        $taken = bbf_tx_take($config, $formId, $k);
+        if ($taken['status'] === 'none') return;
+        if ($taken['status'] === 'busy') {
+            respond(202, 'Your submission is being processed.', ['status' => 'processing', 'retry_after' => 2]);
+        }
+        $h = $taken['h'];
+        $read = bbf_tx_read_state($h);
+        if ($read['kind'] === 'none') { bbf_tx_delete($h); return; }
+        if ($read['kind'] === 'unreadable') {
+            bbf_tx_release($h);
+            bbfNotifyError($formId, 'Submit state unreadable', "Intent $k cannot be read; a human must decide.", $config);
+            respond(503, 'We could not confirm your submission. The organiser has been notified.', ['code' => 'submit_state_unreadable']);
+        }
+        $state = $read['state'];
+        if (in_array($state['state'], ['open', 'committed'], true)) {
+            // Exactly one inline recovery, then an answer; never a loop.
+            $state = bbf_tx_recover($config, $formId, $h, $state) ?? $state;
+        }
+        if ($state['state'] === 'aborted') { bbf_tx_delete($h); bbf_tx_flush_notices($config); return; }
+        bbf_submit_tx_end($h, $config, $formId);
+        if ($state['state'] !== 'complete') {
+            respond(503, 'Your submission is still being processed. Please try again in a moment.', ['code' => 'submit_pending', 'retry_after' => 5]);
+        }
+        bbf_submit_replay($config, $formId, $state, $h, $rawInput);
+    } catch (Throwable $error) {
+        error_log('BareBonesForms: submit key lookup failed: ' . $error->getMessage());
+        respond(503, 'Submission could not be checked. Please try again.', ['code' => 'submit_pending', 'retry_after' => 5]);
+    }
+}
+
+/** Replay of a complete intent (spec §6). Never validates, never re-runs attempted delivery. */
+function bbf_submit_replay(array $config, string $formId, array $state, array $h, array $rawInput): never {
+    $id = $state['submission_id'];
+    if (!hash_equals($state['P'], bbf_tx_payload_fingerprint($config, $formId, $rawInput))) {
+        respond(409, 'This form was already submitted. Changes made after that were not saved.',
+            ['code' => 'already_submitted_different', 'submission_id' => $id]);
+    }
+    $storeConfig = bbf_tx_store_config($config, $formId, $state);
+    if (empty($state['payment'])) {
+        bbf_tx_run_unattempted($config, $formId, $state);
+        @unlink($h['deliver']);
+        $outbox = bbf_outbox_existing_path($storeConfig, $formId, $id);
+        respond(200, 'OK', ['already_submitted' => true] + (array)$state['response'] + ['delivery' => bbf_outbox_status($outbox)]);
+    }
+    if (isset($state['response']['payment_unavailable'])) bbf_submit_payment_response(['state' => $state], true);
+    try {
+        $record = bbf_tx_read_record($storeConfig, $formId, $id);
+    } catch (Throwable $error) {
+        $record = null;
+    }
+    if ($record === null) {
+        respond(503, "Your submission $id was saved; its payment status is temporarily unavailable.",
+            ['code' => 'submit_pending', 'retry_after' => 5, 'already_submitted' => true, 'submission_id' => $id]);
+    }
+    $status = $record['meta']['payment_status'] ?? 'pending';
+    if ($status === 'paid') respond(200, 'OK', ['already_submitted' => true, 'submission_id' => $id, 'payment_status' => 'paid']);
+    if ($status === 'pending' && time() < (int)($state['session']['expires_at'] ?? 0)) {
+        respond(200, 'OK', ['already_submitted' => true, 'submission_id' => $id, 'redirect' => $state['session']['url']]);
+    }
+    bbfNotifyError($formId, 'Payment not resumed', "Submission $id: the respondent retried after the payment $status or expired.", $config);
+    bbf_submit_payment_response(['state' => ['submission_id' => $id, 'response' => ['payment_unavailable' => 'expired']]], true);
 }
 
 // validateFieldList, validateFormDefinition, validate → moved to bbf_functions.php
@@ -642,10 +806,10 @@ function collectData(array $fields, array $input): array {
     return $data;
 }
 
-function store(array $submission, array $config, array $formFields = []): bool {
+function store(array $submission, array $config, array $formFields = [], ?PDO $mysql = null): bool {
     switch ($config['storage']) {
         case 'mysql':
-            return storeMysql($submission, $config['mysql']);
+            return storeMysql($submission, $config['mysql'], $mysql);
         case 'sqlite':
             return storeSqlite($submission, $config);
         case 'csv':
@@ -670,10 +834,11 @@ function storeFile(array $submission, string $dir): bool {
     return true;
 }
 
-function storeMysql(array $submission, array $dbConfig): bool {
+function storeMysql(array $submission, array $dbConfig, ?PDO $pdo = null): bool {
     try {
         bbf_storage_json($submission); $dsn = "mysql:host={$dbConfig['host']};dbname={$dbConfig['database']};charset={$dbConfig['charset']}";
-        $pdo = new PDO($dsn, $dbConfig['username'], $dbConfig['password'], [
+        // Inside a submit transaction the connection was opened (with timeouts) before the intent.
+        $pdo ??= new PDO($dsn, $dbConfig['username'], $dbConfig['password'], [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         ]);
 
@@ -711,6 +876,7 @@ function storeSqlite(array $submission, array $config): bool {
         $pdo = new PDO("sqlite:$dbFile", null, null, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         ]);
+        if (isset($GLOBALS['_bbf_tx_deadline'])) $pdo->exec('PRAGMA busy_timeout = ' . max(1, (int)(bbf_tx_remaining() * 1000)));
         $pdo->exec("PRAGMA journal_mode=WAL");
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS bbf_submissions (
@@ -853,7 +1019,7 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
 }
 
 // sendEmail, sendSmtp, fireWebhook, renderTemplate, interpolate,
-// buildSummary, buildSummaryRows, createStripeCheckout, updateSubmissionPayment,
+// buildSummary, buildSummaryRows, updateSubmissionPayment,
 // bbfNotifyError → moved to bbf_functions.php
 
 function checkRateLimit(string $ip, int $maxPerMinute, string $logsDir): bool {

@@ -553,7 +553,7 @@ restartServer();
 section("Test 2: demo-order (negation, hidden fields, payment)");
 
 // Note: demo-order has on_submit.payment with Stripe. Since no Stripe key
-// is configured, submission will store data but respond with 500.
+// is configured, submission will store data and respond 502 payment_unavailable.
 // We verify the data is stored correctly despite the error response.
 
 // Order A: Business cards, pickup (no delivery address needed)
@@ -573,8 +573,8 @@ $orderA = submitForm('demo-order', [
     'gdpr_consent'   => ['agreed'],
 ]);
 // Payment will fail (no Stripe key), but data should be stored
-if (in_array($orderA['code'], [200, 500], true)) {
-    pass("order submit A (cards, pickup): HTTP {$orderA['code']} (expected 500 due to no Stripe key)");
+if (in_array($orderA['code'], [200, 502], true)) {
+    pass("order submit A (cards, pickup): HTTP {$orderA['code']} (expected 502 payment_unavailable: no Stripe key)");
 } else {
     fail("order submit A: unexpected HTTP {$orderA['code']}", substr($orderA['body'], 0, 400));
 }
@@ -599,7 +599,7 @@ $orderB = submitForm('demo-order', [
     'notes'          => 'Please use recycled paper',
     'gdpr_consent'   => ['agreed'],
 ]);
-if (in_array($orderB['code'], [200, 500], true)) {
+if (in_array($orderB['code'], [200, 502], true)) {
     pass("order submit B (flyers, domestic): HTTP {$orderB['code']}");
 } else {
     fail("order submit B: unexpected HTTP {$orderB['code']}", substr($orderB['body'], 0, 400));
@@ -624,7 +624,7 @@ $orderC = submitForm('demo-order', [
     'notes'          => '',
     'gdpr_consent'   => ['agreed'],
 ]);
-if (in_array($orderC['code'], [200, 500], true)) {
+if (in_array($orderC['code'], [200, 502], true)) {
     pass("order submit C (posters, EU): HTTP {$orderC['code']}");
 } else {
     fail("order submit C: unexpected HTTP {$orderC['code']}", substr($orderC['body'], 0, 400));
@@ -649,7 +649,7 @@ $orderD = submitForm('demo-order', [
     'notes'          => 'Die-cut to custom shape per attached file',
     'gdpr_consent'   => ['agreed'],
 ]);
-if (in_array($orderD['code'], [200, 500], true)) {
+if (in_array($orderD['code'], [200, 502], true)) {
     pass("order submit D (stickers, international): HTTP {$orderD['code']}");
 } else {
     fail("order submit D: unexpected HTTP {$orderD['code']}", substr($orderD['body'], 0, 400));

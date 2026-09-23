@@ -94,6 +94,12 @@
             repeatableCount:  '{label}: {count} items.',
             repeatableMin:    '{label} requires at least {min} items.',
             repeatableMax:    '{label} allows at most {max} items.',
+            submitProcessing: 'Your submission is still being processed. Please don\'t fill in the form again — try Submit again in a few minutes; it will not create a duplicate.',
+            submitDifferent:  'This form was already submitted (reference {ref}). Changes made after that were not saved.',
+            submitUnconfirmed:'We could not confirm your submission. The organiser has been notified.',
+            submitAgain:      'Your submission could not be completed. Please submit again — it will not be duplicated.',
+            paymentUnavailable:'Your submission was saved (reference {ref}), but the payment could not be started. The organiser has been notified.',
+            tooManyRequests:  'Too many attempts. Please wait a minute and try again.',
         },
 
         // Registered language packs: { de: {...}, sk: {...}, ... }
@@ -836,6 +842,14 @@
             hp.innerHTML = `<input type="text" name="_bbf_hp" tabindex="-1" autocomplete="off">`;
             el.appendChild(hp);
 
+            // Idempotency key: one per fill; every retry of the same fill reuses it.
+            const newSubmitKey = () => {
+                try { return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join(''); }
+                catch (error) { return null; }
+            };
+            el._bbfSubmitKey = newSubmitKey();
+            if (typeof window.addEventListener === 'function') window.addEventListener('pageshow', (event) => { if (event.persisted && el._bbfSubmitted) { el._bbfSubmitKey = newSubmitKey(); el._bbfSubmitted = false; } });
+
             // CSRF token
             if (csrfToken) {
                 const csrfInput = document.createElement('input');
@@ -960,30 +974,53 @@
                         });
                     });
 
-                    const fetchOpts = {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    };
-                    if (isSameOrigin) fetchOpts.credentials = 'same-origin';
+                    if (el._bbfSubmitKey) body._bbf_submit_key = el._bbfSubmitKey;
                     const sandboxParam = new URLSearchParams(window.location.search).has('sandbox') ? '&sandbox' : '';
-                    const resp = await fetch(`${baseUrl}submit.php?form=${formId}${sandboxParam}`, fetchOpts);
-
-                    let result;
-                    const contentType = resp.headers.get('content-type') || '';
-                    if (contentType.includes('application/json')) {
-                        result = await resp.json();
-                    } else {
-                        const text = await resp.text();
-                        result = { status: 'error', message: resp.ok ? text : this._t('serverError', { status: resp.status }, langCode) };
+                    let resp, result, polls = 0, csrfRefreshed = false;
+                    while (true) {
+                        const fetchOpts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+                        if (isSameOrigin) fetchOpts.credentials = 'same-origin';
+                        resp = await fetch(`${baseUrl}submit.php?form=${formId}${sandboxParam}`, fetchOpts);
+                        const contentType = resp.headers.get('content-type') || '';
+                        if (contentType.includes('application/json')) {
+                            result = await resp.json();
+                        } else {
+                            const text = await resp.text();
+                            result = { status: 'error', message: resp.ok ? text : this._t('serverError', { status: resp.status }, langCode) };
+                        }
+                        // The original request is still running: poll with the same key.
+                        if (resp.status === 202 && result.status === 'processing') {
+                            if (++polls <= 5) { await new Promise(r => setTimeout(r, Math.max(1, Number(result.retry_after) || 2) * 1000)); continue; }
+                            result = { status: 'error', message: this._t('submitProcessing', {}, langCode) };
+                            break;
+                        }
+                        // Session expired on the new-submission path: refresh the token once, same key.
+                        if (resp.status === 403 && !csrfRefreshed && isSameOrigin && '_bbf_csrf' in body) {
+                            csrfRefreshed = true;
+                            try {
+                                const csrfResp = await fetch(`${baseUrl}submit.php?form=${formId}&action=csrf`, { credentials: 'same-origin' });
+                                const token = csrfResp.ok ? (await csrfResp.json()).csrf_token : null;
+                                if (token) {
+                                    body._bbf_csrf = token;
+                                    const csrfField = el.querySelector('input[name="_bbf_csrf"]'); if (csrfField) csrfField.value = token;
+                                    continue;
+                                }
+                            } catch (error) { /* keep the 403 */ }
+                        }
+                        break;
                     }
+                    if (result.code === 'already_submitted_different') result.message = this._t('submitDifferent', { ref: result.submission_id || '' }, langCode);
+                    else if (result.code === 'submit_state_unreadable') result.message = this._t('submitUnconfirmed', {}, langCode);
+                    else if (result.code === 'payment_unavailable') result.message = this._t('paymentUnavailable', { ref: result.submission_id || '' }, langCode);
+                    else if (resp.status === 503) result.message = this._t('submitAgain', {}, langCode);
+                    else if (resp.status === 429) result.message = this._t('tooManyRequests', {}, langCode);
 
                     if (result.status === 'ok' && result.sandbox) {
                         msg.className = 'bbf-message bbf-success';
                         msg.innerHTML = this._renderSandboxPreview(result);
                         msg.style.display = 'block';
                         this._clearErrors(el);
-                    } else if (result.status === 'ok' && resp.ok) { try { if (typeof result.submission_id === 'string' && result.submission_id) { const event = new CustomEvent('bbf:submitted', { detail: { form: formId, submission_id: result.submission_id } }); event.bbfAnalytics = form._bbf_client?.analytics || {}; document.dispatchEvent(event); } } catch (error) { /* External listeners cannot fail a stored lead. */ }
+                    } else if (result.status === 'ok' && resp.ok) { if (!result.sandbox && el._bbfSubmitKey) { el._bbfSubmitKey = newSubmitKey(); el._bbfSubmitted = true; } try { if (typeof result.submission_id === 'string' && result.submission_id) { const event = new CustomEvent('bbf:submitted', { detail: { form: formId, submission_id: result.submission_id } }); event.bbfAnalytics = form._bbf_client?.analytics || {}; document.dispatchEvent(event); } } catch (error) { /* External listeners cannot fail a stored lead. */ }
                         // onSuccess callback — return false to skip default handling
                         if (options.onSuccess && options.onSuccess(result, body) === false) {
                             btn.disabled = false;

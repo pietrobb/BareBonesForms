@@ -418,11 +418,13 @@ function bbf_outbox_settlement(string $path): array {
     });
 }
 
-function bbf_outbox_claim(string $path, string $jobKey, ?int $now = null): array {
+function bbf_outbox_claim(string $path, string $jobKey, ?int $now = null, bool $firstAttemptOnly = false): array {
     $now = bbf_outbox_now($now);
-    return bbf_outbox_transaction($path, static function($ledger) use ($jobKey, $now): array {
+    return bbf_outbox_transaction($path, static function($ledger) use ($jobKey, $now, $firstAttemptOnly): array {
         if (!is_array($ledger) || !isset($ledger['jobs'][$jobKey])) return ['result' => ['ok' => false, 'reason' => 'missing']];
         $job = $ledger['jobs'][$jobKey];
+        // Submit replay and recovery run only jobs that were never attempted; retries stay manual.
+        if ($firstAttemptOnly && (int)($job['attempts'] ?? 0) > 0) return ['result' => ['ok' => false, 'reason' => 'attempted']];
         if (!in_array($job['state'], ['pending', 'failed'], true)) return ['result' => ['ok' => false, 'reason' => $job['state']]];
         if ($job['state'] === 'failed' && !($job['last_result']['retryable'] ?? false)) return ['result' => ['ok' => false, 'reason' => 'terminal']];
         if (($job['next_retry'] ?? 0) > $now) return ['result' => ['ok' => false, 'reason' => 'backoff']];

@@ -164,7 +164,7 @@ $missionInventory = [
         'failure' => [['tests/review-payment-test.php', 'Stripe rejects multiple invalid v1 signatures']],
     ],
     'G4.3 immutable paid outbox survives form and backend drift' => [
-        'fixes' => [['submit.php', '$paymentJobs = bbf_delivery_prepare_jobs'], ['submit.php', '$paymentOutboxPath = bbf_outbox_path']],
+        'fixes' => [['bbf_submit_tx.php', '$jobs = bbf_delivery_prepare_jobs($form, $record'], ['bbf_submit_tx.php', '$outboxPath = bbf_outbox_path($storeConfig, $formId, $id)']],
         'positive' => [['tests/review-payment-test.php', 'real payment submit persists its complete immutable delivery plan and original backend before redirect']],
         'failure' => [['tests/review-payment-test.php', 'real submit plan settles after the current form becomes malformed without manual ledger seeding']],
     ],

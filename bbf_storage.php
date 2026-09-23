@@ -44,12 +44,23 @@ function bbf_storage_private_mode(string $path, int $mode): bool {
     return $actual !== false && ($actual & 0777) === $mode;
 }
 
+/** Blocking exclusive lock; inside a submit transaction a LOCK_NB loop bounded by its deadline. */
+function bbf_storage_lock_exclusive($lock): bool {
+    $deadline = $GLOBALS['_bbf_storage_deadline'] ?? null;
+    if ($deadline === null) return flock($lock, LOCK_EX);
+    while (!flock($lock, LOCK_EX | LOCK_NB)) {
+        if (microtime(true) >= $deadline) return false;
+        usleep(50000);
+    }
+    return true;
+}
+
 /** A stable sidecar survives atomic rename. Never unlink it: waiters may hold its inode. */
 function bbf_storage_locked(string $path, callable $operation): bool {
     $lock = @fopen($path . '.lock', 'c');
     if (!$lock) return false;
     try {
-        if (!flock($lock, LOCK_EX)) return false;
+        if (!bbf_storage_lock_exclusive($lock)) return false;
         return $operation() === true;
     } catch (Throwable $error) {
         error_log('BareBonesForms storage error: ' . $error->getMessage());

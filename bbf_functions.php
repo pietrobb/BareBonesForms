@@ -838,10 +838,10 @@ function bbf_delivery_abort_for_storage(string $path, array $jobs, array $config
 }
 
 /** Claim and execute one persisted immutable delivery job. */
-function bbf_delivery_run_job(string $path, string $jobKey, array $config, array &$actionResponse = [], bool $alreadyRetried = false): array {
+function bbf_delivery_run_job(string $path, string $jobKey, array $config, array &$actionResponse = [], bool $alreadyRetried = false, bool $firstAttemptOnly = false): array {
     // The caller may already have moved a failed/ambiguous job to pending. The runner never retries state itself.
     unset($alreadyRetried);
-    $claim = bbf_outbox_claim($path, $jobKey);
+    $claim = bbf_outbox_claim($path, $jobKey, null, $firstAttemptOnly);
     if (!($claim['ok'] ?? false)) {
         $reason = (string)($claim['reason'] ?? 'unavailable');
         return [
@@ -1238,71 +1238,6 @@ function bbfPaymentSessionMatches(array $submission, array $session, bool $requi
 
 // ─── Stripe ──────────────────────────────────────────────────────
 
-/**
- * Create a Stripe Checkout Session. Returns its trusted ID and URL, or null on failure.
- * No SDK — just a single HTTPS POST to the Stripe API. A callable transport allows
- * an installation to supply an explicit local adapter without changing pricing authority.
- */
-function createStripeCheckout(string $secretKey, array $params, ?callable $transport = null): ?array {
-    $postFields = [
-        'mode'                            => 'payment',
-        'success_url'                     => $params['success_url'],
-        'cancel_url'                      => $params['cancel_url'],
-        'line_items[0][price_data][currency]'                  => $params['currency'],
-        'line_items[0][price_data][unit_amount]'               => $params['amount'],
-        'line_items[0][price_data][product_data][name]'        => $params['product_name'],
-        'line_items[0][quantity]'                              => 1,
-    ];
-
-    // Pass metadata so we can identify the submission in the webhook
-    foreach ($params['metadata'] as $k => $v) {
-        $postFields["metadata[$k]"] = $v;
-    }
-
-    // Pre-fill customer email if available
-    if (!empty($params['customer_email']) && filter_var($params['customer_email'], FILTER_VALIDATE_EMAIL)) {
-        $postFields['customer_email'] = $params['customer_email'];
-    }
-
-    if ($transport !== null) {
-        try {
-            $data = $transport($postFields, $secretKey);
-            return is_array($data) && is_string($data['id'] ?? null) && $data['id'] !== ''
-                && is_string($data['url'] ?? null) && $data['url'] !== '' ? $data : null;
-        } catch (Throwable $error) {
-            error_log('BareBonesForms: Stripe transport failed: ' . $error->getMessage());
-            return null;
-        }
-    }
-
-    $body = http_build_query($postFields);
-    $opts = [
-        'http' => [
-            'method'  => 'POST',
-            'header'  => "Authorization: Bearer $secretKey\r\n"
-                       . "Content-Type: application/x-www-form-urlencoded\r\n"
-                       . 'Content-Length: ' . strlen($body) . "\r\n",
-            'content' => $body,
-            'timeout' => 10,
-            'ignore_errors' => true,
-        ],
-    ];
-
-    $result = @file_get_contents('https://api.stripe.com/v1/checkout/sessions', false, stream_context_create($opts));
-    if ($result === false) {
-        error_log('BareBonesForms: Stripe API request failed (network error)');
-        return null;
-    }
-
-    $data = json_decode($result, true);
-    if (is_string($data['id'] ?? null) && $data['id'] !== '' && is_string($data['url'] ?? null) && $data['url'] !== '') {
-        return ['id' => $data['id'], 'url' => $data['url']];
-    }
-
-    error_log('BareBonesForms: Stripe API error: ' . ($data['error']['message'] ?? 'unknown'));
-    return null;
-}
-
 function bbf_payment_merge_transition(array $meta, array $payment): array {
     $current = in_array($meta['payment_status'] ?? null, ['pending', 'failed', 'paid'], true)
         ? $meta['payment_status'] : 'pending';
@@ -1322,8 +1257,8 @@ function bbf_payment_merge_transition(array $meta, array $payment): array {
  * Update a submission's payment status.
  * Supports file and SQLite/MySQL backends. CSV is not supported (append-only).
  */
-function updateSubmissionPaymentMetadata(string $submissionId, string $formId, array $payment, array $config): bool {
-    try { bbf_storage_json($payment); $config = bbf_effective_storage_config($config, $formId); } catch (Throwable $e) { return false; }
+function updateSubmissionPaymentMetadata(string $submissionId, string $formId, array $payment, array $config, ?array $form = null): bool {
+    try { bbf_storage_json($payment); $config = bbf_effective_storage_config($config, $formId, $form); } catch (Throwable $e) { return false; }
     if (!preg_match('/\A[a-zA-Z0-9_-]+\z/', $submissionId)) return false;
     $storage = $config['storage'];
     if ($storage === 'file') {

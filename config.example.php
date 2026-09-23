@@ -86,6 +86,14 @@ return [
         'lease_seconds' => 300,
     ],
 
+    // Idempotent submit: a retry with the same key (bbf.js sends one per fill) never creates a
+    // second record, never delivers twice and never starts a second payment.
+    // Run `php maintenance.php submit-recover` before changing storage settings.
+    'submit_replay_ttl'          => 86400, // seconds a finished submit answers retries
+    'submit_transaction_timeout' => 30,    // deadline for storing one submission, incl. lock waits
+    'submit_replay_rate'         => 30,    // retries and polls per key per minute
+    'submit_recovery_budget'     => 5,     // crashed submits each request finishes afterwards (0 = CLI only)
+
     // ─── Stripe (payments) ──────────────────────────────────────
     // Required only if you use on_submit.payment in any form.
     // Get keys from https://dashboard.stripe.com/apikeys

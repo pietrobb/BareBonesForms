@@ -20,7 +20,8 @@ function bbf_maintenance_fail(string $message, int $code = 2): never {
 
 $usage = 'Usage: php maintenance.php retention --form=<id> [--apply --confirm=<retention-digest>]'
     . "\n       php maintenance.php backup --form=<id>"
-    . "\n       php maintenance.php restore --bundle=<path> [--apply --confirm=<restore-digest>]";
+    . "\n       php maintenance.php restore --bundle=<path> [--apply --confirm=<restore-digest>]"
+    . "\n       php maintenance.php submit-recover";
 $arguments = $argv;
 array_shift($arguments);
 $command = array_shift($arguments);
@@ -28,12 +29,13 @@ $allowed = match ($command) {
     'retention' => ['form', 'confirm'],
     'backup' => ['form'],
     'restore' => ['bundle', 'confirm'],
+    'submit-recover' => [],
     default => bbf_maintenance_fail($usage),
 };
 $options = ['apply' => false];
 foreach ($arguments as $argument) {
     if ($argument === '--apply') {
-        if ($options['apply'] || $command === 'backup') bbf_maintenance_fail('Unknown or duplicate maintenance option.');
+        if ($options['apply'] || in_array($command, ['backup', 'submit-recover'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
         $options['apply'] = true;
         continue;
     }
@@ -50,10 +52,20 @@ if (in_array($command, ['retention', 'backup'], true)) {
 if ($command === 'restore' && !is_string($options['bundle'] ?? null)) {
     bbf_maintenance_fail('A --bundle path is required.');
 }
-if ($command !== 'backup' && $options['apply'] !== array_key_exists('confirm', $options)) {
+if (!in_array($command, ['backup', 'submit-recover'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
     bbf_maintenance_fail('--apply and --confirm must be supplied together.');
 }
 $config = bbf_auth_load_config(__DIR__ . '/config.php');
+if ($command === 'submit-recover') {
+    // Recovery for every form's submit intents (docs/SUBMIT-TRANSACTIONS.md §7); no time budget.
+    require_once __DIR__ . '/bbf_submit_tx.php';
+    try {
+        foreach (bbf_tx_sweep($config) as [$form, $k, $action]) fwrite(STDOUT, "$form " . substr($k, 0, 12) . " $action\n");
+    } catch (Throwable $error) {
+        bbf_maintenance_fail('Submit recovery failed: ' . $error->getMessage(), 1);
+    }
+    exit(0);
+}
 try {
     $result = match ($command) {
         'retention' => $options['apply']

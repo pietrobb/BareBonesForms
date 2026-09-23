@@ -348,10 +348,10 @@ PHP);
             && ($job['last_result']['retryable'] ?? true) === false
             && str_contains((string)($job['last_result']['message'] ?? ''), 'storage failed before delivery');
     }
-    submit_delivery_check($storageFault['code'] === 500 && ($storageFault['json']['status'] ?? '') === 'error'
+    submit_delivery_check($storageFault['code'] === 503 && ($storageFault['json']['status'] ?? '') === 'error'
         && ($storageFault['json']['delivery']['state'] ?? '') === 'attention_required'
         && !($storageFault['json']['delivery']['settled'] ?? true),
-        'storage failure after ledger initialization returns 500 with attention-required delivery');
+        'storage failure after ledger initialization returns 503 (submit again) with attention-required delivery');
     submit_delivery_check(count($storageFaultLedgers) === 1 && $storageJobsTerminal
         && ($storageFaultStatus['state'] ?? '') === 'attention_required'
         && ($afterStorageFaultEffects['count'] ?? 0) === $beforeStorageFaultEffects,

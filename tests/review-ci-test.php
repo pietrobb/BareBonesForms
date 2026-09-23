@@ -303,6 +303,7 @@ try {
         'System field migration' => [__DIR__ . '/review-system-fields-migration-test.php', [PHP_BINARY, __DIR__ . '/review-system-fields-migration-test.php']],
         'Action results' => [__DIR__ . '/review-action-results-test.php', [PHP_BINARY, __DIR__ . '/review-action-results-test.php']],
         'Submit delivery failure propagation' => [__DIR__ . '/review-submit-delivery-test.php', [PHP_BINARY, __DIR__ . '/review-submit-delivery-test.php']],
+        'Submit transactions (idempotent retry, crash recovery)' => [__DIR__ . '/review-submit-transaction-test.php', [PHP_BINARY, __DIR__ . '/review-submit-transaction-test.php']],
         'Viewer navigation' => [__DIR__ . '/viewer-navigation.test.js', ['node', '--test', __DIR__ . '/viewer-navigation.test.js']],
         'Real-browser security' => [__DIR__ . '/review-security.test.js', ['node', '--test', __DIR__ . '/review-security.test.js']],
         'Editor save and keyboard behavior' => [__DIR__ . '/editor-save.test.js', ['node', '--test', __DIR__ . '/editor-save.test.js']],
