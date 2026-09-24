@@ -481,7 +481,8 @@ PHP);
         '#18 payment replay after the definition was deleted → same redirect');
 
     // Opportunistic recovery on later submits (budget > 0).
-    tx_config($root, ['submit_recovery_budget' => 5]);
+    // Recovery picks random intents; a budget above the ~40 intents left by earlier checks makes one pass cover all of them.
+    tx_config($root, ['submit_recovery_budget' => 100]);
     $key = tx_key();
     tx_fault($root, 'after_store');
     tx_post($server, 'tx', ['answer' => 'opp'], $key);
