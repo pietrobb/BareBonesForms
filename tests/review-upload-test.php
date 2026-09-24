@@ -122,6 +122,7 @@ function up_intent(string $root, string $form, string $key): ?array {
 function up_maintenance(string $root, string $command): array {
     $output = [];
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$root/maintenance.php") . " $command 2>&1", $output, $code);
+    clearstatcache(); // the child changed files this process may have stat-cached
     return [$code, implode("\n", $output)];
 }
 
@@ -735,13 +736,18 @@ try {
     up_config($root, $data);
 
     // Without ZipArchive the Office types leave the effective allowlist.
-    bbf_test_stop_server($server);
-    $GLOBALS['bbf_test_server_extra'][$root]['extensions'] = ['fileinfo'];
-    $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
-    $def = bbf_test_http($server, up_url($server, 'form=up&action=definition'));
-    $noZip = up_upload($server, 'up', 'cv', 'a.docx', $docx);
-    up_check(!in_array('.docx', $def['json']['fields'][1]['_bbf_accept'] ?? ['.docx'], true) && $noZip['code'] === 422,
-        'without ZipArchive .docx is not offered and is refused');
+    // A zip loaded by php.ini (typical on Linux) cannot be unloaded for one child: the check needs a host without it.
+    if (in_array('zip', bbf_test_ini_extensions(), true)) {
+        print "SKIP without ZipArchive .docx is not offered and is refused (zip is loaded by php.ini on this host)\n";
+    } else {
+        bbf_test_stop_server($server);
+        $GLOBALS['bbf_test_server_extra'][$root]['extensions'] = ['fileinfo'];
+        $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
+        $def = bbf_test_http($server, up_url($server, 'form=up&action=definition'));
+        $noZip = up_upload($server, 'up', 'cv', 'a.docx', $docx);
+        up_check(!in_array('.docx', $def['json']['fields'][1]['_bbf_accept'] ?? ['.docx'], true) && $noZip['code'] === 422,
+            'without ZipArchive .docx is not offered and is refused');
+    }
     up_check(!is_file("$root/logs/php-error.log") || !preg_match('/PHP (Warning|Fatal|Notice|Deprecated)/', (string)file_get_contents("$root/logs/php-error.log")),
         'no PHP warnings or errors in the server log');
 } catch (Throwable $error) {

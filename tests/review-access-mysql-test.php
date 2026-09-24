@@ -628,7 +628,11 @@ PHP;
     $r = $callback($stripe);
     $seen = is_file("$root/data/mysql-action.json") ? json_decode(file_get_contents("$root/data/mysql-action.json"), true) : null;
     $paid = $load($submittedId);
-    mysql_access_check($r['code'] === 200 && ($r['json']['received'] ?? false) === true && $seen === $paid
+    // The action payload is the durable row without the internal submit_key_hash (SUBMIT-TRANSACTIONS.md #35).
+    $payload = $paid;
+    if (is_array($payload['meta'] ?? null)) unset($payload['meta']['submit_key_hash']);
+    mysql_access_check($r['code'] === 200 && ($r['json']['received'] ?? false) === true && $seen === $payload
+        && is_string($paid['meta']['submit_key_hash'] ?? null) && !array_key_exists('submit_key_hash', $seen['meta'] ?? [])
         && ($paid['data'] ?? null) === $submitted['data'] && ($paid['meta']['payment_status'] ?? '') === 'paid',
         'G3 locally signed HTTP callback UPDATE then load uses effective MySQL and passes durable row to local action');
     mysql_access_check(($paid['meta']['payment_id'] ?? '') === 'pi_local_fixture' && ($paid['meta']['payment_amount'] ?? null) === 12.5

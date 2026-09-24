@@ -106,6 +106,21 @@ function bbf_test_identity_probe(string $root, string $identity): string {
     return $probe;
 }
 
+/** Extensions a plain child PHP loads from php.ini (lowercase); re-loading them only emits a startup warning. */
+function bbf_test_ini_extensions(): array {
+    static $loaded = null;
+    if ($loaded === null) {
+        $proc = proc_open([PHP_BINARY, '-r', 'echo implode(",", get_loaded_extensions());'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        if (!is_resource($proc)) throw new RuntimeException('Cannot list the PHP extensions of a child process.');
+        $output = stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        if (proc_close($proc) !== 0) throw new RuntimeException('Cannot list the PHP extensions of a child process.');
+        $loaded = array_map('strtolower', explode(',', trim($output)));
+    }
+    return $loaded;
+}
+
 /** Array commands bypass the shell and handle spaces in both PHP_BINARY and fixture paths. */
 function bbf_test_server_command(string $root, string $host, int $port): array {
     if (empty($GLOBALS['bbf_test_roots'][$root]) || $host !== '127.0.0.1') {
@@ -117,7 +132,7 @@ function bbf_test_server_command(string $root, string $host, int $port): array {
     $ini = [];
     foreach ((array)($extra['extensions'] ?? []) as $extension) {
         if (!preg_match('/\A[a-z0-9_]+\z/', $extension)) throw new RuntimeException('Invalid test extension name.');
-        array_push($ini, '-d', 'extension=' . $extension);
+        if (!in_array($extension, bbf_test_ini_extensions(), true)) array_push($ini, '-d', 'extension=' . $extension);
     }
     // Mutable fixtures must not reuse bytecode, including Windows' shared cache after a restart.
     return [PHP_BINARY, ...$ini, '-d', 'opcache.enable=0', '-d', 'opcache.enable_cli=0',
