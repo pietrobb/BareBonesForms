@@ -145,6 +145,34 @@ function isolation_refuses(callable $operation, string $message): void {
     isolation_check($refused, $message);
 }
 
+/** A parallel server can keep Windows OPcache alive across another server's restart. */
+function isolation_fresh_source(string $source): void {
+    $root = bbf_test_installation($source);
+    try {
+        $path = $root . '/cache-probe.php';
+        $code = '<?php echo json_encode(["version" => "OLD", "cached" => function_exists("opcache_get_status") && opcache_get_status(false) !== false]);';
+        $mtime = time() - 10;
+        file_put_contents($path, $code);
+        touch($path, $mtime);
+        $keeper = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
+        $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
+        $request = static fn(array $child) => json_decode(bbf_test_http($child,
+            'http://127.0.0.1:' . $child['port'] . '/cache-probe.php')['body'], true, 512, JSON_THROW_ON_ERROR);
+        isolation_check(($request($server)['version'] ?? null) === 'OLD', 'source-rewrite control executes the original fixture');
+        bbf_test_stop_server($server);
+        // Same size and timestamp: this must execute from disk, not cached bytecode.
+        file_put_contents($path, str_replace('OLD', 'NEW', $code));
+        touch($path, $mtime);
+        $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
+        $result = $request($server);
+        isolation_check(bbf_test_server_alive($keeper) && ($result['version'] ?? null) === 'NEW',
+            'restarted server executes rewritten source while a parallel server remains alive');
+        isolation_check(($result['cached'] ?? null) === false, 'mutable fixture servers do not use OPcache');
+    } finally {
+        bbf_test_cleanup($root);
+    }
+}
+
 /** All collision traffic targets a disposable fake, never an operator listener. */
 function isolation_collision(string $source): void {
     $owner = bbf_test_installation($source);
@@ -185,6 +213,7 @@ function isolation_collision(string $source): void {
 
 try {
     $source = dirname(__DIR__);
+    isolation_fresh_source($source);
     $config = $source . '/config.php';
     $protected = [];
     foreach (['config.php', 'forms', 'submissions', 'data', 'logs'] as $name) {

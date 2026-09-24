@@ -119,7 +119,9 @@ function bbf_test_server_command(string $root, string $host, int $port): array {
         if (!preg_match('/\A[a-z0-9_]+\z/', $extension)) throw new RuntimeException('Invalid test extension name.');
         array_push($ini, '-d', 'extension=' . $extension);
     }
-    return [PHP_BINARY, ...$ini, '-d', 'allow_url_fopen=0', '-d', 'allow_url_include=0',
+    // Mutable fixtures must not reuse bytecode, including Windows' shared cache after a restart.
+    return [PHP_BINARY, ...$ini, '-d', 'opcache.enable=0', '-d', 'opcache.enable_cli=0',
+        '-d', 'allow_url_fopen=0', '-d', 'allow_url_include=0',
         '-d', 'disable_functions=mail,curl_exec,curl_multi_exec,fsockopen,pfsockopen,stream_socket_client,socket_connect,exec,shell_exec,system,passthru,popen,proc_open',
         '-d', 'open_basedir=' . (str_contains($basedir, PATH_SEPARATOR) ? '"' . $basedir . '"' : $basedir), '-d', 'session.save_path=' . $root . '/sessions',
         '-d', 'upload_tmp_dir=' . $root . '/uploads', '-d', 'sys_temp_dir=' . $root,
