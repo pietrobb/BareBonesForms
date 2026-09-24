@@ -131,7 +131,7 @@ function deploy_test_expected_files(): array
     }
     foreach ([
         'ar', 'bg', 'cs', 'da', 'de', 'el', 'en', 'es', 'et', 'fi', 'fr', 'hi',
-        'hu', 'id', 'it', 'ja', 'ko', 'nb', 'nl', 'pl', 'pt', 'pt-br', 'ro', 'ru',
+        'hu', 'id', 'it', 'ja', 'ko', 'lt', 'lv', 'nb', 'nl', 'pl', 'pt', 'pt-br', 'ro', 'ru',
         'sk', 'sv', 'th', 'tlh', 'tr', 'uk', 'zh', 'zh-tw',
     ] as $locale) {
         $files[] = "lang/$locale.js";
@@ -176,7 +176,7 @@ try {
     $expected = deploy_test_expected_files();
     $actual = deploy_test_files($destination);
     deploy_test_check($actual === $expected, 'package has the exact independently specified sorted file set');
-    deploy_test_check(count($actual) === 140, 'package manifest contains exactly 140 files');
+    deploy_test_check(count($actual) === 144, 'package manifest contains exactly 144 files');
 
     foreach ([
         'bbf_auth.php', 'bbf_backup.php', 'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php',

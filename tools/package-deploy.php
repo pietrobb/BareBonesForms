@@ -95,7 +95,7 @@ function bbf_deploy_manifest(string $root): array
     ];
     $locales = [
         'ar', 'bg', 'cs', 'da', 'de', 'el', 'en', 'es', 'et', 'fi', 'fr', 'hi',
-        'hu', 'id', 'it', 'ja', 'ko', 'nb', 'nl', 'pl', 'pt', 'pt-br', 'ro', 'ru',
+        'hu', 'id', 'it', 'ja', 'ko', 'lt', 'lv', 'nb', 'nl', 'pl', 'pt', 'pt-br', 'ro', 'ru',
         'sk', 'sv', 'th', 'tlh', 'tr', 'uk', 'zh', 'zh-tw',
     ];
     $templates = ['confirm-order.html', 'confirm.html', 'notify-order.html', 'notify.html'];

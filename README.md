@@ -6,7 +6,7 @@ Define a form as JSON. Upload one folder. Embed with two lines. Submissions land
 
 *Bare bones means: no form builder — forms are JSON files you write by hand (an optional JSON editor with live preview is included). No dependencies, no build step, no database required.*
 
-PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 32 Languages · ~22 KB gzipped JS
+PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 34 Languages · ~22 KB gzipped JS
 
 **[Download →](https://github.com/pietrobb/BareBonesForms/releases/latest)** · **[Documentation →](docs.html)** · **[Changelog →](CHANGELOG.md)** · **[Upgrading →](#upgrading)** · **[Live Demos →](demo1.html)**
 
@@ -38,7 +38,7 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 - **Signed webhooks** — HMAC-SHA256 via `X-BBF-Signature`. Integrate with n8n, Zapier, your own endpoints.
 - **Custom actions** — Drop a PHP file in `actions/`, reference it in your form JSON. Your code, your rules.
 - **Sandbox mode** — Test everything without storing, sending, or executing anything.
-- **32 languages** — Validation messages and UI strings. Client-side and server-side. Add your own in minutes.
+- **34 languages** — Validation messages and UI strings. Client-side and server-side. Add your own in minutes.
 - **Cross-domain embedding** — Host forms on one server, embed on another. CORS handled.
 - **CSRF protection** — Session-based HMAC tokens, automatic via `bbf.js`.
 - **Multi-page forms** — Split forms with page breaks. Previous/Next navigation with per-page validation.
@@ -570,7 +570,7 @@ See [`bbf-theme.css`](bbf-theme.css) for complete example themes (dark mode, cor
 
 ## Language Support
 
-BareBonesForms ships with **32 language packs** — both client-side (validation messages, button labels, status text) and server-side (validation error messages returned by the API).
+BareBonesForms ships with **34 language packs** — both client-side (validation messages, button labels, status text) and server-side (validation error messages returned by the API).
 
 ### Included Languages
 
@@ -588,6 +588,7 @@ BareBonesForms ships with **32 language packs** — both client-side (validation
 | `nb`    | Norsk bokmål (Norwegian)       | `ru`    | Русский (Russian)                |
 | `fi`    | Suomi (Finnish)                | `uk`    | Українська (Ukrainian)           |
 | `et`    | Eesti (Estonian)               | `id`    | Bahasa Indonesia                 |
+| `lt`    | Lietuvių (Lithuanian)          | `lv`    | Latviešu (Latvian)               |
 | `ja`    | 日本語 (Japanese)              | `ko`    | 한국어 (Korean)                   |
 | `zh`    | 中文简体 (Chinese Simplified)   | `zh-tw` | 繁體中文 (Chinese Traditional)    |
 | `ar`    | العربية (Arabic)               | `hi`    | हिन्दी (Hindi)                   |
@@ -1434,7 +1435,7 @@ barebonesforms/
 ├── bbf-context.js, gclid.js, bbf-analytics.js ← Optional visit attribution / Umami (auto-loaded when enabled)
 ├── .htaccess           ← Protects sensitive dirs (Apache)
 ├── docs.html           ← Full documentation (standalone)
-├── lang/               ← Language packs (32 languages, .js for browser + .php for server)
+├── lang/               ← Language packs (34 languages, .js for browser + .php for server)
 ├── forms/
 │   ├── form.schema.json ← JSON Schema for IDE autocomplete
 │   └── kontakt.json     ← Your form definitions

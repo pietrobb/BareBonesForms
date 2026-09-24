@@ -6,7 +6,7 @@ Items marked **Breaking** need action when you upgrade an existing installation.
 ## [Unreleased]
 
 ### Fixed
-- **Translations:** all 32 language packs now carry the messages for drafts, repeatable groups, submit retries and file uploads (they showed in English). Server upload errors come from `lang/*.php`, and the server answers in the form's `data-lang` when that pack exists. A new CI suite fails when any pack misses a message or a placeholder.
+- **Translations:** all 34 language packs now carry the messages for drafts, repeatable groups, submit retries and file uploads (they showed in English). Server upload errors come from `lang/*.php`, and the server answers in the form's `data-lang` when that pack exists. A new CI suite fails when any pack misses a message or a placeholder. Lithuanian and Latvian packs preserve their original airdomes.sk messages and now ship with the package.
 
 ### Documentation
 - README now answers the questions a first reviewer asks before trusting file storage: how concurrent submissions are written (lock, temp file, atomic rename), when to switch from files to SQLite or MySQL, how to keep submissions outside the web root, what retention does and why you might want it, and how the JSON Schema catches typos in the editor. File uploads are listed as not supported yet.
