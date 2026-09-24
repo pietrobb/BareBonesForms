@@ -2,6 +2,7 @@
 /** Shared bounded readers. No configuration loading or authorization decisions. */
 defined('BBF_LOADED') || exit;
 require_once __DIR__ . '/bbf_storage.php';
+require_once __DIR__ . '/bbf_uploads.php';
 
 /** Literal, case-insensitive search of values only (never JSON keys or SQL patterns). */
 function bbf_read_search(array $data, string $q): bool {
@@ -107,7 +108,7 @@ function bbf_read_csv_record(array $headers, array $row, string $formId): ?array
     $mapped = array_combine($headers, array_pad($row, count($headers), ''));
     if (($mapped['_id'] ?? '') === '') return null;
     $data = array_diff_key($mapped, array_flip(['_id', '_submitted', '_ip', '_user_agent',
-        '__bbf:definition_version', '__bbf:form_definition', '__bbf:csv_escaped_fields', '__bbf:structured_fields']));
+        '__bbf:definition_version', '__bbf:form_definition', '__bbf:csv_escaped_fields', '__bbf:structured_fields', '__bbf:files']));
     $escapedFields = null;
     if (($mapped['__bbf:csv_escaped_fields'] ?? '') !== '') {
         $decoded = json_decode($mapped['__bbf:csv_escaped_fields'], true);
@@ -131,6 +132,15 @@ function bbf_read_csv_record(array $headers, array $row, string $formId): ?array
         }
     }
     unset($value);
+    // The record is the single source of truth for file descriptors; the cell is only readable text.
+    if (($mapped['__bbf:files'] ?? '') !== '') {
+        $files = json_decode($mapped['__bbf:files'], true);
+        if (!is_array($files) || array_is_list($files)) return null;
+        foreach ($files as $name => $descriptors) {
+            if (!is_string($name) || !bbf_uploads_is_descriptor_list($descriptors)) return null;
+            $data[$name] = $descriptors;
+        }
+    }
     $meta = ['submitted' => $mapped['_submitted'] ?? '', 'ip' => $mapped['_ip'] ?? '',
         'user_agent' => $mapped['_user_agent'] ?? ''];
     if (preg_match('/\Av1-[a-f0-9]{64}\z/D', $mapped['__bbf:definition_version'] ?? '')) {

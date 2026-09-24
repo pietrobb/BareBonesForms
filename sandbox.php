@@ -371,7 +371,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             // Respondent CSRF is unused here; sandboxSubmit sends management session CSRF.
             container.innerHTML = '';
             container.classList.add('bbf-form-container');
-            const formEl = BBF._buildForm(currentFormDef, formId, '', {}, null);
+            const formEl = BBF._buildForm(currentFormDef, formId, '', { upload: { sandbox: true, headers: { 'X-BBF-CSRF': sandboxCsrf } } }, null);
             container.appendChild(formEl);
 
             // Intercept submit
@@ -409,6 +409,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             }
         });
         BBF._collectRepeatableGroups(currentFormDef?.fields || [], formEl, body);
+        BBF._collectFileFields(formEl, body);
 
         try {
             const resp = await fetch(`submit.php?form=${encodeURIComponent(formId)}&sandbox=1`, {

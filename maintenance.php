@@ -21,7 +21,8 @@ function bbf_maintenance_fail(string $message, int $code = 2): never {
 $usage = 'Usage: php maintenance.php retention --form=<id> [--apply --confirm=<retention-digest>]'
     . "\n       php maintenance.php backup --form=<id>"
     . "\n       php maintenance.php restore --bundle=<path> [--apply --confirm=<restore-digest>]"
-    . "\n       php maintenance.php submit-recover";
+    . "\n       php maintenance.php submit-recover"
+    . "\n       php maintenance.php uploads-cleanup";
 $arguments = $argv;
 array_shift($arguments);
 $command = array_shift($arguments);
@@ -29,13 +30,13 @@ $allowed = match ($command) {
     'retention' => ['form', 'confirm'],
     'backup' => ['form'],
     'restore' => ['bundle', 'confirm'],
-    'submit-recover' => [],
+    'submit-recover', 'uploads-cleanup' => [],
     default => bbf_maintenance_fail($usage),
 };
 $options = ['apply' => false];
 foreach ($arguments as $argument) {
     if ($argument === '--apply') {
-        if ($options['apply'] || in_array($command, ['backup', 'submit-recover'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
+        if ($options['apply'] || in_array($command, ['backup', 'submit-recover', 'uploads-cleanup'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
         $options['apply'] = true;
         continue;
     }
@@ -52,7 +53,7 @@ if (in_array($command, ['retention', 'backup'], true)) {
 if ($command === 'restore' && !is_string($options['bundle'] ?? null)) {
     bbf_maintenance_fail('A --bundle path is required.');
 }
-if (!in_array($command, ['backup', 'submit-recover'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
+if (!in_array($command, ['backup', 'submit-recover', 'uploads-cleanup'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
     bbf_maintenance_fail('--apply and --confirm must be supplied together.');
 }
 $config = bbf_auth_load_config(__DIR__ . '/config.php');
@@ -65,6 +66,16 @@ if ($command === 'submit-recover') {
         bbf_maintenance_fail('Submit recovery failed: ' . $error->getMessage(), 1);
     }
     exit(0);
+}
+if ($command === 'uploads-cleanup') {
+    require_once __DIR__ . '/bbf_functions.php';
+    try {
+        $report = bbf_uploads_cleanup($config);
+    } catch (Throwable $error) {
+        bbf_maintenance_fail('Upload cleanup failed: ' . $error->getMessage(), 1);
+    }
+    fwrite(STDOUT, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+    exit(($report['ok'] ?? false) ? 0 : 1);
 }
 try {
     $result = match ($command) {

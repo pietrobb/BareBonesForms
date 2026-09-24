@@ -21,4 +21,5 @@ return [
     'invalidFormat'  => '{label} has invalid format.',
     'repeatableMin'  => '{label} requires at least {min} items.',
     'repeatableMax'  => '{label} allows at most {max} items.',
+    'tooManyFiles'   => '{label} allows at most {max} files.',
 ];

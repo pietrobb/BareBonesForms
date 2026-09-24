@@ -34,7 +34,7 @@ function bbf_test_installation(string $source, bool $sandbox = false): string {
             }
         }
         // Deliberate allowlist: no config.php, operator data/logs, custom actions or symlinks.
-        foreach (['submit.php', 'submissions.php', 'bbf_functions.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_delivery.php', 'bbf_drafts.php', 'bbf_outbox.php', 'bbf_export.php', 'bbf_read.php', 'bbf_auth.php', 'bbf_review.php', 'bbf_versions.php', 'bbf_retention.php', 'bbf_backup.php', 'maintenance.php', 'payment.php', '.htaccess',
+        foreach (['submit.php', 'submissions.php', 'bbf_functions.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_uploads.php', 'bbf_diagnostics.php', 'bbf_delivery.php', 'bbf_drafts.php', 'bbf_outbox.php', 'bbf_export.php', 'bbf_read.php', 'bbf_auth.php', 'bbf_review.php', 'bbf_versions.php', 'bbf_retention.php', 'bbf_backup.php', 'maintenance.php', 'payment.php', '.htaccess',
                   'bbf_context.php', 'actions/test-echo-response.php'] as $file) {
             bbf_test_copy($source . '/' . $file, $root . '/' . $file);
         }
@@ -111,9 +111,17 @@ function bbf_test_server_command(string $root, string $host, int $port): array {
     if (empty($GLOBALS['bbf_test_roots'][$root]) || $host !== '127.0.0.1') {
         throw new RuntimeException('Test servers must use an owned installation on loopback.');
     }
-    return [PHP_BINARY, '-d', 'allow_url_fopen=0', '-d', 'allow_url_include=0',
+    // Optional per-suite extras: owned private directories outside the web root and extension loads.
+    $extra = $GLOBALS['bbf_test_server_extra'][$root] ?? [];
+    $basedir = implode(PATH_SEPARATOR, array_merge([$root], (array)($extra['basedir'] ?? [])));
+    $ini = [];
+    foreach ((array)($extra['extensions'] ?? []) as $extension) {
+        if (!preg_match('/\A[a-z0-9_]+\z/', $extension)) throw new RuntimeException('Invalid test extension name.');
+        array_push($ini, '-d', 'extension=' . $extension);
+    }
+    return [PHP_BINARY, ...$ini, '-d', 'allow_url_fopen=0', '-d', 'allow_url_include=0',
         '-d', 'disable_functions=mail,curl_exec,curl_multi_exec,fsockopen,pfsockopen,stream_socket_client,socket_connect,exec,shell_exec,system,passthru,popen,proc_open',
-        '-d', 'open_basedir=' . $root, '-d', 'session.save_path=' . $root . '/sessions',
+        '-d', 'open_basedir=' . (str_contains($basedir, PATH_SEPARATOR) ? '"' . $basedir . '"' : $basedir), '-d', 'session.save_path=' . $root . '/sessions',
         '-d', 'upload_tmp_dir=' . $root . '/uploads', '-d', 'sys_temp_dir=' . $root,
         '-d', 'error_log=' . $root . '/logs/php-error.log',
         '-S', $host . ':' . $port, '-t', $root];

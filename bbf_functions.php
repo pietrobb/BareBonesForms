@@ -5,7 +5,7 @@
  * Used by submit.php (form processing) and payment.php (webhook handler).
  * Not meant to be accessed directly via browser.
  */
-defined('BBF_LOADED') || exit; require_once __DIR__ . '/bbf_storage.php'; require_once __DIR__ . '/bbf_delivery.php'; require_once __DIR__ . '/bbf_outbox.php';
+defined('BBF_LOADED') || exit; require_once __DIR__ . '/bbf_storage.php'; require_once __DIR__ . '/bbf_delivery.php'; require_once __DIR__ . '/bbf_outbox.php'; require_once __DIR__ . '/bbf_uploads.php';
 
 // Safe string length (mbstring optional, falls back to strlen)
 function safeStrlen(string $s): int {
@@ -330,6 +330,7 @@ function buildSummaryRows(array $fields, array $data): string {
         }
         $label = $field['label'] ?? $field['name'];
         $value = $data[$field['name']] ?? '';
+        if ($type === 'file') $value = bbf_uploads_describe($value);
         if (is_array($value)) $value = implode(', ', $value);
         if ($value === '') continue; // skip empty optional fields
         $lines[] = "<tr><td style='padding:4px 12px 4px 0;font-weight:bold;vertical-align:top'>"
@@ -458,6 +459,10 @@ function bbf_delivery_template_data(array $form, array $submission, array $templ
     $fields = is_array($form['fields'] ?? null) ? $form['fields'] : [];
     if (!empty($form['templates'])) $fields = resolveTemplates($fields, (array)$form['templates']);
     foreach (flattenFields($fields) as $field) {
+        if (($field['type'] ?? '') === 'file' && array_key_exists((string)($field['name'] ?? ''), $data)) {
+            $templateData[$field['name']] = bbf_uploads_describe($data[$field['name']]);
+            continue;
+        }
         if (!in_array($field['type'] ?? 'text', ['select', 'radio', 'checkbox'], true)) continue;
         $name = (string)($field['name'] ?? '');
         if ($name === '' || !array_key_exists($name, $data)) continue;
@@ -1520,7 +1525,7 @@ function validateFormDefinition(array $form): array {
                     if (isset($seen[$name])) $errors[] = "drafts.fields[$index]: Duplicate field.";
                     $seen[$name] = true;
                     $type = $fieldMap[$name]['type'] ?? 'text';
-                    if (in_array($type, ['password', 'hidden', 'section', 'page_break', 'group'], true)
+                    if (in_array($type, ['password', 'hidden', 'section', 'page_break', 'group', 'file'], true)
                         || !empty($fieldMap[$name]['sensitive']) || isset($paymentFields[$name])) {
                         $errors[] = "drafts.fields[$index]: Sensitive or payment field cannot be persisted.";
                     }
@@ -1554,7 +1559,7 @@ function validateFormDefinition(array $form): array {
 }
 
 function validateFieldList(array $fields, string $path, array &$errors, array &$fieldNames, bool $insideRepeatable = false): void {
-    $validTypes = ['text', 'email', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkbox', 'hidden', 'password', 'section', 'page_break', 'rating', 'group'];
+    $validTypes = ['text', 'email', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkbox', 'hidden', 'password', 'section', 'page_break', 'rating', 'group', 'file'];
 
     foreach ($fields as $i => $field) {
         $prefix = "{$path}[{$i}]";
@@ -1627,6 +1632,12 @@ function validateFieldList(array $fields, string $path, array &$errors, array &$
             $errors[] = "$prefix: Repeatable properties require type 'group'.";
         }
 
+        if ($type === 'file') {
+            array_push($errors, ...bbf_uploads_definition_errors($field, $prefix, $insideRepeatable));
+        } elseif (array_key_exists('accept', $field) || array_key_exists('max_size', $field) || array_key_exists('max_files', $field)) {
+            $errors[] = "$prefix: accept, max_size and max_files require type 'file'.";
+        }
+
         if (in_array($type, ['select', 'radio', 'checkbox'], true) && empty($field['options']) && empty($field['options_from'])) {
             $errors[] = "$prefix: Type '$type' requires options or options_from.";
         }
@@ -1689,7 +1700,7 @@ function validateFieldShapes(array $fields, array $input): array {
             continue;
         }
         // The client sends a single selection as a scalar, repeated selections as an array.
-        $multi = $type === 'checkbox' || ($type === 'select' && !empty($field['multiple']));
+        $multi = $type === 'checkbox' || $type === 'file' || ($type === 'select' && !empty($field['multiple']));
         $inputs = [$name => $multi];
         if (!empty($field['other'])) $inputs[$name . '_other'] = false;
         if ($type === 'email' && !empty($field['confirm'])) $inputs[$name . '_confirm'] = false;
@@ -1770,6 +1781,17 @@ function validate(array $fields, array $input): array {
         // Optional and empty — skip further checks
         if (!is_array($value) && $value === '') continue;
         if (is_array($value) && count($value) === 0) continue;
+
+        // File fields carry upload tokens; the files themselves are checked in the submit transaction.
+        if ($type === 'file') {
+            $tokens = is_array($value) ? $value : [$value];
+            if (!array_is_list($tokens)) {
+                $errors[$name] = msg('invalidFormat', ['label' => $label]);
+            } elseif (count($tokens) > bbf_uploads_field_max_files($field)) {
+                $errors[$name] = msg('tooManyFiles', ['label' => $label, 'max' => bbf_uploads_field_max_files($field)]);
+            }
+            continue;
+        }
 
         // Type-based validation (only for scalar values)
         if (!is_array($value)) {

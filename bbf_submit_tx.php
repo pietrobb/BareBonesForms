@@ -616,6 +616,8 @@ function bbf_tx_decide_open(array $config, string $formId, array &$h, array $sta
         return bbf_tx_write_state($h, $next) ? $next : null;
     }
     if ($existence === 'not_found') {
+        // Claimed files go back to staging first (unexpired ones stay usable for a retry); a failed rollback stays open.
+        if (!empty($state['files']) && !bbf_uploads_rollback($config, bbf_uploads_tx_owner($formId, $h['k']), $state['files'])) return null;
         $next = bbf_tx_state($state, 'aborted');
         if (!bbf_tx_write_state($h, $next)) return null;
         @unlink($h['deliver']);
@@ -628,6 +630,8 @@ function bbf_tx_decide_open(array $config, string $formId, array &$h, array $sta
 function bbf_tx_recover(array $config, string $formId, array &$h, array $state): ?array {
     bbf_tx_deadline_start($config);
     try {
+        // Write-ahead upload entries of this transaction are resolved only by its own lock holder.
+        bbf_uploads_settle_owner($config, bbf_uploads_tx_owner($formId, $h['k']));
         if ($state['state'] === 'open') {
             try { $storeConfig = bbf_tx_store_config($config, $formId, $state); } catch (Throwable $error) { return $state; }
             if (bbf_tx_storage_fingerprint($storeConfig) !== ($state['storage_fingerprint'] ?? null)) return $state;
@@ -711,6 +715,11 @@ function bbf_tx_sweep(array $config, ?string $onlyForm = null, ?array $budget = 
             $state = $read['state'];
             $before = $state['state'];
             if (in_array($before, ['open', 'committed'], true)) $state = bbf_tx_recover($config, $formId, $h, $state) ?? $state;
+            elseif (!bbf_uploads_settle_owner($config, bbf_uploads_tx_owner($formId, $k))) {
+                bbf_tx_release($h);
+                $report[] = [$formId, $k, 'skipped: upload ledger entry unresolved'];
+                continue;
+            }
             $age = time() - (int)$state['created'];
             if (in_array($state['state'], ['complete', 'aborted'], true) && $age > $ttl) {
                 bbf_tx_delete($h);

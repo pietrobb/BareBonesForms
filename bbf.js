@@ -100,6 +100,17 @@
             submitAgain:      'Your submission could not be completed. Please submit again — it will not be duplicated.',
             paymentUnavailable:'Your submission was saved (reference {ref}), but the payment could not be started. The organiser has been notified.',
             tooManyRequests:  'Too many attempts. Please wait a minute and try again.',
+            tooManyFiles:     '{label} allows at most {max} files.',
+            fileRemove:       'Remove {name}',
+            fileRetry:        'Retry',
+            fileUploaded:     '{name} uploaded.',
+            fileTooLarge:     '{name} is larger than {max}.',
+            fileTypeRejected: '{name}: this file type is not accepted.',
+            fileUploadFailed: '{name} could not be uploaded.',
+            filesPending:     'Please wait until your files finish uploading.',
+            filesFailed:      'Some files could not be uploaded. Retry or remove them before you submit.',
+            filesExpireSoon:  'Your uploaded files expire soon. Submit the form now, or upload them again.',
+            filesNotInDrafts: 'Files are not saved in drafts. Attach them before you submit.',
         },
 
         // Registered language packs: { de: {...}, sk: {...}, ... }
@@ -476,6 +487,241 @@
             formEl.querySelectorAll('[data-bbf-rating-reset]').forEach(function(input) {
                 input._bbfResetRating();
             });
+            formEl.querySelectorAll('.bbf-field-file').forEach(wrap => { if (wrap._bbfClearFiles) wrap._bbfClearFiles(); });
+        },
+
+        // ─── File fields (two-phase upload; tokens live in memory only) ─
+
+        _formatSize: function(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB';
+            return (Math.round(bytes / 104857.6) / 10) + ' MB';
+        },
+
+        _buildFileField: function(field, langCode, idPrefix) {
+            const fieldId = `${idPrefix || 'bbf'}-${field.name}`;
+            const wrap = document.createElement('div');
+            wrap.className = 'bbf-field bbf-field-file';
+            if (field.css_class) wrap.className += ' ' + field.css_class;
+            wrap.setAttribute('data-field', field.name);
+            if (field.label) {
+                const label = document.createElement('label');
+                label.className = 'bbf-label';
+                label.setAttribute('for', fieldId);
+                label.textContent = field.label;
+                if (field.required) {
+                    const req = document.createElement('span');
+                    req.className = 'bbf-required';
+                    req.textContent = ' *';
+                    label.appendChild(req);
+                }
+                wrap.appendChild(label);
+            }
+            if (field.description) {
+                const desc = document.createElement('small');
+                desc.className = 'bbf-field-desc';
+                desc.id = fieldId + '-desc';
+                desc.textContent = field.description;
+                wrap.appendChild(desc);
+            }
+            // No name: File objects never enter FormData; only upload tokens are submitted.
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.id = fieldId;
+            input.className = 'bbf-input bbf-file-input';
+            const accept = Array.isArray(field._bbf_accept) ? field._bbf_accept
+                : (Array.isArray(field.accept) ? field.accept.map(ext => '.' + String(ext).replace(/^\./, '')) : []);
+            if (accept.length) input.accept = accept.join(',');
+            if ((field.max_files || 1) > 1) input.multiple = true;
+            input.setAttribute('aria-describedby', (field.description ? fieldId + '-desc ' : '') + fieldId + '-error ' + fieldId + '-files');
+            wrap.appendChild(input);
+            const list = document.createElement('ul');
+            list.className = 'bbf-file-list';
+            list.id = fieldId + '-files';
+            wrap.appendChild(list);
+            const status = document.createElement('div');
+            status.className = 'bbf-file-status';
+            status.setAttribute('role', 'status');
+            status.setAttribute('aria-live', 'polite');
+            wrap.appendChild(status);
+            const errEl = document.createElement('div');
+            errEl.className = 'bbf-field-error';
+            errEl.id = fieldId + '-error';
+            errEl.setAttribute('role', 'alert');
+            wrap.appendChild(errEl);
+            wrap._bbfField = field;
+            wrap._bbfFiles = [];
+            return wrap;
+        },
+
+        /** Upload each selected file on its own request; the submit later carries only the tokens. */
+        _bindFileFields: function(formEl, formId, baseUrl, options, langCode) {
+            const t = (key, params) => this._t(key, params, langCode);
+            const upload = options.upload || {};
+            const sandbox = !!upload.sandbox;
+            formEl.querySelectorAll('.bbf-field-file').forEach(wrap => {
+                const field = wrap._bbfField;
+                const input = wrap.querySelector('.bbf-file-input');
+                const list = wrap.querySelector('.bbf-file-list');
+                const status = wrap.querySelector('.bbf-file-status');
+                const maxFiles = field.max_files || 1;
+                const maxSize = Number(field._bbf_max_size) || 0;
+                const accept = (input.accept || '').split(',').filter(a => a.startsWith('.')).map(a => a.toLowerCase());
+                let expiryTimer = null;
+                const scheduleExpiry = () => {
+                    clearTimeout(expiryTimer);
+                    const times = wrap._bbfFiles.filter(f => f.state === 'done' && f.expiresAt).map(f => f.expiresAt);
+                    if (!times.length) return;
+                    const warnIn = Math.min(...times) - Date.now() - 10 * 60 * 1000;
+                    expiryTimer = setTimeout(() => { status.textContent = t('filesExpireSoon'); }, Math.max(0, warnIn));
+                };
+                const render = entry => {
+                    const row = entry.row;
+                    row.className = 'bbf-file bbf-file-' + entry.state;
+                    row.textContent = '';
+                    const name = document.createElement('span');
+                    name.className = 'bbf-file-name';
+                    name.textContent = entry.name;
+                    const size = document.createElement('span');
+                    size.className = 'bbf-file-size';
+                    size.textContent = this._formatSize(entry.size);
+                    row.appendChild(name);
+                    row.appendChild(size);
+                    if (entry.state === 'uploading') {
+                        const progress = document.createElement('progress');
+                        progress.className = 'bbf-file-progress';
+                        progress.max = 100;
+                        progress.value = entry.progress || 0;
+                        entry.progressEl = progress;
+                        row.appendChild(progress);
+                    }
+                    if (entry.message) {
+                        const message = document.createElement('span');
+                        message.className = 'bbf-file-message';
+                        message.textContent = entry.message;
+                        row.appendChild(message);
+                    }
+                    if (entry.state === 'error' && entry.retryable) {
+                        const retry = document.createElement('button');
+                        retry.type = 'button';
+                        retry.className = 'bbf-file-retry';
+                        retry.textContent = t('fileRetry');
+                        retry.addEventListener('click', () => send(entry));
+                        row.appendChild(retry);
+                    }
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'bbf-file-remove';
+                    remove.textContent = '\u00d7';
+                    remove.setAttribute('aria-label', t('fileRemove', { name: entry.name }));
+                    remove.addEventListener('click', () => removeEntry(entry));
+                    row.appendChild(remove);
+                };
+                const changed = () => {
+                    formEl.dispatchEvent(new CustomEvent('bbf:files-changed', { bubbles: true }));
+                    scheduleExpiry();
+                };
+                const removeEntry = entry => {
+                    if (entry.xhr) entry.xhr.abort();
+                    if (entry.token && !sandbox) {
+                        const csrf = formEl.querySelector('input[name="_bbf_csrf"]');
+                        const headers = Object.assign({ 'Content-Type': 'application/json' }, csrf ? { 'X-BBF-CSRF': csrf.value } : {}, upload.headers || {});
+                        fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=upload_delete`,
+                            { method: 'POST', headers, body: JSON.stringify({ token: entry.token }), credentials: 'same-origin' }).catch(() => {});
+                    }
+                    wrap._bbfFiles = wrap._bbfFiles.filter(f => f !== entry);
+                    entry.row.remove();
+                    changed();
+                };
+                const send = entry => {
+                    entry.state = 'uploading'; entry.message = ''; entry.progress = 0; entry.retryable = false;
+                    render(entry); changed();
+                    const xhr = new XMLHttpRequest();
+                    entry.xhr = xhr;
+                    xhr.open('POST', `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=upload&field=${encodeURIComponent(field.name)}${sandbox ? '&sandbox' : ''}`);
+                    const csrf = formEl.querySelector('input[name="_bbf_csrf"]');
+                    if (csrf) xhr.setRequestHeader('X-BBF-CSRF', csrf.value);
+                    Object.entries(upload.headers || {}).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+                    xhr.upload.addEventListener('progress', e => {
+                        if (e.lengthComputable && entry.progressEl) entry.progressEl.value = Math.round(e.loaded / e.total * 100);
+                    });
+                    const fail = (message, retryable) => {
+                        entry.xhr = null; entry.state = 'error'; entry.retryable = retryable;
+                        entry.message = message || t('fileUploadFailed', { name: entry.name });
+                        render(entry); changed();
+                        status.textContent = entry.message;
+                    };
+                    xhr.addEventListener('load', () => {
+                        let result = {};
+                        try { result = JSON.parse(xhr.responseText); } catch (error) { /* non-JSON error page */ }
+                        if (xhr.status === 200 && typeof result.token === 'string') {
+                            entry.xhr = null; entry.state = 'done'; entry.token = result.token;
+                            entry.expiresAt = Date.parse(result.expires_at) || 0;
+                            if (result.file && result.file.name) entry.name = result.file.name;
+                            render(entry); changed();
+                            status.textContent = t('fileUploaded', { name: entry.name });
+                            return;
+                        }
+                        fail(result.message, xhr.status === 0 || xhr.status >= 500 || xhr.status === 429 || xhr.status === 403);
+                    });
+                    xhr.addEventListener('error', () => fail(t('networkError'), true));
+                    const data = new FormData();
+                    data.append('file', entry.file, entry.file.name);
+                    xhr.send(data);
+                };
+                input.addEventListener('change', () => {
+                    Array.from(input.files || []).forEach(file => {
+                        const entry = { file, name: file.name, size: file.size, state: 'error', row: document.createElement('li') };
+                        list.appendChild(entry.row);
+                        wrap._bbfFiles.push(entry);
+                        const dot = file.name.lastIndexOf('.');
+                        const ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : '';
+                        // Rejected rows only show a message; they never count against max_files.
+                        entry.rejected = true;
+                        if (wrap._bbfFiles.filter(f => !f.rejected).length >= maxFiles) {
+                            entry.message = t('tooManyFiles', { label: field.label || field.name, max: maxFiles });
+                        } else if (accept.length && !accept.includes(ext)) {
+                            entry.message = t('fileTypeRejected', { name: file.name });
+                        } else if (maxSize && file.size > maxSize) {
+                            entry.message = t('fileTooLarge', { name: file.name, max: this._formatSize(maxSize) });
+                        } else {
+                            entry.rejected = false;
+                            send(entry);
+                            return;
+                        }
+                        render(entry); changed();
+                    });
+                    input.value = '';
+                });
+                wrap._bbfClearFiles = () => {
+                    wrap._bbfFiles.forEach(entry => { if (entry.xhr) entry.xhr.abort(); });
+                    wrap._bbfFiles = [];
+                    list.textContent = '';
+                    status.textContent = '';
+                    clearTimeout(expiryTimer);
+                };
+            });
+        },
+
+        /** 'pending' while any upload runs, 'failed' while any failed entry remains, otherwise null. */
+        _fileFieldsState: function(formEl) {
+            let state = null;
+            formEl.querySelectorAll('.bbf-field-file').forEach(wrap => {
+                (wrap._bbfFiles || []).forEach(entry => {
+                    if (entry.state === 'uploading') state = 'pending';
+                    else if (entry.state === 'error' && state !== 'pending') state = 'failed';
+                });
+            });
+            return state;
+        },
+
+        /** Upload tokens of visible file fields into the submit body. */
+        _collectFileFields: function(formEl, body) {
+            formEl.querySelectorAll('.bbf-field-file').forEach(wrap => {
+                const name = wrap.getAttribute('data-field');
+                const tokens = (wrap._bbfFiles || []).filter(entry => entry.state === 'done').map(entry => entry.token);
+                if (tokens.length) body[name] = tokens; else delete body[name];
+            });
         },
 
         // Recursively collect all source field names from a condition tree
@@ -824,6 +1070,12 @@
             el.querySelectorAll('.bbf-repeatable-group').forEach(group => {
                 if (group._bbfBindRows) group._bbfBindRows();
             });
+            this._bindFileFields(el, formId, baseUrl, options, langCode);
+            // Submit waits for uploads in flight and for failed uploads to be retried or removed.
+            el.addEventListener('bbf:files-changed', () => {
+                const submit = el.querySelector('.bbf-submit');
+                if (submit && !el._bbfSubmitting) submit.disabled = this._fileFieldsState(el) === 'pending';
+            });
 
             el.addEventListener('reset', () => {
                 setTimeout(() => {
@@ -860,7 +1112,15 @@
             }
 
             const draftControls = this._buildDraftControls(el, form, formId, baseUrl, csrfToken, langCode, isSameOrigin, dataFields, idPrefix);
-            if (draftControls) el.appendChild(draftControls);
+            if (draftControls) {
+                if (dataFields.some(f => f.type === 'file')) {
+                    const note = document.createElement('small');
+                    note.className = 'bbf-field-desc bbf-draft-files-note';
+                    note.textContent = this._t('filesNotInDrafts', {}, langCode);
+                    draftControls.insertBefore(note, draftControls.querySelector('.bbf-draft-status'));
+                }
+                el.appendChild(draftControls);
+            }
 
             // Navigation / Submit
             if (hasPages) {
@@ -946,8 +1206,16 @@
                 Object.assign(errors, crossErrors);
                 this._showErrors(el, errors);
                 if (Object.keys(errors).length > 0) return;
+                const filesState = this._fileFieldsState(el);
+                if (filesState) {
+                    msg.className = 'bbf-message bbf-error';
+                    msg.textContent = this._t(filesState === 'pending' ? 'filesPending' : 'filesFailed', {}, langCode);
+                    msg.style.display = 'block';
+                    return;
+                }
 
                 btn.disabled = true;
+                el._bbfSubmitting = true;
                 btn.textContent = form.submitting_label || this._t('submittingDefault', {}, langCode);
 
                 try {
@@ -962,6 +1230,7 @@
                         }
                     });
                     this._collectRepeatableGroups(form.fields || [], el, body);
+                    this._collectFileFields(el, body);
 
                     // Remove conditionally hidden fields (and group children) from submission
                     el.querySelectorAll('[data-conditional-hidden="true"]').forEach(hiddenWrap => {
@@ -1023,6 +1292,7 @@
                     } else if (result.status === 'ok' && resp.ok) { if (!result.sandbox && el._bbfSubmitKey) { el._bbfSubmitKey = newSubmitKey(); el._bbfSubmitted = true; } try { if (typeof result.submission_id === 'string' && result.submission_id) { const event = new CustomEvent('bbf:submitted', { detail: { form: formId, submission_id: result.submission_id } }); event.bbfAnalytics = form._bbf_client?.analytics || {}; document.dispatchEvent(event); } } catch (error) { /* External listeners cannot fail a stored lead. */ }
                         // onSuccess callback — return false to skip default handling
                         if (options.onSuccess && options.onSuccess(result, body) === false) {
+                            el._bbfSubmitting = false;
                             btn.disabled = false;
                             btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
                             return;
@@ -1062,6 +1332,7 @@
                     console.error('BareBonesForms submit error:', err);
                 }
 
+                el._bbfSubmitting = false;
                 btn.disabled = false;
                 btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
             });
@@ -1386,6 +1657,10 @@
             // Rating field
             if (type === 'rating') {
                 return this._buildRating(field, langCode, idPrefix);
+            }
+
+            if (type === 'file') {
+                return this._buildFileField(field, langCode, idPrefix);
             }
 
             const wrap = document.createElement('div');
@@ -2046,6 +2321,13 @@
                 } else if (type === 'rating') {
                     const hidden = formEl.querySelector(`input[name="${name}"]`);
                     value = hidden ? hidden.value : '';
+                } else if (type === 'file') {
+                    const files = wrap && wrap._bbfFiles ? wrap._bbfFiles.filter(f => f.state === 'done') : [];
+                    if (files.length > (field.max_files || 1)) {
+                        errors[name] = t('tooManyFiles', { label: field.label || name, max: field.max_files || 1 });
+                        return;
+                    }
+                    value = files.length ? files.map(f => f.token) : '';
                 } else {
                     const input = formEl.querySelector(`[name="${name}"]`);
                     value = input ? input.value.trim() : '';

@@ -668,3 +668,46 @@
     padding: 24px;
     color: var(--bbf-text-light);
 }
+
+/* ─── File uploads ─────────────────────────────────────────── */
+
+.bbf-file-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+}
+
+.bbf-file {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--bbf-border-light);
+    border-radius: var(--bbf-radius);
+    margin-bottom: 4px;
+    font-size: 0.9em;
+}
+
+.bbf-file-name { flex: 1 1 auto; overflow-wrap: anywhere; }
+.bbf-file-size { color: var(--bbf-text-muted); }
+.bbf-file-progress { flex: 0 0 100px; }
+.bbf-file-message { flex-basis: 100%; }
+
+.bbf-file-error {
+    border-color: var(--bbf-error-border);
+    background: var(--bbf-error-bg);
+    color: var(--bbf-error);
+}
+
+.bbf-file-remove, .bbf-file-retry {
+    border: 1px solid var(--bbf-border);
+    background: var(--bbf-bg);
+    color: var(--bbf-text);
+    border-radius: var(--bbf-radius);
+    cursor: pointer;
+    padding: 2px 8px;
+    font: inherit;
+}
+
+.bbf-file-status { font-size: 0.85em; color: var(--bbf-text-muted); margin-top: 4px; }

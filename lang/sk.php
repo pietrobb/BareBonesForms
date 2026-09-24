@@ -19,4 +19,5 @@ return [
     'dateMin'       => '{label} musí byť {min} alebo neskôr.',
     'dateMax'       => '{label} musí byť {max} alebo skôr.',
     'invalidFormat'  => '{label} má neplatný formát.',
+    'tooManyFiles'   => '{label} povoľuje najviac {max} súborov.',
 ];

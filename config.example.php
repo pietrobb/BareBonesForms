@@ -94,6 +94,27 @@ return [
     'submit_replay_rate'         => 30,    // retries and polls per key per minute
     'submit_recovery_budget'     => 5,     // crashed submits each request finishes afterwards (0 = CLI only)
 
+    // ─── File uploads (type: "file" fields) ─────────────────────
+    // Off by default. Keep 'dir' outside the web root; files are downloaded only through the viewer.
+    // Housekeeping: `php maintenance.php uploads-cleanup` (cron) removes expired staging files.
+    'uploads' => [
+        'enabled'                => false,
+        'dir'                    => dirname(__DIR__) . '/barebonesforms-private/uploads',
+        'allow_inside_web_root'  => false,   // weaker; needs diagnostic_base_url to prove the dir is not served
+        'max_file_size'          => 10 * 1024 * 1024,
+        'max_submission_size'    => 25 * 1024 * 1024,
+        'allowed_extensions'     => ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'txt', 'docx', 'xlsx', 'odt', 'ods'],
+        'staging_ttl'            => 7200,    // seconds an uploaded, not yet submitted file is kept
+        'max_staging_bytes'      => 500 * 1024 * 1024,
+        'max_staging_entries'    => 2000,
+        'per_ip_staging_bytes'   => 100 * 1024 * 1024,
+        'per_ip_staging_entries' => 40,
+        'max_stored_bytes'       => 5 * 1024 * 1024 * 1024,
+        'max_stored_files'       => 50000,
+        'min_free_disk'          => 200 * 1024 * 1024,
+        'rate_limit'             => ['max' => 60, 'window' => 600],   // upload requests per IP, rejected ones included
+    ],
+
     // ─── Stripe (payments) ──────────────────────────────────────
     // Required only if you use on_submit.payment in any form.
     // Get keys from https://dashboard.stripe.com/apikeys

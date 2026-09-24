@@ -115,7 +115,7 @@ function deploy_test_expected_files(): array
         '.bbf-package', '.gitignore', '.htaccess', 'CHANGELOG.md', 'LICENSE', 'README.md', 'actions/README.md',
         'api-psc.php', 'bbf-theme.css', 'bbf.css', 'bbf.js', 'bbf_auth.php', 'bbf_backup.php',
         'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php', 'bbf_functions.php',
-        'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_versions.php', 'check.php', 'config.example.php',
+        'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_uploads.php', 'bbf_versions.php', 'check.php', 'config.example.php',
         'data/city-to-psc.json', 'data/psc-to-city.json', 'demo.css', 'demo.html',
         'demo1.html', 'demo2.html', 'demo3.html', 'demo4.html', 'demo5.html', 'demo6.html',
         'demo7.html', 'demo8.html', 'demo9.html', 'docs.html', 'editor.php', 'index.html',
@@ -176,11 +176,11 @@ try {
     $expected = deploy_test_expected_files();
     $actual = deploy_test_files($destination);
     deploy_test_check($actual === $expected, 'package has the exact independently specified sorted file set');
-    deploy_test_check(count($actual) === 139, 'package manifest contains exactly 139 files');
+    deploy_test_check(count($actual) === 140, 'package manifest contains exactly 140 files');
 
     foreach ([
         'bbf_auth.php', 'bbf_backup.php', 'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php',
-        'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_versions.php', 'maintenance.php', 'api-psc.php', 'demo9.html',
+        'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_uploads.php', 'bbf_versions.php', 'maintenance.php', 'api-psc.php', 'demo9.html',
         'forms/demo-psc.json', 'data/city-to-psc.json', 'data/psc-to-city.json',
     ] as $required) {
         deploy_test_check(is_file($destination . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $required)), "required runtime dependency is packaged: $required");

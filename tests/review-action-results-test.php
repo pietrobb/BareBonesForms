@@ -9,7 +9,7 @@ define('BBF_LOADED', true);
 $root = sys_get_temp_dir() . '/bbf-action-results-' . bin2hex(random_bytes(8));
 mkdir($root, 0700, true);
 foreach (['actions', 'config', 'forms', 'logs', 'submissions/test'] as $dir) mkdir("$root/$dir", 0700, true);
-foreach (['bbf_functions.php', 'bbf_storage.php', 'bbf_delivery.php', 'bbf_outbox.php'] as $file) {
+foreach (['bbf_functions.php', 'bbf_storage.php', 'bbf_delivery.php', 'bbf_outbox.php', 'bbf_uploads.php', 'bbf_diagnostics.php'] as $file) {
     copy(dirname(__DIR__) . '/' . $file, "$root/$file");
 }
 copy(dirname(__DIR__) . '/actions/google-ads-conversion.php', "$root/actions/google-ads-conversion.php");

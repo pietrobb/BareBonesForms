@@ -116,7 +116,7 @@ if (!empty($config['allowed_origins'])) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type');
+    header('Access-Control-Allow-Headers: Content-Type, X-BBF-CSRF');
     http_response_code(204);
     exit;
 }
@@ -146,6 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $def = json_decode(file_get_contents($defFile), true);
         if (!is_array($def) || ($def['id'] ?? null) !== $defFormId) respond(500, 'Invalid form definition.');
         $def = bbfSystemDefinition($def, $config); $def['_bbf_client'] = bbfClientConfiguration($config); unset($def['on_submit'], $def['storage']);
+        $def['fields'] = bbf_submit_client_file_fields($config, (array)($def['fields'] ?? []));
         echo json_encode($def, JSON_UNESCAPED_UNICODE);
         exit;
     }
@@ -164,6 +165,10 @@ if (!$formId) {
     respond(400, 'Missing ?form= parameter.');
 }
 
+// ─── File uploads: one file per request, before any body parsing (design §4.2) ─
+if (($_GET['action'] ?? '') === 'upload') bbf_submit_upload($config, $formId, $isSandbox);
+if (($_GET['action'] ?? '') === 'upload_delete') bbf_submit_upload_delete($config, $formId, $isSandbox);
+
 // ─── Parse input ────────────────────────────────────────────────
 $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
 if (stripos($contentType, 'application/json') !== false) {
@@ -178,6 +183,7 @@ $rawInput = $input;
 $submitKey = $input['_bbf_submit_key'] ?? null;
 unset($input['_bbf_submit_key']);
 if ($submitKey !== null && !bbf_tx_valid_key($submitKey)) respond(400, 'Invalid submit key.');
+if (bbf_submit_duplicate_token($input)) respond(400, 'The same uploaded file is listed more than once.');
 $txKey = $submitKey !== null ? hash('sha256', $submitKey) : null;
 $isDraftAction = in_array($_GET['action'] ?? '', ['draft_save', 'draft_load', 'draft_delete'], true);
 if (!$isSandbox && !$isDraftAction && $txKey !== null) bbf_submit_step_a($config, $formId, $txKey, $rawInput);
@@ -275,6 +281,11 @@ if (!$shapeErrors) {
 if ($isSandbox) {
     $data = $normalizedData;
     $submissionId = 'bbf_test_' . bin2hex(random_bytes(4));
+    $fileFields = bbf_uploads_file_fields($flatFields);
+    if (!$errors && $fileFields) {
+        $sandboxPlan = bbf_uploads_plan($config, $formId, $submissionId, $fileFields, $data, true);
+        if (!$sandboxPlan['ok']) $errors = $sandboxPlan['errors'];
+    }
     $timestamp = date('c');
     $onSubmit = $form['on_submit'] ?? [];
 
@@ -389,6 +400,20 @@ if (!empty($errors)) {
 $data = $normalizedData;
 $submissionId = 'bbf_' . bin2hex(random_bytes(8));
 $timestamp = date('c');
+
+// ─── Step C: plan the uploaded files; descriptors replace the tokens in the record ─
+$uploadPlan = null;
+$fileFields = bbf_uploads_file_fields($flatFields);
+if ($fileFields) {
+    $planned = bbf_uploads_plan($config, $formId, $submissionId, $fileFields, $data, false);
+    if (!$planned['ok']) {
+        respond($planned['code'], $planned['code'] === 422 ? 'Validation failed.' : 'File uploads are unavailable.', ['errors' => $planned['errors']]);
+    }
+    $uploadPlan = $planned['plan'];
+    if ($uploadPlan !== null && ($form['on_submit']['store'] ?? true) === false) {
+        respond(500, 'File fields require stored submissions.');
+    }
+}
 
 $meta = ['submitted' => $timestamp] + bbf_version_submission_metadata($form, $formId, $publishedDefinitionVersion);
 if ($config['store_ip'] ?? true) {
@@ -523,6 +548,7 @@ if (!$storeEnabled) {
             'storage_fingerprint' => bbf_tx_storage_fingerprint($storeConfig), 'backend' => $storeConfig['storage'],
             'payment' => $isPayment,
         ];
+        if ($uploadPlan !== null) $txState['files'] = $uploadPlan;
         if ($isPayment) {
             $txState['checkout'] = $checkoutParams;
         } else {
@@ -555,6 +581,18 @@ if (!$storeEnabled) {
     }
     if (bbf_tx_remaining() <= 0) bbf_submit_tx_stop($tx, bbf_tx_state($txState, 'aborted'), 503, 'Submission could not be saved. Please submit again.');
 
+    // ─── Step D: claim the planned files into <form>/<submission_id>/ ─
+    if ($uploadPlan !== null) {
+        $claim = bbf_uploads_claim($config, bbf_uploads_tx_owner($formId, $txKey), $uploadPlan);
+        if (!$claim['ok']) {
+            $mysqlPdo = null;
+            $extra = isset($claim['retry_after']) ? ['retry_after' => $claim['retry_after']] : [];
+            if ($claim['code'] === 422) $extra['errors'] = ['_uploads' => $claim['message']];
+            // Only a confirmed complete undo may end the transaction; otherwise recovery finishes it.
+            bbf_submit_tx_stop($tx, $claim['undone'] ? bbf_tx_state($txState, 'aborted') : null, $claim['code'], $claim['message'], $extra);
+        }
+    }
+
     $outboxPath = '';
     if ($deliveryJobs !== []) {
         $outboxPath = bbf_outbox_path($storeConfig, $formId, $submissionId);
@@ -565,7 +603,7 @@ if (!$storeEnabled) {
         if (!($initialized['ok'] ?? false)) {
             error_log('BareBonesForms: Delivery plan persistence failed for ' . $submissionId);
             $mysqlPdo = null;
-            bbf_submit_tx_stop($tx, bbf_tx_state($txState, 'aborted'), 500, 'Submission delivery could not be saved. Please try again later.');
+            bbf_submit_tx_stop($tx, bbf_submit_tx_aborted($config, $formId, $txKey, $txState), 500, 'Submission delivery could not be saved. Please try again later.');
         }
     }
 
@@ -587,7 +625,7 @@ if (!$storeEnabled) {
             }
         }
         if ($existence !== 'exists') {
-            bbf_submit_tx_stop($tx, $existence === 'not_found' ? bbf_tx_state($txState, 'aborted') : null,
+            bbf_submit_tx_stop($tx, $existence === 'not_found' ? bbf_submit_tx_aborted($config, $formId, $txKey, $txState) : null,
                 503, 'Submission could not be saved. Please submit again.', $storageError);
         }
     }
@@ -680,6 +718,137 @@ function bbf_submit_payment_response(array $finished, bool $replay): never {
             ['code' => 'payment_unavailable', 'submission_id' => $state['submission_id']] + $flag);
     }
     respond(200, 'OK', $flag + ['submission_id' => $state['submission_id'], 'redirect' => $response['redirect'] ?? null]);
+}
+
+/** The aborted state after a claim: files go back to staging first. A failed rollback keeps the intent open (null). */
+function bbf_submit_tx_aborted(array $config, string $formId, string $k, array $txState): ?array {
+    if (!empty($txState['files']) && !bbf_uploads_rollback($config, bbf_uploads_tx_owner($formId, $k), $txState['files'])) return null;
+    return bbf_tx_state($txState, 'aborted');
+}
+
+// ─── File uploads (docs/FILE-UPLOAD-DESIGN.md §4.2) ──────────────
+
+/** Step 0: one upload token may appear only once in the whole body. Nothing definition-dependent. */
+function bbf_submit_duplicate_token(array $input): bool {
+    $seen = [];
+    foreach ($input as $value) {
+        if (!is_array($value)) continue;
+        array_walk_recursive($value, static function ($item) use (&$seen, &$duplicate): void {
+            if (!is_string($item) || !preg_match('/\A[a-f0-9]{32}\z/D', $item)) return;
+            if (isset($seen[$item])) $duplicate = true;
+            $seen[$item] = true;
+        });
+        if (!empty($duplicate)) return true;
+    }
+    return false;
+}
+
+/** File fields in the public definition carry the effective accept list and size limit. */
+function bbf_submit_client_file_fields(array $config, array $fields): array {
+    foreach ($fields as &$field) {
+        if (!is_array($field)) continue;
+        if (($field['type'] ?? '') === 'file') $field = bbf_uploads_client_field($config, $field);
+        elseif (is_array($field['fields'] ?? null)) $field['fields'] = bbf_submit_client_file_fields($config, $field['fields']);
+    }
+    return $fields;
+}
+
+/** Upload CSRF travels in X-BBF-CSRF so it survives a post_max_size overflow. Same exemptions as submit. */
+function bbf_submit_upload_csrf(array $config, string $formId): void {
+    global $origin;
+    $smoke = $_SERVER['HTTP_X_BBF_SMOKE_TOKEN'] ?? '';
+    $smokeAuth = is_string($config['smoke_token'] ?? null) && $config['smoke_token'] !== ''
+        && is_string($smoke) && $smoke !== '' && hash_equals($config['smoke_token'], $smoke);
+    $cors = !empty($origin) && in_array($origin, (array)($config['allowed_origins'] ?? []), true);
+    if (!($config['csrf'] ?? true) || $cors || $smokeAuth) return;
+    ensureSession();
+    $token = $_SERVER['HTTP_X_BBF_CSRF'] ?? '';
+    if (empty($_SESSION['bbf_secret']) || !is_string($token)
+        || !hash_equals(hash_hmac('sha256', $formId, $_SESSION['bbf_secret']), $token)) {
+        respond(403, 'Invalid or missing CSRF token.');
+    }
+}
+
+/** The published definition's file field named in ?field=, or a 4xx response. */
+function bbf_submit_upload_field(array $config, string $formId): array {
+    $path = $config['forms_dir'] . "/$formId.json";
+    if (!is_file($path)) respond(404, "Form '$formId' not found.");
+    $form = json_decode((string)file_get_contents($path), true);
+    if (!is_array($form) || ($form['id'] ?? null) !== $formId || empty($form['fields']) || validateFormDefinition($form)) {
+        respond(500, 'Invalid form definition.');
+    }
+    $form = bbfSystemDefinition($form, $config);
+    if (!empty($form['templates'])) $form['fields'] = resolveTemplates($form['fields'], $form['templates']);
+    $name = $_GET['field'] ?? '';
+    $fields = is_string($name) ? bbf_uploads_file_fields(flattenFields($form['fields'])) : [];
+    if (!isset($fields[$name])) respond(400, 'This field does not accept files.');
+    return $fields[$name];
+}
+
+function bbf_submit_upload(array $config, string $formId, bool $isSandbox): never {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, 'Method not allowed.');
+    $root = bbf_uploads_root($config, !$isSandbox);
+    if (!$root['ok']) respond($root['code'], $root['error']);
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    // Every request counts, including ones rejected below.
+    if (!$isSandbox && !bbf_uploads_rate_limit($config, $ip)) respond(429, 'Too many uploads. Try again later.', ['retry_after' => 60]);
+    $postMax = bbf_uploads_ini_bytes(ini_get('post_max_size'));
+    if ($postMax > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $postMax) respond(413, 'The file is larger than this server accepts.');
+    if (!$isSandbox) bbf_submit_upload_csrf($config, $formId);
+    $field = bbf_submit_upload_field($config, $formId);
+    $file = $_FILES['file'] ?? null;
+    if (count($_FILES) !== 1 || !is_array($file) || is_array($file['name'] ?? null) || !is_int($file['error'] ?? null)) {
+        respond(400, 'Send exactly one file in the "file" field.');
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $code = match ($file['error']) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 413,
+            UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE, UPLOAD_ERR_EXTENSION => 503,
+            default => 400,
+        };
+        respond($code, bbf_uploads_error_message($file['error']));
+    }
+    $checked = bbf_uploads_validate_file($config, $field, (string)$file['tmp_name'], (string)$file['name'], (int)$file['size']);
+    if (!$checked['ok']) respond($checked['code'], $checked['message']);
+    if ($isSandbox) {
+        $expires = time() + max(60, (int)bbf_uploads_config($config)['staging_ttl']);
+        $token = bbf_uploads_sandbox_token($root['root'], ['form' => $formId, 'field' => $field['name'], 'name' => $checked['name'],
+            'size' => $checked['size'], 'type' => $checked['type'], 'ext' => $checked['ext'], 'exp' => $expires]);
+        bbf_access_finish(0, true);
+        respond(200, 'OK', ['token' => $token, 'expires_at' => gmdate('c', $expires), 'sandbox' => true,
+            'file' => ['name' => $checked['name'], 'size' => $checked['size'], 'type' => $checked['type']]]);
+    }
+    try {
+        $stored = bbf_uploads_store($config, $root['root'], $formId, (string)$field['name'], (string)$file['tmp_name'], $checked, $ip);
+    } catch (Throwable $error) {
+        error_log('BareBonesForms upload failed: ' . $error->getMessage());
+        respond(503, 'Temporary storage problem. Please try again.');
+    }
+    if (!$stored['ok']) respond($stored['code'], $stored['message'], $stored['code'] === 429 ? ['retry_after' => 600] : []);
+    unset($stored['ok']);
+    respond(200, 'OK', $stored);
+}
+
+function bbf_submit_upload_delete(array $config, string $formId, bool $isSandbox): never {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, 'Method not allowed.');
+    $root = bbf_uploads_root($config, false);
+    if (!$root['ok']) respond($root['code'], $root['error']);
+    if (!$isSandbox) bbf_submit_upload_csrf($config, $formId);
+    $body = json_decode((string)file_get_contents('php://input'), true);
+    $token = is_array($body) ? ($body['token'] ?? null) : null;
+    if ($isSandbox) {
+        bbf_access_finish(0, true);
+        respond(200, 'OK');
+    }
+    if (!is_string($token) || !preg_match('/\A[a-f0-9]{32}\z/D', $token)) respond(400, 'Invalid upload token.');
+    try {
+        $result = bbf_uploads_delete_staged($config, $root['root'], $formId, $token);
+    } catch (Throwable $error) {
+        error_log('BareBonesForms upload delete failed: ' . $error->getMessage());
+        respond(503, 'Temporary storage problem. Please try again.', ['retry_after' => 5]);
+    }
+    if (!$result['ok']) respond($result['code'], $result['message'], isset($result['retry_after']) ? ['retry_after' => $result['retry_after']] : []);
+    respond(200, 'OK');
 }
 
 /**
@@ -926,15 +1095,26 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
         ? ['__bbf:definition_version', '__bbf:form_definition', '__bbf:csv_escaped_fields'] : [];
     $fieldNames = [];
     $structuredFields = [];
+    $fileFields = [];
     foreach (flattenFields($formFields) as $field) {
         $type = $field['type'] ?? 'text';
         if ($type === 'group' && !empty($field['repeatable']) && isset($field['name'])) {
             $structuredFields[$field['name']] = true;
         }
+        if ($type === 'file' && isset($field['name'])) $fileFields[$field['name']] = true;
         if (in_array($type, ['section', 'page_break', 'group'], true)) continue;
         if (isset($field['name'])) $fieldNames[] = $field['name'];
     }
     if ($structuredFields !== []) $versionCols[] = '__bbf:structured_fields';
+    // File descriptors: a readable cell per field, the full descriptors in one reserved column.
+    $fileDescriptors = [];
+    foreach ($submission['data'] as $name => $value) {
+        if (isset($fileFields[$name]) || bbf_uploads_is_descriptor_list($value) && $value !== []) {
+            $fileDescriptors[$name] = is_array($value) ? $value : [];
+            $submission['data'][$name] = bbf_uploads_describe($value);
+        }
+    }
+    if (array_filter($fileDescriptors)) $versionCols[] = '__bbf:files';
     $fieldNames = array_values(array_unique(array_merge($fieldNames, array_keys($submission['data']))));
     $escapedFields = [];
     foreach ($submission['data'] as $name => $value) {
@@ -944,7 +1124,7 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
     }
     // Reserved metadata columns cannot also represent respondent values.
     if (array_intersect(array_merge($metaCols, $versionCols), $fieldNames)) return false;
-    return bbf_storage_locked($file, static function () use ($file, $submission, $metaCols, $versionCols, $fieldNames, $escapedFields, $structuredFields): bool {
+    return bbf_storage_locked($file, static function () use ($file, $submission, $metaCols, $versionCols, $fieldNames, $escapedFields, $structuredFields, $fileDescriptors): bool {
         $source = null;
         try {
             $headers = $metaCols;
@@ -966,7 +1146,7 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
             }
             // Preserve historical order, including deleted/renamed fields; only append new names.
             $union = array_values(array_unique(array_merge($headers, $fieldNames, $versionCols)));
-            return bbf_storage_replace($file, static function ($out) use ($source, $headers, $union, $submission, $escapedFields, $structuredFields): bool {
+            return bbf_storage_replace($file, static function ($out) use ($source, $headers, $union, $submission, $escapedFields, $structuredFields, $fileDescriptors): bool {
                 if (!bbf_storage_write_csv($out, $union)) return false;
                 if ($source) {
                     while (true) {
@@ -1000,6 +1180,8 @@ function storeCsv(array $submission, string $dir, array $formFields): bool {
                         $value = bbf_storage_json($escapedFields);
                     } elseif ($name === '__bbf:structured_fields') {
                         $value = bbf_storage_json(array_keys($structuredFields));
+                    } elseif ($name === '__bbf:files') {
+                        $value = array_filter($fileDescriptors) ? bbf_storage_json(array_filter($fileDescriptors)) : '';
                     } else {
                         $value = $submission['data'][$name] ?? '';
                     }

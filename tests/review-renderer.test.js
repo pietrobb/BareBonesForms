@@ -201,7 +201,7 @@ test('sandbox latest form load wins when the older definition resolves last', as
         BBF, document, window: {}, sandboxSubmit() {}, encodeURIComponent,
         fetch: requestFetch,
     });
-    vm.runInContext("let currentFormId = ''; let currentFormDef = null; let loadRequest = 0;\n"
+    vm.runInContext("let currentFormId = ''; let currentFormDef = null; let loadRequest = 0; const sandboxCsrf = 'sandbox-csrf';\n"
         + loadForm + '\nthis.loadForm = window.loadForm; this.currentDefinition = () => currentFormDef;', runtime);
     const oldLoad = runtime.loadForm('old');
     const newLoad = runtime.loadForm('new');
