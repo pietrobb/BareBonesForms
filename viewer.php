@@ -2341,9 +2341,12 @@ function relativeTime(iso) {
     if (diff < 0) return t('just_now');
     if (diff < 60) return t('just_now');
     if (diff < 3600) return Math.floor(diff / 60) + ' ' + t('min_ago');
-    if (diff < 86400) return Math.floor(diff / 3600) + ' ' + t('h_ago');
-    if (diff < 172800) return t('yesterday');
-    if (diff < 604800) return Math.floor(diff / 86400) + ' ' + t('days_ago');
+    // Calendar days in local time, not 24 h blocks: 22.9 seen on 24.9 is "2 days ago", not "yesterday".
+    const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        - new Date(date.getFullYear(), date.getMonth(), date.getDate())) / 86400000);
+    if (days === 0) return Math.floor(diff / 3600) + ' ' + t('h_ago');
+    if (days === 1) return t('yesterday');
+    if (days < 7) return days + ' ' + t('days_ago');
     return date.toLocaleDateString();
 }
 
