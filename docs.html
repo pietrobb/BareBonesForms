@@ -1235,7 +1235,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 
 <div class="code-block"><span class="lang">php</span><pre>'lang' => 'de',</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
-<p>Server-side validation errors will be returned in the configured language. Any key not found in the language file falls back to English. No missing messages, no broken forms &mdash; the system is more forgiving than I am.</p>
+<p>Server-side validation and file upload errors will be returned in the configured language. A form with <code>data-lang</code> sends its language along with the submission and each upload, and the server answers in it when <code>lang/&lt;code&gt;.php</code> exists. Any key not found in the language file falls back to English. No missing messages, no broken forms &mdash; the system is more forgiving than I am.</p>
 
 <h3>Adding a Custom Language</h3>
 <p>Create two files in the <code>lang/</code> directory. Use <code>lang/en.js</code> and <code>lang/en.php</code> as your reference &mdash; they contain every key.</p>

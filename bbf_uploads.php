@@ -893,32 +893,42 @@ function bbf_uploads_rate_limit(array $config, string $ip): bool {
     }
 }
 
+/** Respondent-facing text: submit.php's msg() (request or config language), otherwise the English pack. */
+function bbf_uploads_t(string $key, array $params = []): string {
+    if (function_exists('msg')) return msg($key, $params);
+    static $en = null;
+    $en ??= require __DIR__ . '/lang/en.php';
+    $text = $en[$key] ?? $key;
+    foreach ($params as $k => $v) $text = str_replace('{' . $k . '}', (string)$v, $text);
+    return $text;
+}
+
 function bbf_uploads_error_message(int $error): string {
-    return match ($error) {
-        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The file is larger than this server accepts.',
-        UPLOAD_ERR_PARTIAL => 'The upload was interrupted. Please try again.',
-        UPLOAD_ERR_NO_FILE => 'No file was received.',
-        UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'The server cannot store uploads right now.',
-        UPLOAD_ERR_EXTENSION => 'The server refused this upload.',
-        default => 'The upload failed.',
-    };
+    return bbf_uploads_t(match ($error) {
+        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'uploadServerLimit',
+        UPLOAD_ERR_PARTIAL => 'uploadInterrupted',
+        UPLOAD_ERR_NO_FILE => 'uploadNoFile',
+        UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'uploadCannotStore',
+        UPLOAD_ERR_EXTENSION => 'uploadRefused',
+        default => 'uploadFailed',
+    });
 }
 
 /** Structural plausibility filter for OOXML and ODF (section 6). Null = plausible, else the reason. */
 function bbf_uploads_office_check(string $path, string $ext): ?string {
     if (!class_exists('ZipArchive')) return 'This file type needs the ZipArchive extension on the server.';
     $zip = new ZipArchive();
-    if ($zip->open($path, defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0) !== true) return 'The file is not a valid document.';
+    if ($zip->open($path, defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0) !== true) return bbf_uploads_t('uploadInvalidDocument');
     try {
         $count = $zip->numFiles;
-        if ($count < 1 || $count > 2000) return 'The file is not a valid document.';
+        if ($count < 1 || $count > 2000) return bbf_uploads_t('uploadInvalidDocument');
         $found = [];
         for ($i = 0; $i < $count; $i++) {
             $name = (string)$zip->getNameIndex($i);
             $lower = strtolower($name);
-            if (str_ends_with($lower, 'vbaproject.bin')) return 'Documents with macros cannot be uploaded.';
+            if (str_ends_with($lower, 'vbaproject.bin')) return bbf_uploads_t('uploadMacros');
             if (in_array($ext, ['odt', 'ods'], true) && (str_starts_with($name, 'Basic/') || str_starts_with($name, 'Scripts/'))) {
-                return 'Documents with macros cannot be uploaded.';
+                return bbf_uploads_t('uploadMacros');
             }
             $found[$name] = true;
         }
@@ -927,10 +937,10 @@ function bbf_uploads_office_check(string $path, string $ext): ?string {
             'xlsx' => ['[Content_Types].xml', 'xl/workbook.xml'],
             default => ['mimetype'],
         };
-        foreach ($required as $name) if (!isset($found[$name])) return 'The file is not a valid document.';
+        foreach ($required as $name) if (!isset($found[$name])) return bbf_uploads_t('uploadInvalidDocument');
         if (in_array($ext, ['odt', 'ods'], true)) {
             $expected = $ext === 'odt' ? 'application/vnd.oasis.opendocument.text' : 'application/vnd.oasis.opendocument.spreadsheet';
-            if (trim((string)$zip->getFromName('mimetype', 100)) !== $expected) return 'The file is not a valid document.';
+            if (trim((string)$zip->getFromName('mimetype', 100)) !== $expected) return bbf_uploads_t('uploadInvalidDocument');
         }
         return null;
     } finally {
@@ -942,28 +952,28 @@ function bbf_uploads_office_check(string $path, string $ext): ?string {
 function bbf_uploads_validate_file(array $config, array $field, string $tmp, string $clientName, int $size): array {
     $name = bbf_uploads_sanitize_name($clientName);
     $ext = bbf_uploads_name_ext($name);
-    if ($size <= 0) return ['ok' => false, 'code' => 422, 'message' => 'The file is empty.'];
+    if ($size <= 0) return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadEmpty')];
     $max = bbf_uploads_field_max_size($config, $field);
-    if ($size > $max) return ['ok' => false, 'code' => 413, 'message' => 'The file is larger than ' . bbf_uploads_human_size($max) . '.'];
+    if ($size > $max) return ['ok' => false, 'code' => 413, 'message' => bbf_uploads_t('uploadTooLarge', ['max' => bbf_uploads_human_size($max)])];
     if ($ext === '' || bbf_uploads_hard_denied($ext, $name) || !in_array($ext, bbf_uploads_field_accept($config, $field), true)) {
-        return ['ok' => false, 'code' => 422, 'message' => 'This file type is not accepted here.'];
+        return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadType')];
     }
     if (!class_exists('finfo')) return ['ok' => false, 'code' => 503, 'message' => 'The server cannot check uploads (fileinfo is missing).'];
     $mime = (string)(new finfo(FILEINFO_MIME_TYPE))->file($tmp);
     // A password-protected OOXML file is an OLE compound file, not a ZIP.
     if (in_array($ext, ['docx', 'xlsx'], true) && (str_starts_with($mime, 'application/CDFV2')
         || in_array($mime, ['application/encrypted', 'application/x-ole-storage'], true))) {
-        return ['ok' => false, 'code' => 422, 'message' => 'Encrypted documents cannot be uploaded. Please remove the password and try again.'];
+        return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadEncrypted')];
     }
     if (!in_array($mime, BBF_UPLOAD_TYPES[$ext][1], true)) {
-        return ['ok' => false, 'code' => 422, 'message' => 'The file content does not match its type.'];
+        return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadMismatch')];
     }
     if (BBF_UPLOAD_TYPES[$ext][2]) {
         $reason = bbf_uploads_office_check($tmp, $ext);
         if ($reason !== null) return ['ok' => false, 'code' => 422, 'message' => $reason];
     }
     $sha = hash_file('sha256', $tmp);
-    if (!is_string($sha)) return ['ok' => false, 'code' => 503, 'message' => 'The upload could not be read.'];
+    if (!is_string($sha)) return ['ok' => false, 'code' => 503, 'message' => bbf_uploads_t('uploadUnreadable')];
     return ['ok' => true, 'name' => $name, 'ext' => $ext, 'size' => $size, 'type' => BBF_UPLOAD_TYPES[$ext][0], 'sha256' => $sha];
 }
 
@@ -1035,9 +1045,9 @@ function bbf_uploads_store(array $config, string $root, string $formId, string $
         if ($notice !== null) bbfNotifyError('uploads', 'Upload limit reached', "The $notice upload limit was reached; uploads are being refused.", $config);
         if ($reserved !== null) {
             return match ($reserved) {
-                'ip' => ['ok' => false, 'code' => 429, 'message' => 'Too many files uploaded from your connection. Please try again later.'],
-                'io' => ['ok' => false, 'code' => 503, 'message' => 'Temporary storage problem. Please try again.'],
-                default => ['ok' => false, 'code' => 507, 'message' => 'The server cannot accept more uploads right now. Please try again later.'],
+                'ip' => ['ok' => false, 'code' => 429, 'message' => bbf_uploads_t('uploadIpLimit')],
+                'io' => ['ok' => false, 'code' => 503, 'message' => bbf_uploads_t('uploadTemporary')],
+                default => ['ok' => false, 'code' => 507, 'message' => bbf_uploads_t('uploadServerFull')],
             };
         }
         // Step 10: outside the lock; the reservation covers the bytes being written.
@@ -1078,7 +1088,7 @@ function bbf_uploads_store(array $config, string $root, string $formId, string $
             @unlink("$incoming.lock");
             return $ok;
         });
-        if (!$published) return ['ok' => false, 'code' => 503, 'message' => 'Temporary storage problem. Please try again.'];
+        if (!$published) return ['ok' => false, 'code' => 503, 'message' => bbf_uploads_t('uploadTemporary')];
         return ['ok' => true, 'token' => $token, 'expires_at' => gmdate('c', $meta['expires_at']),
             'file' => ['name' => $meta['name'], 'size' => $meta['size'], 'type' => $meta['type']]];
     } finally {
@@ -1159,7 +1169,7 @@ function bbf_uploads_plan(array $config, string $formId, string $submissionId, a
     $errors = [];
     $items = [];
     $total = 0;
-    $again = 'The uploaded file expired or is no longer available. Please upload it again.';
+    $again = bbf_uploads_t('uploadExpired');
     foreach ($wanted as $name => $tokens) {
         $field = $fileFields[$name];
         $label = (string)($field['label'] ?? $name);
@@ -1179,8 +1189,8 @@ function bbf_uploads_plan(array $config, string $formId, string $submissionId, a
                     || (int)($meta['expires_at'] ?? 0) < time() || !is_file("$root/staging/$hash")) { $errors[$name] = $again; break; }
                 $items[] = ['hash' => $hash, 'file_id' => $meta['file_id'], 'meta' => $meta];
             }
-            if (!in_array((string)($meta['ext'] ?? ''), $accept, true)) { $errors[$name] = "$label: this file type is no longer accepted. Please upload a different file."; break; }
-            if ((int)$meta['size'] > $max) { $errors[$name] = "$label: the file is larger than " . bbf_uploads_human_size($max) . '.'; break; }
+            if (!in_array((string)($meta['ext'] ?? ''), $accept, true)) { $errors[$name] = bbf_uploads_t('uploadTypeNoLonger', ['label' => $label]); break; }
+            if ((int)$meta['size'] > $max) { $errors[$name] = bbf_uploads_t('uploadFieldTooLarge', ['label' => $label, 'max' => bbf_uploads_human_size($max)]); break; }
             $total += (int)$meta['size'];
             $descriptors[] = ['id' => $meta['file_id'], 'name' => $meta['name'], 'size' => (int)$meta['size'],
                 'type' => $meta['type'], 'sha256' => $meta['sha256']];
@@ -1188,7 +1198,7 @@ function bbf_uploads_plan(array $config, string $formId, string $submissionId, a
         $data[$name] = $descriptors;
     }
     if ($errors === [] && $total > (int)$u['max_submission_size']) {
-        $errors['_uploads'] = 'The files together are larger than ' . bbf_uploads_human_size((int)$u['max_submission_size']) . '.';
+        $errors['_uploads'] = bbf_uploads_t('uploadTotalTooLarge', ['max' => bbf_uploads_human_size((int)$u['max_submission_size'])]);
     }
     if ($errors !== []) return ['ok' => false, 'code' => 422, 'errors' => $errors];
     return ['ok' => true, 'plan' => $sandbox || $items === [] ? null : ['dir' => "$formId/$submissionId", 'items' => $items]];
@@ -1200,7 +1210,7 @@ function bbf_uploads_plan(array $config, string $formId, string $submissionId, a
  */
 function bbf_uploads_claim(array $config, string $owner, array $plan): array {
     $root = bbf_uploads_existing_root($config);
-    if ($root === null) return ['ok' => false, 'code' => 503, 'undone' => true, 'message' => 'Temporary storage problem. Please try again.'];
+    if ($root === null) return ['ok' => false, 'code' => 503, 'undone' => true, 'message' => bbf_uploads_t('uploadTemporary')];
     $u = bbf_uploads_config($config);
     $notice = null;
     try {
@@ -1208,13 +1218,13 @@ function bbf_uploads_claim(array $config, string $owner, array $plan): array {
             $l = bbf_uploads_ledger_read($root);
             foreach ($l['wal'] as $id => $entry) if (($entry['owner'] ?? null) === $owner) bbf_uploads_wal_settle($root, $l, (string)$id);
             $listed = bbf_uploads_wal_paths($l, $owner);
-            $again = 'The uploaded file expired or is no longer available. Please upload it again.';
+            $again = bbf_uploads_t('uploadExpired');
             $items = [];
             $total = 0;
             foreach ($plan['items'] as $p) {
                 $rel = 'staging/' . $p['hash'];
                 if (isset($listed[$rel]) || isset($listed["$rel.json"])) {
-                    return ['ok' => false, 'code' => 503, 'undone' => true, 'retry_after' => 5, 'message' => 'Your files are busy. Please try again in a moment.'];
+                    return ['ok' => false, 'code' => 503, 'undone' => true, 'retry_after' => 5, 'message' => bbf_uploads_t('uploadFilesBusy')];
                 }
                 $meta = bbf_uploads_read_meta("$root/$rel.json");
                 if ($meta === null || !is_file("$root/$rel") || $meta['file_id'] !== $p['file_id'] || ($meta['form'] ?? null) !== ($p['meta']['form'] ?? '')
@@ -1229,10 +1239,10 @@ function bbf_uploads_claim(array $config, string $owner, array $plan): array {
             if ($storedBytes + $total > (int)$u['max_stored_bytes'] || $storedFiles + count($items) > (int)$u['max_stored_files']) {
                 $notice = bbf_uploads_limit_notice($l, 'stored');
                 bbf_uploads_ledger_write($root, $l);
-                return ['ok' => false, 'code' => 507, 'undone' => true, 'message' => 'The server cannot store more files right now. Please try again later.'];
+                return ['ok' => false, 'code' => 507, 'undone' => true, 'message' => bbf_uploads_t('uploadStoreFull')];
             }
             $wal = bbf_uploads_wal_begin($root, $l, 'claim', $owner, $items);
-            if ($wal === null) return ['ok' => false, 'code' => 503, 'undone' => true, 'message' => 'Temporary storage problem. Please try again.'];
+            if ($wal === null) return ['ok' => false, 'code' => 503, 'undone' => true, 'message' => bbf_uploads_t('uploadTemporary')];
             $target = $root . '/' . $plan['dir'];
             $failed = null;
             if (!bbf_uploads_mkdir(dirname($target)) || !bbf_uploads_hook('claim_mkdir') || !@mkdir($target, 0750)) {
@@ -1257,17 +1267,17 @@ function bbf_uploads_claim(array $config, string $owner, array $plan): array {
                 }
                 if (!$undone) {
                     error_log("BareBonesForms uploads: claim undo incomplete for $owner; the transaction stays open.");
-                    return ['ok' => false, 'code' => 503, 'undone' => false, 'message' => 'Temporary storage problem. Please try again.'];
+                    return ['ok' => false, 'code' => 503, 'undone' => false, 'message' => bbf_uploads_t('uploadTemporary')];
                 }
             }
             @rmdir($target);
             bbf_uploads_wal_settle($root, $l, $wal);
             bbf_uploads_ledger_write($root, $l); // on failure the entry stays: an over-count this owner resolves later
-            return ['ok' => false, 'code' => 503, 'undone' => true, 'message' => 'Temporary storage problem. Please try again.'];
+            return ['ok' => false, 'code' => 503, 'undone' => true, 'message' => bbf_uploads_t('uploadTemporary')];
         });
     } catch (Throwable $error) {
         error_log('BareBonesForms uploads: claim failed: ' . $error->getMessage());
-        return ['ok' => false, 'code' => 503, 'undone' => true, 'message' => 'Temporary storage problem. Please try again.'];
+        return ['ok' => false, 'code' => 503, 'undone' => true, 'message' => bbf_uploads_t('uploadTemporary')];
     }
     if ($notice !== null) bbf_tx_notice('uploads', 'Upload limit reached', 'The stored-files limit was reached; submissions with files are being refused.');
     return $result;

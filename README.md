@@ -615,7 +615,7 @@ Set in `config.php`:
 'lang' => 'de',
 ```
 
-Server-side validation error messages will be returned in the configured language. Falls back to English for any missing keys.
+Server-side validation and file upload error messages will be returned in the configured language. When a form has `data-lang` (or `{ lang }`), `bbf.js` sends that language with the submission and each upload, and the server answers in it if `lang/<code>.php` exists; otherwise it uses the configured language. Falls back to English for any missing keys.
 
 ### Adding Your Own Language
 

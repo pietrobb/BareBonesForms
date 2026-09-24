@@ -306,6 +306,7 @@ try {
         'Submit transactions (idempotent retry, crash recovery)' => [__DIR__ . '/review-submit-transaction-test.php', [PHP_BINARY, __DIR__ . '/review-submit-transaction-test.php']],
         'File uploads (staging, claim, types, quotas)' => [__DIR__ . '/review-upload-test.php', [PHP_BINARY, __DIR__ . '/review-upload-test.php']],
         'Real-browser file upload client' => [__DIR__ . '/review-upload.test.js', ['node', '--test', __DIR__ . '/review-upload.test.js']],
+        'Language pack completeness' => [__DIR__ . '/review-lang.test.js', ['node', '--test', __DIR__ . '/review-lang.test.js']],
         'Viewer navigation' => [__DIR__ . '/viewer-navigation.test.js', ['node', '--test', __DIR__ . '/viewer-navigation.test.js']],
         'Real-browser security' => [__DIR__ . '/review-security.test.js', ['node', '--test', __DIR__ . '/review-security.test.js']],
         'Editor save and keyboard behavior' => [__DIR__ . '/editor-save.test.js', ['node', '--test', __DIR__ . '/editor-save.test.js']],

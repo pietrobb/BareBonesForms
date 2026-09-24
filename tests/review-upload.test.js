@@ -85,8 +85,8 @@ async function browserChecks() {
         uploads.length === 1 && wrap.querySelectorAll('.bbf-file-error').length === 2
         && wrap.textContent.includes('evil.svg: this file type is not accepted.') && wrap.textContent.includes('big.pdf is larger than'));
     const first = uploads[0];
-    check('upload request: form, field and action in the URL, CSRF in X-BBF-CSRF, the file in the body', () =>
-        first.method === 'POST' && first.url === './submit.php?form=apply&action=upload&field=cv'
+    check('upload request: form, field, action and form language in the URL, CSRF in X-BBF-CSRF, the file in the body', () =>
+        first.method === 'POST' && first.url === './submit.php?form=apply&action=upload&field=cv&lang=en'
         && first.headers['X-BBF-CSRF'] === 'csrf-token' && first.body.get('file').name === 'a.pdf');
     check('submit is disabled while an upload is in flight', () => submit.disabled === true);
     wrap.querySelectorAll('.bbf-file-error .bbf-file-remove').forEach(button => button.click());

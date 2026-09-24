@@ -638,7 +638,7 @@
                     render(entry); changed();
                     const xhr = new XMLHttpRequest();
                     entry.xhr = xhr;
-                    xhr.open('POST', `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=upload&field=${encodeURIComponent(field.name)}${sandbox ? '&sandbox' : ''}`);
+                    xhr.open('POST', `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=upload&field=${encodeURIComponent(field.name)}${langCode ? '&lang=' + encodeURIComponent(langCode) : ''}${sandbox ? '&sandbox' : ''}`);
                     const csrf = formEl.querySelector('input[name="_bbf_csrf"]');
                     if (csrf) xhr.setRequestHeader('X-BBF-CSRF', csrf.value);
                     Object.entries(upload.headers || {}).forEach(([k, v]) => xhr.setRequestHeader(k, v));
@@ -1244,7 +1244,9 @@
                     });
 
                     if (el._bbfSubmitKey) body._bbf_submit_key = el._bbfSubmitKey;
-                    const sandboxParam = new URLSearchParams(window.location.search).has('sandbox') ? '&sandbox' : '';
+                    // The form's language lets the server answer validation and upload errors in it.
+                    const sandboxParam = (langCode ? '&lang=' + encodeURIComponent(langCode) : '')
+                        + (new URLSearchParams(window.location.search).has('sandbox') ? '&sandbox' : '');
                     let resp, result, polls = 0, csrfRefreshed = false;
                     while (true) {
                         const fetchOpts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };

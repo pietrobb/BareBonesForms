@@ -76,6 +76,12 @@ unset($_bbfCheckFile);
 
 // ─── Server-side i18n ────────────────────────────────────────────
 $langCode = $config['lang'] ?? 'en';
+// bbf.js sends the form's language (?lang=); it wins when that server pack exists.
+$requestLang = $_GET['lang'] ?? null;
+if (is_string($requestLang) && preg_match('/\A[a-z]{2,3}(-[a-z]{2})?\z/D', $requestLang) && is_file(__DIR__ . "/lang/$requestLang.php")) {
+    $langCode = $requestLang;
+}
+unset($requestLang);
 $langFile = __DIR__ . '/lang/' . preg_replace('/[^a-z0-9-]/', '', $langCode) . '.php';
 $messages = file_exists($langFile) ? require $langFile : [];
 // Fallback to English if language file is missing or incomplete
@@ -791,9 +797,9 @@ function bbf_submit_upload(array $config, string $formId, bool $isSandbox): neve
     if (!$root['ok']) respond($root['code'], $root['error']);
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     // Every request counts, including ones rejected below.
-    if (!$isSandbox && !bbf_uploads_rate_limit($config, $ip)) respond(429, 'Too many uploads. Try again later.', ['retry_after' => 60]);
+    if (!$isSandbox && !bbf_uploads_rate_limit($config, $ip)) respond(429, msg('uploadRateLimit'), ['retry_after' => 60]);
     $postMax = bbf_uploads_ini_bytes(ini_get('post_max_size'));
-    if ($postMax > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $postMax) respond(413, 'The file is larger than this server accepts.');
+    if ($postMax > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $postMax) respond(413, msg('uploadServerLimit'));
     if (!$isSandbox) bbf_submit_upload_csrf($config, $formId);
     $field = bbf_submit_upload_field($config, $formId);
     $file = $_FILES['file'] ?? null;
@@ -822,7 +828,7 @@ function bbf_submit_upload(array $config, string $formId, bool $isSandbox): neve
         $stored = bbf_uploads_store($config, $root['root'], $formId, (string)$field['name'], (string)$file['tmp_name'], $checked, $ip);
     } catch (Throwable $error) {
         error_log('BareBonesForms upload failed: ' . $error->getMessage());
-        respond(503, 'Temporary storage problem. Please try again.');
+        respond(503, msg('uploadTemporary'));
     }
     if (!$stored['ok']) respond($stored['code'], $stored['message'], $stored['code'] === 429 ? ['retry_after' => 600] : []);
     unset($stored['ok']);

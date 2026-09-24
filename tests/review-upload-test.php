@@ -293,6 +293,19 @@ try {
     }
     $enc = up_upload($server, 'up', 'cv', 'secret.docx', $encrypted);
     up_check($enc['code'] === 422 && str_contains($enc['json']['message'] ?? '', 'Encrypted documents'), 'types: password-protected .docx gets the clear message');
+    // bbf.js sends the form language (?lang=); unknown or unsafe codes fall back to config['lang'] (en here).
+    $inLang = static function (string $lang) use ($server): ?string {
+        [$body, $type] = up_multipart([['file', 'x.pdf', '<html><body>x</body></html>']]);
+        $r = bbf_test_http($server, up_url($server, 'form=up&action=upload&field=cv&lang=' . rawurlencode($lang)), null,
+            ['raw' => $body, 'method' => 'POST', 'headers' => ['Content-Type' => $type], 'timeout' => 60]);
+        return $r['code'] === 422 ? ($r['json']['message'] ?? null) : null;
+    };
+    up_check($inLang('sk') === 'Obsah súboru nezodpovedá jeho typu.' && $inLang('de') === 'Der Dateiinhalt passt nicht zu seinem Typ.'
+        && $inLang('../en') === 'The file content does not match its type.' && $inLang('xx') === 'The file content does not match its type.',
+        'upload errors use the requested form language; unknown or unsafe codes fall back');
+    $expired = up_submit($server, 'up&lang=sk', ['answer' => 'x', 'cv' => [str_repeat('f', 32)]], null);
+    up_check($expired['code'] === 422 && ($expired['json']['errors']['cv'] ?? '') === 'Nahratý súbor vypršal alebo už nie je dostupný. Nahrajte ho znova.',
+        'submit file-field errors use the requested form language');
     foreach ([['valid .docx', 'a.docx', $docx], ['valid .odt', 'a.odt', $odt], ['ODF with compressed, non-first mimetype', 'b.odt', $odtOther], ['PNG', 'a.png', $png]] as [$label, $name, $content]) {
         $r = up_upload($server, 'up', 'cv', $name, $content);
         up_check($r['code'] === 200 && isset($r['json']['token']), "types: $label accepted");
