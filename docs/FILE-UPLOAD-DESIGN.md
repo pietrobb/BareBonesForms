@@ -1,6 +1,6 @@
 # File Uploads — Design Proposal (revision 7, after fifteen reviews)
 
-Status: **proposal, nothing implemented**. Target: **BareBonesForms 2.2**, built on the submit transactions of **2.1**.
+Status: **implementation landed for BareBonesForms 2.2**, built on the submit transactions of **2.1**. This document preserves the reviewed design and its pre-implementation context; for current setup and operating instructions, see [README — File Uploads](../README.md#file-uploads) and [the user guide](../docs.html#file-uploads).
 **2.1 is specified separately in [`SUBMIT-TRANSACTIONS.md`](SUBMIT-TRANSACTIONS.md)** (frozen for implementation): locks and intents, states, the submit pipeline, replay, recovery, deadline, client key handling and their tests. This document covers only what uploads add; references like "spec §5" point there.
 Revision 7 incorporates reviews 13–15. Most of them concern the 2.1 spec (`SUBMIT-TRANSACTIONS.md`, section 13 there); this document gains two protocol rules: a failed claim undo keeps the transaction `open`, and paths of an unresolved write-ahead entry are off limits to new claims and user deletion. What changed and why is listed in section 15.
 

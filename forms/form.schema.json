@@ -173,7 +173,7 @@
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "hidden", "password", "section", "page_break", "rating", "group"],
+                    "enum": ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "hidden", "password", "section", "page_break", "rating", "group", "file"],
                     "default": "text",
                     "description": "Field input type."
                 },
@@ -193,6 +193,26 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Whether the field is required."
+                },
+                "accept": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": { "type": "string", "minLength": 1 },
+                    "description": "File extensions such as .pdf or .docx, restricted by the server allowlist; not MIME wildcards."
+                },
+                "max_size": {
+                    "oneOf": [
+                        { "type": "integer", "minimum": 1 },
+                        { "type": "string", "pattern": "^\\s*(?=[0-9]{0,8}[1-9])[0-9]{1,9}\\s*([kK][bB]|[mM][bB])?\\s*$" }
+                    ],
+                    "description": "Per-file bytes or a binary size such as 5MB, capped by server and PHP limits."
+                },
+                "max_files": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "default": 1,
+                    "description": "Maximum files in one file field. File fields cannot be inside repeatable groups."
                 },
                 "minlength": {
                     "type": "integer",

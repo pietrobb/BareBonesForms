@@ -64,7 +64,7 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 
 **Not for:** Drag-and-drop form builders, enterprise workflow suites, or dashboards with seventeen menu items.
 
-**Not yet:** File upload fields. They are the next planned feature.
+**File uploads (2.2):** Opt-in private storage, per-file progress, authenticated viewer downloads, and backup/retention support. See [File Uploads](#file-uploads).
 
 **Storage in one sentence:** file storage is the zero-setup default for small forms; use SQLite (also zero setup) once a form collects more than about a thousand submissions or you need reporting. See [Which backend should I use?](#which-backend-should-i-use)
 
@@ -127,11 +127,11 @@ Open `http://127.0.0.1:8000/demo1.html`, submit the form, then see it in `http:/
 
 ## Upgrading
 
-Your data lives in four places that an upgrade never needs to touch: **`config.php`**, **`forms/`**, **`templates/`** and **`submissions/`** (plus `actions/` if you wrote custom actions and `lang/` if you added a language). Everything else is replaceable code.
+Your data lives in places that an upgrade never needs to touch: **`config.php`**, **`forms/`**, **`templates/`** and **`submissions/`** (plus `actions/` if you wrote custom actions and `lang/` if you added a language). Also preserve your configured data directories, including **`uploads.dir`**, archives and backups; these are not replaceable code.
 
 **Before you start:** read the [CHANGELOG](CHANGELOG.md) entries between your version and the new one. Items marked **Breaking** tell you exactly what to change.
 
-1. **Back up** the whole installation folder (e.g. `tar -czf bbf-backup-$(date +%F).tgz bbf/`).
+1. **Back up** the whole installation folder (e.g. `tar -czf bbf-backup-$(date +%F).tgz bbf/`) **and any external data directories**, including `uploads.dir`. Uploaded bytes are not in the database or necessarily inside the installation; preserve their matching records too. See [Retention & Backups](#retention--backups).
 2. **Preflight in a staging folder** that is not web-accessible: unzip the new release there, copy in your `forms/*.json` (and `templates/`, `actions/`), and create a temporary `config.php` from the new `config.example.php` *without* live credentials. Then run
    ```bash
    php smoketest.php
@@ -252,6 +252,7 @@ When `reply_to` is set on `notify`, the admin clicks Reply and responds directly
 | `select`     | Dropdown         | valid option, "other"     |
 | `radio`      | Radio buttons    | valid option, "other"     |
 | `checkbox`   | Checkboxes       | valid option, "other"     |
+| `file`       | File picker + progress | type, size, count — see [File Uploads](#file-uploads) |
 | `password`   | Password input   | length, pattern           |
 | `hidden`     | Hidden input     | —                         |
 | `rating`     | Star rating      | numeric, min/max          |
@@ -269,6 +270,9 @@ When `reply_to` is set on `notify`, the admin clicks Reply and responds directly
 | `placeholder`     | string  | Placeholder text                                     |
 | `description`     | string  | Help text below label                                |
 | `required`        | boolean | Is required? (default: `false`)                      |
+| `accept`          | array   | File extensions, e.g. `[".pdf", ".docx"]`; narrowed by server configuration |
+| `max_size`        | int/string | Per-file limit: bytes or `"5MB"` (binary units)   |
+| `max_files`       | integer | Files per field: 1–20, default 1                     |
 | `minlength`       | integer | Minimum character length                             |
 | `maxlength`       | integer | Maximum character length                             |
 | `min`             | number  | Minimum value (number/date)                          |
@@ -296,6 +300,94 @@ When `reply_to` is set on `notify`, the admin clicks Reply and responds directly
 | `show_if`         | object  | Conditional visibility: `{field, value, op?}` or `{all: [...]}` / `{any: [...]}` |
 | `title`           | string  | Title for section or group                           |
 | `fields`          | array   | Child fields (group type only)                       |
+
+---
+
+## File Uploads
+
+Available in 2.2, **off by default**. File fields work with File, SQLite, MySQL and CSV storage; the bytes always live in `uploads.dir`, not in the database. Use the normal `bbf.js` embed — no extra upload library.
+
+### Setup and form JSON
+
+1. Enable PHP `file_uploads` and the `fileinfo` extension. PHP must be able to write to its temporary upload directory and to `uploads.dir`, including under `open_basedir`. `ZipArchive` is also required for `.docx`, `.xlsx`, `.odt` and `.ods`; without it those types are unavailable.
+2. Merge the `uploads` block from `config.example.php` into `config.php`, set `enabled` to `true`, and choose an absolute private directory. For a web root of `/home/user/public_html`, for example:
+
+   ```php
+   'uploads' => [
+       'enabled' => true,
+       'dir' => '/home/user/bbf-data/uploads',
+       'allow_inside_web_root' => false,
+       'max_file_size' => 10 * 1024 * 1024,
+       'max_submission_size' => 25 * 1024 * 1024,
+       'allowed_extensions' => ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'txt', 'docx', 'xlsx', 'odt', 'ods'],
+   ],
+   ```
+
+   Omitted upload settings keep their defaults (listed below). The default path is `dirname(__DIR__) . '/barebonesforms-private/uploads'`: outside the installation is **not necessarily outside the web root**, especially with an installation at `/public_html/bbf`.
+3. Run `check.php` with uploads enabled, fix its directory/extension/limit warnings, then remove it again. Test a real upload, submit, and viewer download.
+
+Save this as `forms/application.json`:
+
+```json
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "application",
+    "name": "Job application",
+    "fields": [
+        { "name": "email", "type": "email", "label": "Email", "required": true },
+        {
+            "name": "cv",
+            "type": "file",
+            "label": "Your CV",
+            "required": true,
+            "accept": [".pdf", ".docx"],
+            "max_size": "5MB",
+            "max_files": 1
+        }
+    ],
+    "on_submit": { "store": true }
+}
+```
+
+- `accept` is a list of extensions, **not MIME wildcards**. Omit it to use the effective server allowlist. A field can narrow the server list, not expand it.
+- `max_size` is per file: positive integer bytes or a string such as `"512KB"` / `"5MB"`. Units are binary (1 MB = 1,048,576 bytes). The effective limit is the smallest of this value, `uploads.max_file_size`, PHP `upload_max_filesize`, and PHP `post_max_size` minus 64 KiB for multipart overhead (where the PHP limits are set).
+- `max_files` defaults to 1; values 2–20 enable multiple selection. `required` and `show_if` work as usual. File fields can be in ordinary groups, **not repeatable groups**.
+
+### Limits and security
+
+All these keys belong inside `config.php` → `uploads`; size settings below are integer bytes, time settings are seconds.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `max_file_size` | 10 MiB | Per-file server ceiling |
+| `max_submission_size` | 25 MiB | Combined file bytes in one submission |
+| `staging_ttl` | 7200 | Unsubmitted uploads expire after 2 hours |
+| `max_staging_bytes` / `max_staging_entries` | 500 MiB / 2000 | Global temporary-upload capacity |
+| `per_ip_staging_bytes` / `per_ip_staging_entries` | 100 MiB / 40 | Temporary-upload capacity per IP |
+| `max_stored_bytes` / `max_stored_files` | 5 GiB / 50000 | Global stored-file capacity |
+| `min_free_disk` | 200 MiB | Free disk reserve after an upload |
+| `rate_limit` | `['max' => 60, 'window' => 600]` | Upload requests per IP per 10 minutes, including rejected requests |
+
+Default types are PDF, JPEG, PNG, WebP, GIF, TXT, and (with `ZipArchive`) DOCX, XLSX, ODT and ODS. The supported opt-in types are `heic`, `csv`, `zip`, `doc` and `xls`; add only the ones you need to `allowed_extensions`. Executables, scripts, HTML, SVG and macro-enabled Office extensions cannot be enabled. Files must be nonempty; the server checks extension and content MIME type. Office/ODF container checks reject common disguises and macro containers, but are a **plausibility filter, not malware scanning or proof of safe content**. Treat downloaded files as untrusted; there is no image re-encoding or EXIF/GPS removal.
+
+**Keep uploads outside every web-served directory.** Do not expose the directory through an alias, symlink or another virtual host: PHP cannot detect all such mappings. Stored names are random IDs without extensions; original names are sanitized metadata only. If shared hosting makes private storage impossible, `allow_inside_web_root => true` is a weaker fallback: it requires `diagnostic_base_url`, uses a random `data-*` subdirectory and an HTTP sentinel probe cached for one hour. A reachable sentinel or a failed/unreachable probe blocks uploads. You must still configure server denial rules and prevent execution; the probe is not a guarantee against later rule changes or a server configured to execute every file.
+
+PHP/web-server request buffering happens **before** BBF's quotas apply. Set `upload_max_filesize`, `post_max_size` and a matching web-server body limit (`client_max_body_size` on Nginx / `LimitRequestBody` on Apache). `min_free_disk` measures the whole filesystem, not your hosting account quota, and is skipped if disk space cannot be read. Set byte **and file-count** caps to fit your account's space/inode limits, with room for temporary files, backups and archives. Per-IP limits use `REMOTE_ADDR`; behind a reverse proxy/CDN, visitors may share the same limit. Distributed clients can still fill global staging capacity temporarily.
+
+### What respondents and operators see
+
+Selecting a file uploads it immediately, one file per request, with progress and remove/retry controls. The form cannot submit while an upload is running or while a failed row remains; retry it where offered, or remove it. Text answers are submitted separately, so an oversized upload does not send away the rest of the form.
+
+Files stay temporary until submission. Short-lived, single-use tokens remain only in page memory; reloading loses them. The client warns near expiry; expired files must be uploaded again. On submit the server checks the staged files against the current field rules and total limit, then claims them as part of the submit transaction. A retry of the same submit on the same page uses the same idempotency key within the replay window rather than creating a second submission. Failed/uncommitted claims are rolled back or left for recovery; do not manually move files to repair a pending submit.
+
+**Drafts do not save files or tokens**, even if the field is allowlisted. Attach files again after resuming. Authenticated sandbox uploads validate and discard file bytes; they do not produce downloadable submissions.
+
+In `viewer.php`, submission details show names and sizes with download buttons. Downloads require sign-in and `read` permission for that form, check that the file belongs to the submission, and are access-audited. They are attachment downloads (`application/octet-stream`, `nosniff`, sandbox and no-store headers), not inline previews or public URLs.
+
+CSV exports contain readable names and sizes; JSON exports retain descriptor arrays (`id`, `name`, `size`, `type`, `sha256`), **not file bytes or paths**. The CSV storage backend also preserves descriptors in its reserved `__bbf:files` column. Email templates show escaped names/sizes, with no attachments or download links. Webhooks/custom actions receive descriptors, not the files themselves. A custom action can resolve a file using `bbf_upload_path($config, $formId, $submissionId, $fileId)`; treat the result as read-only and handle `null` for a missing file. Never move, modify or delete managed files from an action.
+
+There is no bulk ZIP download, public/signed file link, email attachment, chunked/resumable upload, S3 storage or multi-server upload support in 2.2. See [Retention & Backups](#retention--backups) for deletion, complete backups and cleanup commands.
 
 ---
 
@@ -1206,7 +1298,7 @@ Long forms can offer **Save progress / Resume**. It is off by default and enable
 }
 ```
 
-- Only fields listed in `fields` are ever written to a draft. Passwords, hidden fields and fields marked `"sensitive": true` are always excluded.
+- Only fields listed in `fields` are ever written to a draft. Passwords, hidden fields, file fields and fields marked `"sensitive": true` are always excluded. Files must be attached again after resuming; neither file bytes nor upload tokens are saved in drafts.
 - Saving returns a **resume code** (also remembered in the browser). The respondent enters it later to restore the form.
 - Drafts expire after `ttl_seconds` (5 minutes to 30 days, default 7 days) and are stored in `drafts_dir` (default `submissions/drafts/`), never in your submissions.
 
@@ -1254,6 +1346,51 @@ php maintenance.php retention --form=kontakt --apply --confirm=<digest from the 
 3. Before deleting, the records are written to an integrity-checked archive in `retention.archive_dir`. The submission's workflow notes and delivery log are archived and removed together with it.
 
 Retention works per form and with every storage backend. It is intentionally not unattended: a person runs the dry run and confirms it, typically once a month. Keep the archive and backup directories outside the web root.
+
+### Uploaded files: deletion, archives and complete backups
+
+Deleting a submission through the viewer/API or retention deletes its uploaded files too; interrupted file deletions are finished by upload cleanup. Deleting only a form definition in the editor does **not** delete its submissions or files. Abandoned payment submissions keep their files until the submission is deleted or retained out.
+
+Retention dry runs include file count and bytes, and the confirmation digest covers file IDs. By default the archive preserves descriptors/hashes **but not file bytes**. To keep a temporary copy of the bytes, add both settings to your existing `retention` block:
+
+```php
+'archive_files' => true,
+'archive_files_days' => 30,  // required with archive_files: integer 1–36500
+```
+
+These copies live beside the retention archive in a `.files` directory and are pruned by subsequent **applied retention runs while `archive_files` is enabled**, not by `uploads-cleanup` or a timer. Keep running retention if you rely on that expiry. The descriptor archive remains; arrange your own retention for archives and backups. A retention archive is not a substitute for a restorable BBF backup.
+
+`backup --form=...` creates a JSON bundle plus, when files exist, a **`<bundle>.files/` sidecar**, containing `<submission_id>/<file_id>` bytes. Copy and protect the JSON and sidecar together, preserving their names. Backups verify file hashes; a database-only backup or JSON export is not a complete upload backup.
+
+```bash
+php maintenance.php backup --form=application
+php maintenance.php restore --bundle=/private/backups/application.json
+# Replace RESTORE_CONFIRMATION with the exact confirmation printed by the dry run.
+php maintenance.php restore --bundle=/private/backups/application.json --apply --confirm=RESTORE_CONFIRMATION
+```
+
+Use the actual bundle path returned by `backup`. Restore requires an **empty target for that form**, including definition, records, versions, review/outbox data and upload directory. Enable/configure uploads on the target first; the storage backend and protected access policy must match the backup. The dry run checks sidecar presence, size, SHA-256 and stored-file capacity. Restore places files before publishing the form definition. Restoring a hosting database without its matching uploads can leave missing downloads and unreferenced directories; BBF cannot reconstruct absent bytes.
+
+### Upload housekeeping and recovery
+
+Run from the installation directory, or use an absolute path to `maintenance.php`; schedule these with cron if available:
+
+```bash
+php maintenance.php submit-recover
+php maintenance.php uploads-cleanup
+```
+
+These commands **perform recovery/cleanup immediately**; they are not dry runs and take no `--apply`. Run `submit-recover` before changing storage settings. `uploads-cleanup` removes expired staging data, orphaned staging remnants and dead upload reservations, finishes eligible recorded deletions, recovers safe unfinished restore phases and recounts capacity. It reports unresolved work and directories without records — it does **not** blindly delete stored files just because a record cannot be found. Inspect its report even when the command succeeds. Ordinary upload traffic also performs staging cleanup, but a quiet site needs scheduled runs to remove expired temporary files promptly.
+
+If cleanup reports an unfinished restore with unpublished records (`records_pending`), review and explicitly abort it before retrying restore:
+
+```bash
+php maintenance.php restore-abort --form=application
+# Replace ABORT_CONFIRMATION with this dry run's exact confirmation.
+php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CONFIRMATION
+```
+
+This removes that unfinished restore's unpublished records, versions, review/outbox data and files together; it refuses once the form definition is published. Do not delete upload directories or edit the quota ledger by hand. `check.php` also reports effective limits, capacity warnings, pending deletions, unfinished restores and unresolved accounting entries; remove it again after diagnostics.
 
 ---
 

@@ -424,6 +424,16 @@ invalid_field_defaults = {
 for label, candidate in invalid_field_defaults.items():
     if validator.is_valid(candidate):
         failures.append(f'invalid field default accepted: {label}')
+upload_field = {'name': 'cv', 'type': 'file', 'required': True, 'accept': ['.pdf', '.docx'], 'max_size': '5MB', 'max_files': 1}
+for size in [5242880, '5MB', '512kb', ' 0005 MB ', '512']:
+    candidate = {'schema_version': 1, 'id': 'application', 'fields': [{**upload_field, 'max_size': size}]}
+    if not validator.is_valid(candidate):
+        failures.append(f'valid upload field rejected: {size}')
+for key, value in [('max_size', 0), ('max_size', '0MB'), ('max_size', '1GB'), ('max_size', '1.5MB'),
+                   ('max_files', 0), ('max_files', 21), ('max_files', 1.5), ('accept', '.pdf'), ('accept', []), ('accept', [1])]:
+    candidate = {'schema_version': 1, 'id': 'application', 'fields': [{**upload_field, key: value}]}
+    if validator.is_valid(candidate):
+        failures.append(f'invalid upload field accepted: {key}={value}')
 payment_schema = schema['$defs']['on_submit']['properties']['payment']
 payment_validator = Draft202012Validator(payment_schema)
 fixed = {'provider': 'stripe', 'mode': 'fixed', 'pricing_version': 'fixed-v1', 'currency': 'eur', 'amount_minor': 4990}

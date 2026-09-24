@@ -113,6 +113,7 @@ details summary:hover { text-decoration: underline; }
     <a href="#form-json">Form JSON</a>
     <a href="#field-types">Field Types</a>
     <a href="#field-properties">Field Properties</a>
+    <a href="#file-uploads">File Uploads</a>
     <a href="#advanced-features">Advanced Features</a>
     <a href="#repeatable">Repeatable Groups</a>
     <a href="#drafts">Save &amp; Resume Drafts</a>
@@ -180,6 +181,7 @@ details summary:hover { text-decoration: underline; }
     <li><strong>Sandbox mode</strong> &mdash; test everything without consequences</li>
     <li><strong>Repeatable groups</strong> &mdash; attendees, line items, children; add and remove rows within bounds</li>
     <li><strong>Save &amp; resume drafts</strong> &mdash; opt-in per form, only the fields you allow</li>
+    <li><strong>File uploads (2.2)</strong> &mdash; opt-in private storage, progress, authenticated downloads and backup/retention support</li>
     <li><strong>Lookup, autocomplete, dynamic options</strong> &mdash; fill fields from your own APIs</li>
     <li><strong>Viewer inbox</strong> &mdash; status, notes, tags, delivery log and one-click retry of failed emails and webhooks</li>
     <li><strong>Form versions</strong> &mdash; old submissions keep the form they were filled in with</li>
@@ -250,11 +252,11 @@ details summary:hover { text-decoration: underline; }
 <!-- ============================================================ -->
 <h2 id="upgrading">Upgrading</h2>
 
-<p>Your data lives in places an upgrade never needs to touch: <strong><code>config.php</code></strong>, <strong><code>forms/</code></strong>, <strong><code>templates/</code></strong> and <strong><code>submissions/</code></strong> &mdash; plus <code>actions/</code> if you wrote custom actions and <code>lang/</code> if you added a language. Everything else is replaceable code.</p>
+<p>Your data lives in places an upgrade never needs to touch: <strong><code>config.php</code></strong>, <strong><code>forms/</code></strong>, <strong><code>templates/</code></strong> and <strong><code>submissions/</code></strong> &mdash; plus <code>actions/</code> if you wrote custom actions and <code>lang/</code> if you added a language. Also preserve your configured data directories, including <strong><code>uploads.dir</code></strong>, archives and backups; these are not replaceable code.</p>
 
 <p><strong>Before you start:</strong> read the <a href="https://github.com/pietrobb/BareBonesForms/blob/main/CHANGELOG.md" target="_blank">CHANGELOG</a> entries between your version and the new one. Items marked <strong>Breaking</strong> tell you exactly what to change.</p>
 
-<p><strong>1. Back up</strong> the whole installation folder:</p>
+<p><strong>1. Back up</strong> the whole installation folder <strong>and any external data directories</strong>, including <code>uploads.dir</code>. Uploaded bytes are not in the database or necessarily inside the installation; preserve their matching records too. See <a href="#maintenance">Retention &amp; Backups</a>.</p>
 <div class="code-block"><span class="lang">bash</span><pre>tar -czf bbf-backup-$(date +%F).tgz bbf/</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p><strong>2. Preflight in a staging folder</strong> that is not web-accessible: unzip the new release there, copy in your <code>forms/*.json</code> (and <code>templates/</code>, <code>actions/</code>), and create a temporary <code>config.php</code> from the new <code>config.example.php</code> <em>without</em> live credentials. Then run <code>php smoketest.php</code>. Dry mode validates your existing forms against the new version without storing anything or sending mail. Fix every reported error in your form JSON &mdash; never bypass validation.</p>
@@ -373,6 +375,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
     <tr><td><code>select</code></td><td>Dropdown</td><td>valid option, &ldquo;other&rdquo;</td></tr>
     <tr><td><code>radio</code></td><td>Radio buttons</td><td>valid option, &ldquo;other&rdquo;</td></tr>
     <tr><td><code>checkbox</code></td><td>Checkboxes / consent</td><td>valid option, &ldquo;other&rdquo;</td></tr>
+    <tr><td><code>file</code></td><td>File picker + progress</td><td>type, size, count &mdash; see <a href="#file-uploads">File Uploads</a></td></tr>
     <tr><td><code>password</code></td><td>Password input</td><td>length, pattern</td></tr>
     <tr><td><code>hidden</code></td><td>Hidden input</td><td>&mdash;</td></tr>
     <tr><td><code>rating</code></td><td>Star rating (1&ndash;5)</td><td>numeric, min/max</td></tr>
@@ -406,6 +409,9 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
     <tr><td><code>placeholder</code></td><td>string</td><td>Placeholder text</td></tr>
     <tr><td><code>description</code></td><td>string</td><td>Help text below label</td></tr>
     <tr><td><code>required</code></td><td>boolean</td><td>Is required? (default: <code>false</code>)</td></tr>
+    <tr><td><code>accept</code></td><td>array</td><td>File extensions, e.g. <code>[".pdf", ".docx"]</code>; narrowed by server configuration</td></tr>
+    <tr><td><code>max_size</code></td><td>int/string</td><td>Per-file limit: bytes or <code>"5MB"</code> (binary units)</td></tr>
+    <tr><td><code>max_files</code></td><td>integer</td><td>Files per field: 1&ndash;20, default 1</td></tr>
     <tr><td><code>minlength</code></td><td>integer</td><td>Minimum character length</td></tr>
     <tr><td><code>maxlength</code></td><td>integer</td><td>Maximum character length</td></tr>
     <tr><td><code>min</code></td><td>number</td><td>Minimum value (number/date types)</td></tr>
@@ -442,6 +448,91 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 </table>
 
 <p>Form-level properties besides those in the example above: <code>drafts</code> (<a href="#drafts">Save &amp; Resume</a>), <code>templates</code>, <code>validations</code>, <code>label_position</code>, <code>animate_conditions</code>, <code>preview_fields</code> and <code>storage</code>.</p>
+
+<!-- ============================================================ -->
+<h2 id="file-uploads">File Uploads (2.2)</h2>
+
+<p>Uploads are <strong>off by default</strong>. They work with File, SQLite, MySQL and CSV storage, but the bytes always live in <code>uploads.dir</code>, not the database. Use the normal <code>bbf.js</code> embed; there is no extra library to install.</p>
+
+<h3>Enable uploads</h3>
+<ol>
+    <li>Enable PHP <code>file_uploads</code> and <code>fileinfo</code>. PHP needs a writable temporary upload directory and access to <code>uploads.dir</code>, including under <code>open_basedir</code>. <code>ZipArchive</code> is required for DOCX, XLSX, ODT and ODS; without it those types are unavailable.</li>
+    <li>Merge the <code>uploads</code> block from <code>config.example.php</code> into <code>config.php</code>, turn it on, and choose an absolute directory outside every web root. For example, with web root <code>/home/user/public_html</code>:</li>
+</ol>
+<div class="code-block"><span class="lang">php</span><pre>'uploads' => [
+    'enabled' => true,
+    'dir' => '/home/user/bbf-data/uploads',
+    'allow_inside_web_root' => false,
+    'max_file_size' => 10 * 1024 * 1024,
+    'max_submission_size' => 25 * 1024 * 1024,
+    'allowed_extensions' => ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'txt', 'docx', 'xlsx', 'odt', 'ods'],
+],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>Omitted settings keep the defaults below. The default directory is <code>dirname(__DIR__) . '/barebonesforms-private/uploads'</code>. Outside the installation is <strong>not necessarily outside the web root</strong>: check this carefully if BBF is installed in <code>/public_html/bbf</code>.</p>
+<p>Run <code>check.php</code> with uploads enabled, fix directory/extension/limit warnings, then remove it again. Test a real upload, submit and viewer download before going live.</p>
+
+<h3>Form JSON</h3>
+<p>Save this as <code>forms/application.json</code>:</p>
+<div class="code-block"><span class="lang">json</span><pre>{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "application",
+    "name": "Job application",
+    "fields": [
+        { "name": "email", "type": "email", "label": "Email", "required": true },
+        {
+            "name": "cv",
+            "type": "file",
+            "label": "Your CV",
+            "required": true,
+            "accept": [".pdf", ".docx"],
+            "max_size": "5MB",
+            "max_files": 1
+        }
+    ],
+    "on_submit": { "store": true }
+}</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<ul>
+    <li><code>accept</code>: a list of extensions, not MIME wildcards. Omit it to use the effective server allowlist. A field can narrow that list, not expand it.</li>
+    <li><code>max_size</code>: per-file limit, positive integer bytes or a string such as <code>"512KB"</code> / <code>"5MB"</code>. Units are binary: 1 MB = 1,048,576 bytes.</li>
+    <li><code>max_files</code>: 1 by default, allowed range 1&ndash;20. Values above 1 enable multiple selection.</li>
+    <li><code>required</code> and <code>show_if</code> work as usual. File fields can be in ordinary groups, but <strong>not repeatable groups</strong>.</li>
+</ul>
+<p>The effective per-file limit is the smallest of the field limit, <code>uploads.max_file_size</code>, PHP <code>upload_max_filesize</code>, and PHP <code>post_max_size</code> minus 64 KiB of multipart overhead (where the PHP limits are set). The renderer receives that effective limit.</p>
+
+<h3>Configuration and capacity</h3>
+<p>These keys belong inside <code>config.php</code> &rarr; <code>uploads</code>. Sizes are integer bytes; times are seconds.</p>
+<table>
+    <tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+    <tr><td><code>max_file_size</code></td><td>10 MiB</td><td>Per-file server ceiling</td></tr>
+    <tr><td><code>max_submission_size</code></td><td>25 MiB</td><td>Combined file bytes per submission</td></tr>
+    <tr><td><code>staging_ttl</code></td><td>7200</td><td>Unsubmitted files expire after 2 hours</td></tr>
+    <tr><td><code>max_staging_bytes</code> / <code>max_staging_entries</code></td><td>500 MiB / 2000</td><td>Global temporary capacity</td></tr>
+    <tr><td><code>per_ip_staging_bytes</code> / <code>per_ip_staging_entries</code></td><td>100 MiB / 40</td><td>Temporary capacity per IP</td></tr>
+    <tr><td><code>max_stored_bytes</code> / <code>max_stored_files</code></td><td>5 GiB / 50000</td><td>Global stored-file capacity</td></tr>
+    <tr><td><code>min_free_disk</code></td><td>200 MiB</td><td>Free disk reserve after an upload</td></tr>
+    <tr><td><code>rate_limit</code></td><td><code>['max' =&gt; 60, 'window' =&gt; 600]</code></td><td>Upload requests per IP per 10 minutes, including rejected requests</td></tr>
+</table>
+<p>Default extensions: <code>pdf</code>, <code>jpg</code>/<code>jpeg</code>, <code>png</code>, <code>webp</code>, <code>gif</code>, <code>txt</code>, and (with <code>ZipArchive</code>) <code>docx</code>, <code>xlsx</code>, <code>odt</code>, <code>ods</code>. Supported opt-in extensions are <code>heic</code>, <code>csv</code>, <code>zip</code>, <code>doc</code> and <code>xls</code>: add only what you need to <code>allowed_extensions</code>. Executables, scripts, HTML, SVG and macro-enabled Office extensions cannot be enabled.</p>
+<p>PHP and the web server buffer request bodies <strong>before</strong> BBF's quotas apply. Set <code>upload_max_filesize</code>, <code>post_max_size</code> and a matching server body limit (<code>client_max_body_size</code> on Nginx / <code>LimitRequestBody</code> on Apache). <code>min_free_disk</code> measures the whole filesystem, not your hosting account quota, and is skipped if disk space cannot be read. Set both byte and file-count caps below your account's space/inode limits, leaving room for temporary files, archives and backups.</p>
+<p>Per-IP limits use <code>REMOTE_ADDR</code>; visitors behind a reverse proxy/CDN may share the same limit. Distributed clients can still fill the global staging quota temporarily.</p>
+
+<h3>Security boundaries</h3>
+<div class="callout warn">
+    <strong>Private storage first. An upload is not a trusted document.</strong>
+    Keep <code>uploads.dir</code> outside every web-served directory. Do not expose it through aliases, symlinks or another virtual host; PHP cannot detect all such mappings. Original names are sanitized metadata; files are stored under random IDs without extensions. Files must be nonempty and pass extension and content-MIME checks. Office/ODF checks reject common disguises and macro containers, but are a plausibility filter, not malware scanning or proof that content is safe. Images are not re-encoded and EXIF/GPS metadata is not stripped.
+</div>
+<p>If shared hosting prevents private storage, <code>allow_inside_web_root =&gt; true</code> is a <strong>weaker fallback</strong>. It requires <code>diagnostic_base_url</code>, uses a random <code>data-*</code> directory and an HTTP sentinel probe cached for one hour. A reachable sentinel or failed/unreachable probe blocks uploads. Configure server denial rules and prevent execution yourself: the probe cannot guarantee protection after rules change, or against a server configured to execute every file.</p>
+
+<h3>Upload and submit lifecycle</h3>
+<p>Choosing a file uploads it immediately, one file per request, with progress and remove/retry controls. Submission waits until uploads finish; any failed row blocks it until retried where offered or removed. Text answers travel separately, so an oversized upload does not send away the rest of the form.</p>
+<p>Files are temporary until submission. Short-lived, single-use upload tokens live only in page memory; reload loses them. The client warns near expiry, and expired files must be uploaded again. On submit, staged files are checked against the current field rules and combined-size limit, then claimed as part of the submit transaction. A retry of the same submit on the same page uses the same idempotency key within the replay window, rather than creating a duplicate. Uncommitted claims are rolled back or left for recovery; do not repair a pending submit by moving files manually.</p>
+<p><strong>Drafts never save file bytes or upload tokens</strong>, even for allowlisted fields. Attach files again after resuming. Authenticated sandbox uploads validate and discard file bytes, rather than creating downloadable submissions.</p>
+
+<h3>Viewer, exports and integrations</h3>
+<p>Submission details in <code>viewer.php</code> show names, sizes and download buttons. Downloads require sign-in and <code>read</code> permission for that form, verify that the file belongs to the submission, and are access-audited. They are attachment downloads with <code>application/octet-stream</code>, <code>nosniff</code>, sandbox and no-store headers &mdash; not inline previews or public URLs.</p>
+<p>CSV exports show names and sizes. JSON exports retain descriptor arrays with <code>id</code>, <code>name</code>, <code>size</code>, <code>type</code> and <code>sha256</code>, not file bytes or paths. CSV storage additionally keeps descriptors in its reserved <code>__bbf:files</code> column. Email templates show escaped names/sizes, with no attachments or download links. Webhooks and custom actions receive descriptors, not file bytes.</p>
+<p>Custom actions may resolve a file with <code>bbf_upload_path($config, $formId, $submissionId, $fileId)</code>. Treat the path as read-only and handle <code>null</code> for a missing file; never move, modify or delete managed files from an action.</p>
+<p>Not supported in 2.2: bulk ZIP download, public/signed file links, email attachments, chunked/resumable uploads, S3 storage, or multi-server upload deployments. See <a href="#maintenance">Retention &amp; Backups</a> for complete backups, deletion and operational cleanup.</p>
 
 <!-- ============================================================ -->
 <h2 id="advanced-features">Advanced Features</h2>
@@ -836,7 +927,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <ul>
-    <li>Only fields listed in <code>fields</code> are ever written to a draft. Passwords, hidden fields and fields marked <code>"sensitive": true</code> are always excluded &mdash; even if you list them.</li>
+    <li>Only fields listed in <code>fields</code> are ever written to a draft. Passwords, hidden fields, file fields and fields marked <code>"sensitive": true</code> are always excluded &mdash; even if you list them. File bytes and upload tokens are not saved; attach files again after resuming.</li>
     <li>Saving returns a <strong>resume code</strong> (also remembered in the browser). The respondent enters it later to restore the form.</li>
     <li>Drafts expire after <code>ttl_seconds</code> (5 minutes to 30 days, default 7 days).</li>
     <li>Drafts live in <code>drafts_dir</code> (default <code>submissions/drafts/</code>), never among your submissions.</li>
@@ -1822,6 +1913,32 @@ php maintenance.php retention --form=kontakt --apply --confirm=&lt;digest&gt;</p
 ],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p>Records are archived to <code>archive_dir</code> before deletion. Backups are per form and contain no access credentials. Keep both directories <strong>outside the web root</strong>.</p>
+
+<h3>Uploaded files and retention</h3>
+<p>Viewer/API deletion and retention remove a submission's uploaded files too; upload cleanup finishes interrupted file deletions. Deleting only the form definition in the editor does <strong>not</strong> delete its submissions or files. Abandoned payment submissions keep their files until deleted or retained out.</p>
+<p>Retention dry runs include file count and bytes, and the confirmation digest covers file IDs. By default archives preserve descriptors/hashes, <strong>not file bytes</strong>. To keep a temporary copy of the bytes, add both settings to your existing <code>retention</code> block:</p>
+<div class="code-block"><span class="lang">php</span><pre>'archive_files' => true,
+'archive_files_days' => 30,  // required with archive_files: integer 1–36500</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>File copies live beside the archive in a <code>.files</code> directory. They are pruned by subsequent <strong>applied retention runs while <code>archive_files</code> is enabled</strong>, not by <code>uploads-cleanup</code> or a timer. Keep running retention if you rely on expiry. The descriptor archive remains; arrange your own retention for archives and backups. Retention archives are not a substitute for restorable BBF backups.</p>
+
+<h3>Back up and restore the bytes too</h3>
+<p><code>backup --form=...</code> creates a JSON bundle plus, when files exist, a <strong><code>&lt;bundle&gt;.files/</code> sidecar</strong> with <code>&lt;submission_id&gt;/&lt;file_id&gt;</code> bytes. Copy and protect the JSON and sidecar together, preserving their names. File hashes are verified. A database-only backup or JSON export is not a complete upload backup.</p>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php backup --form=application
+php maintenance.php restore --bundle=/private/backups/application.json
+# Replace RESTORE_CONFIRMATION with the exact confirmation printed by the dry run.
+php maintenance.php restore --bundle=/private/backups/application.json --apply --confirm=RESTORE_CONFIRMATION</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>Use the actual bundle path returned by <code>backup</code>. Restore requires an <strong>empty target for that form</strong>, including definition, records, versions, review/outbox data and upload directory. Enable/configure uploads on the target first; the storage backend and protected access policy must match the backup. The dry run checks sidecar presence, size, SHA-256 and stored-file capacity. Files are placed before the form definition is published. Restoring a hosting database without matching uploads can leave missing downloads and unreferenced directories; BBF cannot reconstruct missing bytes.</p>
+
+<h3>Upload housekeeping and recovery</h3>
+<p>Run from the installation directory, or use an absolute path to <code>maintenance.php</code>. Schedule these with cron if available:</p>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php submit-recover
+php maintenance.php uploads-cleanup</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>These commands <strong>perform recovery/cleanup immediately</strong>: no dry run and no <code>--apply</code>. Run <code>submit-recover</code> before changing storage settings. <code>uploads-cleanup</code> removes expired staging data, orphaned staging remnants and dead upload reservations, finishes eligible recorded deletions, recovers safe unfinished restore phases and recounts capacity. It reports unresolved work and directories without records; it does <strong>not</strong> blindly delete stored files because a record cannot be found. Inspect the report even on success. Upload traffic also performs staging cleanup, but quiet sites need scheduled runs to remove expired temporary files promptly.</p>
+<p>If cleanup reports an unfinished restore with unpublished records (<code>records_pending</code>), review and explicitly abort it before retrying restore:</p>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php restore-abort --form=application
+# Replace ABORT_CONFIRMATION with this dry run's exact confirmation.
+php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CONFIRMATION</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>This removes that unfinished restore's unpublished records, versions, review/outbox data and files together, and refuses once the form definition is published. Do not delete upload directories or edit the quota ledger by hand. <code>check.php</code> reports effective limits, capacity warnings, pending deletions, unfinished restores and unresolved accounting entries; remove it again after diagnostics.</p>
 
 <!-- ============================================================ -->
 <h2 id="attribution">Visit Attribution (UTM, Google Ads, Umami)</h2>
