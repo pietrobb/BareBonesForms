@@ -820,7 +820,7 @@ PHP;
     // Unlike allocating unrelated ballast, this preserves all output and directly
     // models the eager-materialization regression the old HTTP checks could miss.
     mkdir("$root/mysql-eager", 0700);
-    foreach (['viewer.php', 'submissions.php', 'bbf_functions.php', 'bbf_auth.php', 'bbf_storage.php', 'bbf_delivery.php', 'bbf_outbox.php', 'bbf_uploads.php', 'bbf_diagnostics.php', 'bbf_export.php', 'bbf_review.php', 'bbf_versions.php', 'config.php'] as $file) {
+    foreach (['viewer.php', 'submissions.php', 'bbf_functions.php', 'bbf_auth.php', 'bbf_storage.php', 'bbf_delivery.php', 'bbf_outbox.php', 'bbf_uploads.php', 'bbf_diagnostics.php', 'bbf_submit_tx.php', 'bbf_context.php', 'bbf_read.php', 'bbf_export.php', 'bbf_review.php', 'bbf_versions.php', 'config.php'] as $file) {
         bbf_test_copy("$root/$file", "$root/mysql-eager/$file");
     }
     mkdir("$root/mysql-eager/lang", 0700);

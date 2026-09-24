@@ -30,6 +30,12 @@ function bbf_effective_storage_config(array $config, string $formId, ?array $for
     return $config;
 }
 
+/** Internal record meta never leaves BBF: exports, API, viewer responses, webhook and e-mail payloads (submit spec §12 #35). */
+function bbf_record_public(array $record): array {
+    if (is_array($record['meta'] ?? null)) unset($record['meta']['submit_key_hash']);
+    return $record;
+}
+
 /** Encode before opening ANY persistence target, including non-JSON backends. */
 function bbf_storage_json($value, bool $pretty = false): string {
     return json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR | ($pretty ? JSON_PRETTY_PRINT : 0));

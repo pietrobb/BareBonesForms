@@ -58,7 +58,7 @@ function bbf_draft_filter(array $form, array $flatFields, array $input): array {
         $name = $field['name'];
         $type = $field['type'] ?? 'text';
         if (!isset($allow[$name]) || !array_key_exists($name, $input)
-            || in_array($type, ['password', 'hidden', 'section', 'page_break', 'group'], true)
+            || in_array($type, ['password', 'hidden', 'section', 'page_break', 'group', 'file'], true)
             || !empty($field['sensitive'])) continue;
         $value = $input[$name];
         if (is_string($value)) $value = trim($value);

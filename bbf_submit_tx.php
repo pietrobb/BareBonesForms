@@ -431,6 +431,51 @@ function bbf_tx_read_record(array $storeConfig, string $formId, string $id): ?ar
     return null;
 }
 
+/** Deleting a submission deletes its intent and marker (spec §9). A locked intent is skipped; it expires with the TTL. */
+function bbf_tx_forget(array $config, string $formId, $k): void {
+    if (!is_string($k) || !preg_match('/\A[a-f0-9]{64}\z/D', $k)) return;
+    try {
+        $taken = bbf_tx_take($config, $formId, $k);
+        if (($taken['status'] ?? '') === 'taken') bbf_tx_delete($taken['h']);
+    } catch (Throwable $error) {
+        error_log('BareBonesForms: submit intent not deleted with its submission: ' . $error->getMessage());
+    }
+}
+
+/**
+ * Viewer, API and retention deletion: the records go through $deleteRecords (the existing
+ * coordinated deletion); their files (upload spec §10) and transaction intents follow.
+ * $records: id => record when the caller already read them (retention), else they are read here.
+ */
+function bbf_submissions_delete(array $config, string $formId, array $ids, callable $deleteRecords, ?array $records = null): array {
+    $storeConfig = bbf_effective_storage_config($config, $formId);
+    $fingerprint = bbf_tx_storage_fingerprint($storeConfig);
+    $keys = [];
+    foreach ($ids as $id) {
+        try {
+            $record = $records !== null ? ($records[$id] ?? null) : bbf_tx_read_record($storeConfig, $formId, $id);
+        } catch (Throwable $error) {
+            $record = null;
+        }
+        if (is_string($record['meta']['submit_key_hash'] ?? null)) $keys[$id] = $record['meta']['submit_key_hash'];
+    }
+    $intent = null;
+    try {
+        $intent = bbf_uploads_deletion_begin($config, $formId, $ids, $fingerprint);
+    } catch (Throwable $error) {
+        // Never blocks the record deletion; cleanup reports directories without records.
+        error_log('BareBonesForms uploads: deletion intent not written: ' . $error->getMessage());
+    }
+    $result = $deleteRecords();
+    $existence = [];
+    $exists = static function (string $id) use (&$existence, $storeConfig, $formId): string {
+        return $existence[$id] ??= bbf_record_exists($storeConfig, $formId, $id);
+    };
+    foreach ($keys as $id => $k) if ($exists((string)$id) === 'not_found') bbf_tx_forget($config, $formId, $k);
+    if ($intent !== null) bbf_uploads_deletion_finish($intent, $exists, $fingerprint);
+    return $result;
+}
+
 /** The definition a submission was made with: the current one if unchanged, else the stored blob. */
 function bbf_tx_definition(array $config, string $formId, string $version): ?array {
     $resolve = static function (array $form): array {

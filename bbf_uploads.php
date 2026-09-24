@@ -743,11 +743,35 @@ function bbf_uploads_recount_stored_locked(string $root, array &$l): array {
     return ['before' => $before, 'after' => $l['stored']];
 }
 
-/** maintenance.php uploads-cleanup: GC, exact recount, report what needs a human. */
-function bbf_uploads_cleanup(array $config): array {
+/**
+ * maintenance.php uploads-cleanup: finish deletion intents, GC, exact recount, report what needs a human.
+ * $existsFor(form, id) and $fingerprintFor(form) come from the submit transaction module; without
+ * them deletion intents and directories without records are left alone.
+ */
+function bbf_uploads_cleanup(array $config, ?callable $existsFor = null, ?callable $fingerprintFor = null): array {
     $root = bbf_uploads_existing_root($config);
     if ($root === null) return ['ok' => true, 'note' => 'No upload directory.'];
     $u = bbf_uploads_config($config);
+    $restores = bbf_uploads_restore_sweep($config, $root);
+    $pendingDeletions = $existsFor && $fingerprintFor ? bbf_uploads_deletion_sweep($root, $existsFor, $fingerprintFor) : [];
+    // Directories without a record are reported, never deleted (a restored older database may still need them).
+    $unreferenced = [];
+    if ($existsFor) {
+        $listed = [];
+        foreach (glob("$root/deleting/*.json") ?: [] as $intentPath) {
+            $state = json_decode((string)@file_get_contents($intentPath), true);
+            foreach ((array)($state['submission_ids'] ?? []) as $id) $listed[($state['form'] ?? '') . '/' . $id] = true;
+        }
+        foreach (glob("$root/*", GLOB_ONLYDIR) ?: [] as $formDir) {
+            $form = basename($formDir);
+            if (in_array($form, ['staging', 'deleting', 'restore'], true) || !preg_match('/\A[a-zA-Z0-9_-]+\z/', $form)) continue;
+            if (is_file("$root/restore/$form.json")) continue; // under restore
+            foreach (glob("$formDir/*", GLOB_ONLYDIR) ?: [] as $subDir) {
+                $id = basename($subDir);
+                if (!isset($listed["$form/$id"]) && $existsFor($form, $id) === 'not_found') $unreferenced[] = "$form/$id";
+            }
+        }
+    }
     $report = bbf_uploads_locked($root, static function () use ($root, $u): array {
         $l = bbf_uploads_ledger_read($root);
         bbf_uploads_gc_locked($root, $l, $u);
@@ -760,7 +784,85 @@ function bbf_uploads_cleanup(array $config): array {
         return ['ok' => $ok, 'staging' => $l['staging']['bytes'], 'staging_entries' => $l['staging']['entries'],
             'stored' => $stored['after'], 'stored_before_recount' => $stored['before'], 'unresolved_write_ahead' => $wal, 'live_reservations' => $live];
     });
-    return $report;
+    return $report + ['pending_deletions' => $pendingDeletions, 'directories_without_record' => $unreferenced,
+        'unfinished_restores' => array_filter($restores, static fn($outcome) => in_array($outcome, ['running', 'records_pending', 'failed'], true))];
+}
+
+/**
+ * check.php rows [name, pass, detail, level] (section 12). Recounts the ledger under the lock and
+ * reports what needs a human; it never finishes deletions or restores. $existsFor(form, id) enables
+ * the unreferenced-directory report (bounded to 200 directories).
+ */
+function bbf_uploads_diagnostics(array $config, ?callable $existsFor = null): array {
+    $u = bbf_uploads_config($config);
+    if (empty($u['enabled'])) return [['File uploads', true, 'Disabled (uploads.enabled = false).', 'info']];
+    $rows = [];
+    $mb = static fn($bytes) => bbf_uploads_human_size((int)$bytes);
+    $rows[] = ['file_uploads = On', (bool)ini_get('file_uploads'), 'PHP must accept multipart uploads.', 'error'];
+    $rows[] = ['fileinfo extension', class_exists('finfo'), 'Required: the file type is checked by content.', 'error'];
+    $rows[] = ['ZipArchive extension', class_exists('ZipArchive'), 'Without it .docx, .xlsx, .odt and .ods are not accepted.', 'warn'];
+    $rows[] = ['zlib.output_compression off', !ini_get('zlib.output_compression'), 'Downloads switch it off per request; on some hosts that is not allowed.', 'warn'];
+    $effective = bbf_uploads_field_max_size($config, []);
+    $rows[] = ['Effective file size limit', $effective >= (int)$u['max_file_size'],
+        'uploads.max_file_size ' . $mb($u['max_file_size']) . ', effective ' . $mb($effective)
+        . ' (upload_max_filesize ' . ini_get('upload_max_filesize') . ', post_max_size ' . ini_get('post_max_size') . ').', 'warn'];
+    $resolved = bbf_uploads_root($config);
+    if (!$resolved['ok']) {
+        $rows[] = ['Upload directory', false, $resolved['error'], 'error'];
+        return $rows;
+    }
+    $root = $resolved['root'];
+    $rows[] = ['Upload directory', !$resolved['inside'], $resolved['inside']
+        ? 'Inside the web root (opted in); the HTTP probe confirmed files there are not served. Moving it outside is safer.'
+        : 'Outside the web root.', 'warn'];
+    $rows[] = ['Upload directory writable', is_writable($root) && is_writable("$root/staging"), $root, 'error'];
+    if ((string)ini_get('open_basedir') !== '') $rows[] = ['Reachable under open_basedir', true, (string)ini_get('open_basedir'), 'info'];
+    $free = function_exists('disk_free_space') ? @disk_free_space($root) : false;
+    $rows[] = ['disk_free_space available', $free !== false, 'Without it the min_free_disk guard cannot work.', 'warn'];
+    if ($free !== false) $rows[] = ['Free disk space', $free >= (int)$u['min_free_disk'], $mb($free) . ' free, uploads.min_free_disk ' . $mb($u['min_free_disk']) . ' (whole disk).', 'error'];
+    try {
+        $state = bbf_uploads_locked($root, static function () use ($root, $u): array {
+            $l = bbf_uploads_ledger_read($root);
+            bbf_uploads_gc_locked($root, $l, $u);
+            bbf_uploads_recount_stored_locked($root, $l);
+            if (!bbf_uploads_ledger_write($root, $l)) throw new RuntimeException('The recounted ledger could not be written.');
+            return $l;
+        });
+    } catch (Throwable $error) {
+        $rows[] = ['Upload ledger', false, $error->getMessage(), 'error'];
+        return $rows;
+    }
+    foreach ([['Staging bytes', $state['staging']['bytes'], $u['max_staging_bytes'], true],
+        ['Staging entries', $state['staging']['entries'], $u['max_staging_entries'], false],
+        ['Stored bytes', $state['stored']['bytes'], $u['max_stored_bytes'], true],
+        ['Stored files', $state['stored']['files'], $u['max_stored_files'], false]] as [$name, $used, $max, $bytes]) {
+        $rows[] = [$name . ' below 80 %', $used < 0.8 * (int)$max,
+            ($bytes ? $mb($used) . ' of ' . $mb($max) : "$used of $max") . ' (recounted).', 'warn'];
+    }
+    $rows[] = ['Unresolved write-ahead entries', $state['wal'] === [], count($state['wal']) . ' entry(ies); the owner\'s recovery or uploads-cleanup resolves them.', 'warn'];
+    $live = array_count_values(array_map(static fn($res) => (string)($res['kind'] ?? 'upload'), $state['reservations']));
+    $rows[] = ['Live reservations', true, ($live['upload'] ?? 0) . ' upload(s), ' . ($live['restore'] ?? 0) . ' restore(s); dead ones were dropped.', 'info'];
+    $deletions = count(glob("$root/deleting/*.json") ?: []);
+    $rows[] = ['Pending deletion intents', $deletions === 0, "$deletions; run php maintenance.php uploads-cleanup.", 'warn'];
+    $restoring = [];
+    foreach (glob("$root/restore/*.json") ?: [] as $path) $restoring[basename($path, '.json')] = true;
+    $rows[] = ['Unfinished restores', $restoring === [], $restoring === [] ? 'None.'
+        : implode(', ', array_keys($restoring)) . '; run uploads-cleanup, or php maintenance.php restore-abort --form=<id>.', 'warn'];
+    if ($existsFor !== null) {
+        $unreferenced = [];
+        $seen = 0;
+        foreach (glob("$root/*", GLOB_ONLYDIR) ?: [] as $formDir) {
+            $form = basename($formDir);
+            if (in_array($form, ['staging', 'deleting', 'restore'], true) || isset($restoring[$form]) || !preg_match('/\A[a-zA-Z0-9_-]+\z/', $form)) continue;
+            foreach (glob("$formDir/*", GLOB_ONLYDIR) ?: [] as $subDir) {
+                if (++$seen > 200) break 2;
+                if ($existsFor($form, basename($subDir)) === 'not_found') $unreferenced[] = "$form/" . basename($subDir);
+            }
+        }
+        $rows[] = ['Directories without a record', $unreferenced === [], $unreferenced === [] ? 'None' . ($seen > 200 ? ' among the first 200.' : '.')
+            : implode(', ', array_slice($unreferenced, 0, 20)) . ' — reported only, never deleted automatically.', 'warn'];
+    }
+    return $rows;
 }
 
 // ─── Upload (section 4.2) ────────────────────────────────────────
@@ -1123,7 +1225,8 @@ function bbf_uploads_claim(array $config, string $owner, array $plan): array {
                     'bytes' => (int)$meta['size'], 'ip' => (string)($meta['ip_hmac'] ?? ''), 'meta' => $meta, 'meta_path' => "$rel.json"];
                 $total += (int)$meta['size'];
             }
-            if ($l['stored']['bytes'] + $total > (int)$u['max_stored_bytes'] || $l['stored']['files'] + count($items) > (int)$u['max_stored_files']) {
+            [$storedBytes, $storedFiles] = bbf_uploads_stored_committed($l);
+            if ($storedBytes + $total > (int)$u['max_stored_bytes'] || $storedFiles + count($items) > (int)$u['max_stored_files']) {
                 $notice = bbf_uploads_limit_notice($l, 'stored');
                 bbf_uploads_ledger_write($root, $l);
                 return ['ok' => false, 'code' => 507, 'undone' => true, 'message' => 'The server cannot store more files right now. Please try again later.'];
@@ -1216,6 +1319,418 @@ function bbf_uploads_rollback(array $config, string $owner, array $plan): bool {
         error_log('BareBonesForms uploads: rollback failed: ' . $error->getMessage());
         return false;
     }
+}
+
+// ─── Deleting submissions (section 10) ───────────────────────────
+
+/**
+ * Step 1: one deletion intent per call, listing only IDs that have an upload directory, written
+ * under the uploads lock. Its own lock (held by the caller until it finishes) is its liveness.
+ * Returns null when there is nothing to do; throws when the intent cannot be written.
+ */
+function bbf_uploads_deletion_begin(array $config, string $formId, array $ids, string $fingerprint): ?array {
+    $root = bbf_uploads_existing_root($config);
+    if ($root === null || !preg_match('/\A[a-zA-Z0-9_-]+\z/', $formId)) return null;
+    $withFiles = [];
+    foreach ($ids as $id) {
+        if (is_string($id) && preg_match('/\A[a-zA-Z0-9_]+\z/', $id) && is_dir("$root/$formId/$id")) $withFiles[$id] = $id;
+    }
+    if ($withFiles === []) return null;
+    $dir = "$root/deleting";
+    if (!is_dir($dir) && !@mkdir($dir, 0700) && !is_dir($dir)) throw new RuntimeException('Cannot create the deletion directory.');
+    $batch = bin2hex(random_bytes(8));
+    $lock = @fopen("$dir/$batch.lock", 'xb');
+    if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) throw new RuntimeException('Cannot lock the deletion intent.');
+    $intent = ['root' => $root, 'batch' => $batch, 'lock' => $lock];
+    $state = ['form' => $formId, 'submission_ids' => array_values($withFiles), 'storage_fingerprint' => $fingerprint, 'created' => time()];
+    $written = bbf_uploads_locked($root, static fn() => bbf_uploads_hook('deletion_intent')
+        && bbf_uploads_write_meta("$dir/$batch.json", $state));
+    if (!$written) {
+        bbf_uploads_deletion_release($intent, true);
+        throw new RuntimeException('Cannot write the deletion intent.');
+    }
+    bbf_uploads_fsync_dir($dir);
+    return $intent;
+}
+
+function bbf_uploads_deletion_release(array $intent, bool $removeLock): void {
+    if (is_resource($intent['lock'] ?? null)) {
+        flock($intent['lock'], LOCK_UN);
+        fclose($intent['lock']);
+    }
+    if ($removeLock) @unlink("{$intent['root']}/deleting/{$intent['batch']}.lock");
+}
+
+/**
+ * Steps 3–4, also used by cleanup; the caller holds the intent's lock. Per listed ID:
+ * record 'not_found' → unlink its files in chunks of up to 200 per uploads-lock section with
+ * ledger updates, then its directory; 'exists' → the deletion never reached it, keep the files;
+ * 'unavailable' or a changed storage fingerprint → touch nothing and keep the intent.
+ * $exists(string $id): 'exists'|'not_found'|'unavailable'. Returns true when the intent is gone.
+ */
+function bbf_uploads_deletion_process(string $root, string $batch, callable $exists, string $fingerprint): bool {
+    $path = "$root/deleting/$batch.json";
+    clearstatcache(true, $path);
+    if (!is_file($path)) return true; // died between the lock and the state: there never was an intent
+    $state = json_decode((string)@file_get_contents($path), true);
+    $form = (string)($state['form'] ?? '');
+    if (!is_array($state['submission_ids'] ?? null) || !preg_match('/\A[a-zA-Z0-9_-]+\z/', $form)) return false;
+    if (($state['storage_fingerprint'] ?? null) !== $fingerprint) return false;
+    $gone = [];
+    foreach ($state['submission_ids'] as $id) {
+        if (!is_string($id) || !preg_match('/\A[a-zA-Z0-9_]+\z/', $id)) continue;
+        $existence = $exists($id);
+        if ($existence === 'unavailable') return false;
+        if ($existence === 'not_found') $gone[] = $id;
+    }
+    foreach ($gone as $id) {
+        $subDir = "$root/$form/$id";
+        foreach (array_chunk(glob("$subDir/f_*") ?: [], 200) as $chunk) {
+            if (!bbf_uploads_hook('deletion_files')) return false;
+            $written = bbf_uploads_locked($root, static function () use ($root, $chunk): bool {
+                $l = bbf_uploads_ledger_read($root);
+                foreach ($chunk as $file) {
+                    clearstatcache(true, $file);
+                    $size = (int)@filesize($file);
+                    if (@unlink($file)) bbf_uploads_charge($l, 'stored', $size, '', -1);
+                }
+                return bbf_uploads_ledger_write($root, $l); // a failed write over-counts; the recount corrects it
+            });
+            if (!$written) return false;
+        }
+        foreach (scandir($subDir) ?: [] as $name) if (is_file("$subDir/$name")) @unlink("$subDir/$name");
+        @rmdir($subDir);
+        clearstatcache(true, $subDir);
+        if (is_dir($subDir)) return false;
+    }
+    if (!@unlink($path) && is_file($path)) return false;
+    bbf_uploads_fsync_dir("$root/deleting");
+    return true;
+}
+
+/** Steps 3–4 for the intent this request created; leftovers are finished by uploads-cleanup. */
+function bbf_uploads_deletion_finish(array $intent, callable $exists, string $fingerprint): bool {
+    try {
+        $done = bbf_uploads_deletion_process($intent['root'], $intent['batch'], $exists, $fingerprint);
+    } catch (Throwable $error) {
+        error_log('BareBonesForms uploads: deletion left for cleanup: ' . $error->getMessage());
+        $done = false;
+    }
+    bbf_uploads_deletion_release($intent, $done);
+    return $done;
+}
+
+/** Cleanup: finish every deletion intent whose lock can be taken. Returns the batches still pending. */
+function bbf_uploads_deletion_sweep(string $root, callable $existsFor, callable $fingerprintFor): array {
+    $pending = [];
+    foreach (glob("$root/deleting/*.lock") ?: [] as $lockPath) {
+        $batch = basename($lockPath, '.lock');
+        if (!preg_match('/\A[a-f0-9]{16}\z/', $batch)) continue;
+        $lock = @fopen($lockPath, 'r+b');
+        if (!$lock) continue;
+        if (!flock($lock, LOCK_EX | LOCK_NB)) { fclose($lock); $pending[] = $batch; continue; }
+        $state = json_decode((string)@file_get_contents("$root/deleting/$batch.json"), true);
+        $form = is_array($state) ? (string)($state['form'] ?? '') : '';
+        try {
+            $done = $form === '' && !is_file("$root/deleting/$batch.json")
+                ? true
+                : bbf_uploads_deletion_process($root, $batch, static fn(string $id) => $existsFor($form, $id), $fingerprintFor($form));
+        } catch (Throwable $error) {
+            error_log('BareBonesForms uploads: deletion cleanup failed: ' . $error->getMessage());
+            $done = false;
+        }
+        bbf_uploads_deletion_release(['root' => $root, 'batch' => $batch, 'lock' => $lock], $done);
+        if (!$done) $pending[] = $batch;
+    }
+    return $pending;
+}
+
+// ─── Backup and restore (section 10) ─────────────────────────────
+
+/** Stored usage plus bytes and files reserved by running restores: what a new claim must fit beside. */
+function bbf_uploads_stored_committed(array $l): array {
+    $bytes = (int)$l['stored']['bytes'];
+    $files = (int)$l['stored']['files'];
+    foreach ($l['reservations'] as $res) {
+        if (($res['kind'] ?? '') !== 'restore') continue;
+        $bytes += (int)($res['bytes'] ?? 0);
+        $files += (int)($res['files'] ?? 0);
+    }
+    return [$bytes, $files];
+}
+
+/** Every uploaded file descriptor in a record. */
+function bbf_uploads_record_files(array $record): array {
+    $files = [];
+    foreach ((array)($record['data'] ?? []) as $value) {
+        if (!bbf_uploads_is_descriptor_list($value)) continue;
+        foreach ($value as $descriptor) $files[] = $descriptor;
+    }
+    return $files;
+}
+
+/** Streamed copy, hashed while copying; the target is removed unless the hash matches. */
+function bbf_uploads_copy_verified(string $source, string $target, string $sha256): bool {
+    if (!preg_match('/\A[a-f0-9]{64}\z/D', $sha256)) return false;
+    $in = @fopen($source, 'rb');
+    $out = $in ? @fopen($target, 'wb') : false;
+    $hash = hash_init('sha256');
+    $ok = $in && $out;
+    while ($ok && !feof($in)) {
+        $chunk = fread($in, 1048576);
+        if ($chunk === false) { $ok = false; break; }
+        hash_update($hash, $chunk);
+        $ok = bbf_storage_write_all($out, $chunk);
+    }
+    if (is_resource($in)) fclose($in);
+    if (is_resource($out)) { $ok = fflush($out) && $ok; fclose($out); }
+    $ok = $ok && hash_equals($sha256, hash_final($hash));
+    if ($ok) @chmod($target, 0600);
+    elseif ($out) @unlink($target);
+    return $ok;
+}
+
+/** submission_id => file_id => {size, sha256} of every file referenced by the records. */
+function bbf_uploads_backup_manifest(array $records): array {
+    $manifest = [];
+    foreach ($records as $id => $record) {
+        foreach (bbf_uploads_record_files((array)$record) as $descriptor) {
+            if (!preg_match('/\A[a-zA-Z0-9_]+\z/', (string)$id) || !preg_match('/\A[a-f0-9]{64}\z/D', (string)($descriptor['sha256'] ?? ''))) {
+                throw new RuntimeException('Invalid file descriptor in backup record.');
+            }
+            $manifest[(string)$id][$descriptor['id']] = ['size' => max(0, (int)($descriptor['size'] ?? 0)), 'sha256' => $descriptor['sha256']];
+        }
+    }
+    ksort($manifest, SORT_STRING);
+    return $manifest;
+}
+
+function bbf_uploads_manifest_totals(array $manifest): array {
+    $bytes = 0;
+    $files = 0;
+    foreach ($manifest as $entries) foreach ($entries as $entry) { $bytes += (int)$entry['size']; $files++; }
+    return [$bytes, $files];
+}
+
+function bbf_uploads_remove_tree(string $dir): void {
+    if (is_link($dir) || !is_dir($dir)) return;
+    foreach (scandir($dir) ?: [] as $name) {
+        if ($name === '.' || $name === '..') continue;
+        $path = "$dir/$name";
+        if (is_dir($path) && !is_link($path)) bbf_uploads_remove_tree($path);
+        else @unlink($path);
+    }
+    @rmdir($dir);
+}
+
+/** Backup sidecar <bundle>.files/<submission_id>/<file_id>: written complete under a temporary name, then renamed. */
+function bbf_uploads_backup_files(array $config, string $formId, array $manifest, string $filesDir): void {
+    if ($manifest === []) return;
+    if (is_dir($filesDir)) {
+        // Same bundle name means the same payload; the sidecar must still verify.
+        foreach ($manifest as $id => $entries) foreach ($entries as $fileId => $entry) {
+            if (!is_file("$filesDir/$id/$fileId") || !hash_equals($entry['sha256'], (string)hash_file('sha256', "$filesDir/$id/$fileId"))) {
+                throw new RuntimeException('Existing backup file sidecar does not match.');
+            }
+        }
+        return;
+    }
+    $tmp = $filesDir . '.tmp-' . bin2hex(random_bytes(6));
+    try {
+        foreach ($manifest as $id => $entries) {
+            if (!@mkdir("$tmp/$id", 0700, true)) throw new RuntimeException('Cannot create the backup file sidecar.');
+            foreach ($entries as $fileId => $entry) {
+                $source = bbf_upload_path($config, $formId, (string)$id, (string)$fileId);
+                if ($source === null) throw new RuntimeException("Backup: file $fileId of $id is missing.");
+                if (!bbf_uploads_copy_verified($source, "$tmp/$id/$fileId", $entry['sha256'])) {
+                    throw new RuntimeException("Backup: file $fileId of $id could not be copied intact.");
+                }
+            }
+        }
+        if (!@rename($tmp, $filesDir)) throw new RuntimeException('Cannot publish the backup file sidecar.');
+    } catch (Throwable $error) {
+        bbf_uploads_remove_tree($tmp);
+        throw $error;
+    }
+}
+
+function bbf_uploads_restore_state(string $root, string $formId): ?array {
+    $path = "$root/restore/$formId.json";
+    clearstatcache(true, $path);
+    if (!is_file($path)) return null;
+    $state = json_decode((string)@file_get_contents($path), true);
+    return is_array($state) ? $state : ['phase' => 'unreadable'];
+}
+
+/** Restore needs an empty uploads target too: no <form>/ directory and no unfinished restore state. */
+function bbf_uploads_restore_target_empty(array $config, string $formId): bool {
+    $root = bbf_uploads_existing_root($config);
+    if ($root === null) return true;
+    return !file_exists("$root/$formId") && !file_exists("$root/restore/$formId.json") && !file_exists("$root/restore/$formId.tmp");
+}
+
+/** Dry run (step 1): every sidecar file present with the right size and hash, uploads enabled, capacity available. */
+function bbf_uploads_restore_check(array $config, array $manifest, string $filesDir): array {
+    [$bytes, $files] = bbf_uploads_manifest_totals($manifest);
+    $result = ['ok' => true, 'error' => null, 'files' => $files, 'bytes' => $bytes];
+    if ($manifest === []) return $result;
+    $u = bbf_uploads_config($config);
+    if (empty($u['enabled'])) return ['ok' => false, 'error' => 'The bundle contains files, but uploads are not enabled.'] + $result;
+    foreach ($manifest as $id => $entries) foreach ($entries as $fileId => $entry) {
+        $path = "$filesDir/$id/$fileId";
+        clearstatcache(true, $path);
+        if (is_link($path) || !is_file($path)) return ['ok' => false, 'error' => "Sidecar file $id/$fileId is missing."] + $result;
+        if (filesize($path) !== (int)$entry['size'] || !hash_equals($entry['sha256'], (string)hash_file('sha256', $path))) {
+            return ['ok' => false, 'error' => "Sidecar file $id/$fileId does not match its descriptor."] + $result;
+        }
+    }
+    $root = bbf_uploads_existing_root($config);
+    $l = $root !== null ? bbf_uploads_ledger_read($root) : bbf_uploads_ledger_empty();
+    [$storedBytes, $storedFiles] = bbf_uploads_stored_committed($l);
+    if ($storedBytes + $bytes > (int)$u['max_stored_bytes'] || $storedFiles + $files > (int)$u['max_stored_files']) {
+        return ['ok' => false, 'error' => 'Not enough stored-file capacity for this restore.'] + $result;
+    }
+    return $result;
+}
+
+/**
+ * Steps 2–4. The caller holds the per-form restore lock ($lockPath) for the whole run.
+ * Reserve, then write state phase "files"; copy into restore/<form>.tmp verifying hashes;
+ * under the uploads lock move the tree to <form>/ with write-ahead accounting, turn the
+ * reservation into stored usage and set phase "records". Throws; the caller then calls
+ * bbf_uploads_restore_remove().
+ */
+function bbf_uploads_restore_files(array $config, string $formId, array $manifest, string $filesDir, string $lockPath, array $extra = []): void {
+    if ($manifest === []) return;
+    $resolved = bbf_uploads_root($config);
+    if (!$resolved['ok']) throw new RuntimeException($resolved['error']);
+    $root = $resolved['root'];
+    $u = bbf_uploads_config($config);
+    [$bytes, $files] = bbf_uploads_manifest_totals($manifest);
+    $statePath = "$root/restore/$formId.json";
+    $tmp = "$root/restore/$formId.tmp";
+    $r = bin2hex(random_bytes(8));
+    $state = ['phase' => 'files', 'form' => $formId, 'files' => $manifest, 'reservation' => $r, 'lock' => $lockPath, 'created' => time()] + $extra;
+    bbf_uploads_locked($root, static function () use ($root, $u, $r, $formId, $lockPath, $bytes, $files, $statePath, $state): void {
+        $l = bbf_uploads_ledger_read($root);
+        bbf_uploads_gc_locked($root, $l, $u);
+        [$storedBytes, $storedFiles] = bbf_uploads_stored_committed($l);
+        if ($storedBytes + $bytes > (int)$u['max_stored_bytes'] || $storedFiles + $files > (int)$u['max_stored_files']) {
+            throw new RuntimeException('Not enough stored-file capacity for this restore.');
+        }
+        $l['reservations'][$r] = ['kind' => 'restore', 'form' => $formId, 'lock' => $lockPath, 'bytes' => $bytes,
+            'files' => $files, 'ip_hmac' => '', 'created' => time()];
+        if (!bbf_uploads_ledger_write($root, $l)) throw new RuntimeException('Cannot reserve restore capacity.');
+        // A crash here leaves a reservation without a state; its owner lock is then free, so GC drops it.
+        if (!bbf_uploads_hook('restore_reserved') || !bbf_uploads_write_meta($statePath, $state)) {
+            throw new RuntimeException('Cannot write the restore state.');
+        }
+        bbf_uploads_fsync_dir("$root/restore");
+    });
+    foreach ($manifest as $id => $entries) {
+        if (!is_dir("$tmp/$id") && !@mkdir("$tmp/$id", 0700, true)) throw new RuntimeException('Cannot create the restore directory.');
+        foreach ($entries as $fileId => $entry) {
+            if (!bbf_uploads_hook('restore_copy') || !bbf_uploads_copy_verified("$filesDir/$id/$fileId", "$tmp/$id/$fileId", $entry['sha256'])) {
+                throw new RuntimeException("Restore: file $id/$fileId could not be copied intact.");
+            }
+        }
+    }
+    bbf_uploads_locked($root, static function () use ($root, $formId, $manifest, $tmp, $r, $statePath, $state): void {
+        $l = bbf_uploads_ledger_read($root);
+        $items = [];
+        foreach ($manifest as $id => $entries) foreach ($entries as $fileId => $entry) {
+            $items[] = ['from' => ['loc' => 'none', 'path' => "restore/$formId.tmp/$id/$fileId"],
+                'to' => ['loc' => 'stored', 'path' => "$formId/$id/$fileId"], 'bytes' => (int)$entry['size'], 'ip' => '', 'meta_path' => ''];
+        }
+        $wal = bbf_uploads_wal_begin($root, $l, 'restore', "restore:$formId", $items);
+        if ($wal === null) throw new RuntimeException('Cannot write the restore write-ahead entry.');
+        $moved = bbf_uploads_move($tmp, "$root/$formId");
+        bbf_uploads_hook('restore_moved');
+        bbf_uploads_wal_settle($root, $l, $wal);
+        if ($moved === 'moved') unset($l['reservations'][$r]);
+        if (!bbf_uploads_ledger_write($root, $l)) throw new RuntimeException('Cannot account the restored files.');
+        if ($moved !== 'moved') throw new RuntimeException('Cannot move the restored files into place.');
+        bbf_uploads_fsync_dir($root);
+        if (!bbf_uploads_hook('restore_phase_records') || !bbf_uploads_write_meta($statePath, ['phase' => 'records'] + $state)) {
+            throw new RuntimeException('Cannot advance the restore state.');
+        }
+    });
+}
+
+/** Remove the restored files of $formId (staging copy and final tree), release its reservation, exact ledger, no state. */
+function bbf_uploads_restore_remove(array $config, string $formId): bool {
+    $root = bbf_uploads_existing_root($config);
+    if ($root === null) return true;
+    return bbf_uploads_locked($root, static function () use ($root, $formId): bool {
+        $l = bbf_uploads_ledger_read($root);
+        foreach ($l['wal'] as $id => $entry) {
+            if (($entry['owner'] ?? null) === "restore:$formId") bbf_uploads_wal_settle($root, $l, (string)$id);
+        }
+        foreach ($l['reservations'] as $r => $res) {
+            if (($res['kind'] ?? '') === 'restore' && ($res['form'] ?? null) === $formId) unset($l['reservations'][$r]);
+        }
+        bbf_uploads_remove_tree("$root/restore/$formId.tmp");
+        $formDir = "$root/$formId";
+        foreach (glob("$formDir/*", GLOB_ONLYDIR) ?: [] as $subDir) {
+            foreach (glob("$subDir/f_*") ?: [] as $file) {
+                clearstatcache(true, $file);
+                $size = (int)@filesize($file);
+                if (@unlink($file)) bbf_uploads_charge($l, 'stored', $size, '', -1);
+            }
+            @rmdir($subDir);
+        }
+        @rmdir($formDir);
+        $written = bbf_uploads_ledger_write($root, $l);
+        clearstatcache();
+        if (!$written || file_exists($formDir) || file_exists("$root/restore/$formId.tmp")) return false;
+        return @unlink("$root/restore/$formId.json") || !is_file("$root/restore/$formId.json");
+    });
+}
+
+/** Step 7: the definition is published; the restore state is no longer needed. */
+function bbf_uploads_restore_finish(array $config, string $formId): void {
+    $root = bbf_uploads_existing_root($config);
+    if ($root !== null) @unlink("$root/restore/$formId.json");
+}
+
+/**
+ * Recovery of an unfinished restore; the caller holds the per-form restore lock.
+ * Published → drop the state. Phase "files" → no record exists yet: remove the files.
+ * Phase "records" → nothing is deleted; `maintenance.php restore-abort` removes records and files together.
+ * Returns 'none' | 'cleared' | 'removed' | 'records_pending' | 'failed'.
+ */
+function bbf_uploads_restore_recover(array $config, string $formId, bool $published): string {
+    $root = bbf_uploads_existing_root($config);
+    if ($root === null) return 'none';
+    $state = bbf_uploads_restore_state($root, $formId);
+    if ($state === null) return 'none';
+    if ($published) {
+        bbf_uploads_settle_owner($config, "restore:$formId");
+        bbf_uploads_restore_finish($config, $formId);
+        return 'cleared';
+    }
+    if (($state['phase'] ?? '') !== 'files') return 'records_pending';
+    return bbf_uploads_restore_remove($config, $formId) ? 'removed' : 'failed';
+}
+
+/** Cleanup: recover each unfinished restore whose lock can be taken. form => outcome (or 'running'). */
+function bbf_uploads_restore_sweep(array $config, string $root): array {
+    $formsDir = (string)($config['forms_dir'] ?? __DIR__ . '/forms');
+    $report = [];
+    foreach (glob("$root/restore/*.json") ?: [] as $statePath) {
+        $formId = basename($statePath, '.json');
+        if (!preg_match('/\A[a-zA-Z0-9_-]+\z/', $formId)) continue;
+        $state = bbf_uploads_restore_state($root, $formId);
+        $lockPath = (string)($state['lock'] ?? '');
+        $lock = $lockPath !== '' && is_file($lockPath) ? @fopen($lockPath, 'r+b') : false;
+        if ($lock && !flock($lock, LOCK_EX | LOCK_NB)) { fclose($lock); $report[$formId] = 'running'; continue; }
+        try {
+            $report[$formId] = bbf_uploads_restore_recover($config, $formId, is_file("$formsDir/$formId.json"));
+        } finally {
+            if ($lock) { flock($lock, LOCK_UN); fclose($lock); }
+        }
+    }
+    return $report;
 }
 
 // ─── Stored files: paths, downloads ──────────────────────────────

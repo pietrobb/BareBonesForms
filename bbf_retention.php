@@ -9,9 +9,16 @@ function bbf_retention_policy(array $config): array {
         return ['enabled' => false, 'days' => 0, 'archive_dir' => '', 'batch_limit' => 100];
     }
     $value = $config['retention'];
-    if (!is_array($value) || array_diff(array_keys($value), ['enabled', 'days', 'archive_dir', 'batch_limit'])
+    if (!is_array($value) || array_diff(array_keys($value), ['enabled', 'days', 'archive_dir', 'batch_limit', 'archive_files', 'archive_files_days'])
         || !is_bool($value['enabled'] ?? null)) {
         throw new InvalidArgumentException('Invalid retention configuration.');
+    }
+    // Uploaded files are archived only on request, and then only for a bounded time (upload spec §10).
+    $archiveFiles = $value['archive_files'] ?? false;
+    $archiveFilesDays = $value['archive_files_days'] ?? null;
+    if (!is_bool($archiveFiles) || ($archiveFiles && (!is_int($archiveFilesDays) || $archiveFilesDays < 1 || $archiveFilesDays > 36500))
+        || (!$archiveFiles && $archiveFilesDays !== null && !is_int($archiveFilesDays))) {
+        throw new InvalidArgumentException('retention.archive_files requires retention.archive_files_days (1–36500).');
     }
     $days = $value['days'] ?? 0;
     $archiveDir = $value['archive_dir'] ?? '';
@@ -24,7 +31,8 @@ function bbf_retention_policy(array $config): array {
         throw new InvalidArgumentException('Enabled retention requires days and a private archive directory.');
     }
     return ['enabled' => $value['enabled'], 'days' => $days,
-        'archive_dir' => $archiveDir, 'batch_limit' => $batchLimit];
+        'archive_dir' => $archiveDir, 'batch_limit' => $batchLimit,
+        'archive_files' => $archiveFiles, 'archive_files_days' => $archiveFiles ? $archiveFilesDays : null];
 }
 
 function bbf_retention_timestamp($value): ?int {
@@ -45,7 +53,7 @@ function bbf_retention_plan(array $config, string $formId, ?int $now = null): ar
     $policy = bbf_retention_policy($config);
     $base = ['version' => 1, 'enabled' => $policy['enabled'], 'dry_run' => true,
         'form' => $formId, 'backend' => null, 'archive_dir' => null, 'as_of' => null, 'cutoff' => null, 'count' => 0,
-        'ids' => [], 'confirmation' => null];
+        'ids' => [], 'file_count' => 0, 'file_bytes' => 0, 'confirmation' => null];
     if (!$policy['enabled']) return $base;
 
     $allowedBackends = ['file', 'csv', 'sqlite', 'mysql'];
@@ -83,24 +91,40 @@ function bbf_retention_plan(array $config, string $formId, ?int $now = null): ar
     $asOf = intdiv($now, 86400) * 86400;
     $cutoff = $asOf - ($policy['days'] * 86400);
     $ids = [];
+    $filesById = [];
     foreach (bbf_read_export($formId, $effective, PHP_INT_MAX, 0, null, null, null, true) as $submission) {
         $submitted = bbf_retention_timestamp($submission['meta']['submitted'] ?? null);
         if ($submitted === null || $submitted >= $cutoff) continue;
         $ids[$submission['id']] = $submission['id'];
+        $files = bbf_uploads_record_files($submission);
+        if ($files !== []) $filesById[$submission['id']] = $files;
         if (count($ids) > $policy['batch_limit']) {
             krsort($ids, SORT_STRING);
-            unset($ids[array_key_first($ids)]);
+            $dropped = array_key_first($ids);
+            unset($ids[$dropped], $filesById[$dropped]);
         }
     }
     ksort($ids, SORT_STRING);
     $ids = array_values($ids);
+    ksort($filesById, SORT_STRING);
+    $fileIds = [];
+    $fileBytes = 0;
+    foreach ($filesById as $id => $files) {
+        foreach ($files as $descriptor) {
+            $fileIds[$id][] = $descriptor['id'];
+            $fileBytes += max(0, (int)($descriptor['size'] ?? 0));
+        }
+    }
     $payload = ['version' => 1, 'form' => $formId, 'backend' => $effective['storage'],
         'archive_dir' => $archiveDir, 'as_of' => gmdate('Y-m-d\TH:i:s\Z', $asOf),
         'cutoff' => gmdate('Y-m-d\TH:i:s\Z', $cutoff), 'ids' => $ids];
+    // The digest covers the file IDs, so a file added or removed after the dry run needs a new confirmation.
+    if ($fileIds !== []) $payload += ['files' => $fileIds, 'archive_files' => $policy['archive_files']];
     return array_replace($base, [
         'backend' => $effective['storage'], 'archive_dir' => $archiveDir,
         'as_of' => $payload['as_of'], 'cutoff' => $payload['cutoff'],
         'count' => count($ids), 'ids' => $ids,
+        'file_count' => array_sum(array_map('count', $fileIds)), 'file_bytes' => $fileBytes,
         'confirmation' => 'retention-' . hash('sha256', bbf_storage_json($payload)),
     ]);
 }
@@ -214,11 +238,44 @@ function bbf_retention_archive_write(array $config, array $policy, array $plan, 
         if ($existing === $bytes) return $path;
         throw new RuntimeException('Retention archive name collision.');
     }
+    if ($policy['archive_files']) bbf_retention_archive_files($config, $plan['form'], $records, substr($path, 0, -5) . '.files');
     if (!bbf_storage_locked($path, static fn() => bbf_storage_replace($path,
         static fn($fp) => bbf_storage_write_all($fp, $bytes), 0600))) {
         throw new RuntimeException('Cannot persist retention archive.');
     }
     return $path;
+}
+
+/**
+ * Copy each uploaded file next to the archive, streamed and hashed while copying; any missing
+ * file or hash mismatch aborts the retention run before a record is deleted.
+ */
+function bbf_retention_archive_files(array $config, string $formId, array $records, string $filesDir): void {
+    foreach ($records as $id => $record) {
+        foreach (bbf_uploads_record_files($record) as $descriptor) {
+            $source = bbf_upload_path($config, $formId, (string)$id, (string)$descriptor['id']);
+            if ($source === null) throw new RuntimeException("Retention: file {$descriptor['id']} of $id is missing.");
+            $targetDir = "$filesDir/$id";
+            if (!is_dir($targetDir) && !@mkdir($targetDir, 0700, true) && !is_dir($targetDir)) throw new RuntimeException('Cannot create the retention file archive.');
+            if (!bbf_uploads_copy_verified($source, "$targetDir/{$descriptor['id']}", (string)($descriptor['sha256'] ?? ''))) {
+                throw new RuntimeException("Retention: file {$descriptor['id']} of $id could not be archived intact.");
+            }
+        }
+    }
+}
+
+/** Archived files are kept for retention.archive_files_days, then removed with their directory. */
+function bbf_retention_prune_archived_files(string $archiveDir, int $days, int $now): int {
+    $removed = 0;
+    foreach (glob("$archiveDir/*.files", GLOB_ONLYDIR) ?: [] as $filesDir) {
+        if (is_link($filesDir) || (int)@filemtime($filesDir) > $now - $days * 86400) continue;
+        foreach (glob("$filesDir/*", GLOB_ONLYDIR) ?: [] as $subDir) {
+            foreach (glob("$subDir/f_*") ?: [] as $file) if (@unlink($file)) $removed++;
+            @rmdir($subDir);
+        }
+        @rmdir($filesDir);
+    }
+    return $removed;
 }
 
 function bbf_retention_delete_file(string $path, string $formId, string $id, array $expected): array {
@@ -331,6 +388,7 @@ function bbf_retention_apply(array $config, string $formId, string $confirmation
     $principal = ['id' => 'retention-cli'];
     try {
         if (!flock($lock, LOCK_EX)) return ['ok' => false, 'reason' => 'lock'];
+        if ($policy['archive_files']) bbf_retention_prune_archived_files($archiveDir, $policy['archive_files_days'], $now);
         $plan = bbf_retention_plan($config, $formId, $now);
         if (!is_string($plan['confirmation']) || !hash_equals($plan['confirmation'], $confirmation)) {
             return ['ok' => false, 'reason' => 'confirmation', 'plan' => $plan];
@@ -390,11 +448,17 @@ function bbf_retention_apply(array $config, string $formId, string $confirmation
             }
         }
         $archive = null;
-        $result = bbf_outbox_delete_submissions($deletions,
-            static function (array $snapshots) use ($config, $policy, $plan, $records, $reviews, &$archive): bool {
-                $archive = bbf_retention_archive_write($config, $policy, $plan, $records, $reviews, $snapshots);
-                return true;
-            });
+        require_once __DIR__ . '/bbf_submit_tx.php';
+        // Files and transaction intents follow the records (upload spec §10, submit spec §9).
+        // A closure, not fn(): arrow functions capture by value and would lose the &$archive write.
+        $result = bbf_submissions_delete($config, $formId, array_map('strval', array_keys($records)),
+            static function () use ($deletions, $config, $policy, $plan, $records, $reviews, &$archive): array {
+                return bbf_outbox_delete_submissions($deletions,
+                    static function (array $snapshots) use ($config, $policy, $plan, $records, $reviews, &$archive): bool {
+                        $archive = bbf_retention_archive_write($config, $policy, $plan, $records, $reviews, $snapshots);
+                        return true;
+                    });
+            }, $records);
         if (!($result['ok'] ?? false) || ($result['deleted'] ?? 0) !== count($records)) {
             bbf_retention_audit_finish((int)($result['deleted'] ?? 0), false);
             return ['ok' => false, 'reason' => $result['reason'] ?? 'delete',

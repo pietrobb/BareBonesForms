@@ -88,6 +88,7 @@ switch ($config['storage']) {
     default:
         $submissions = loadFromFiles($formId, $id, $config['submissions_dir'], $limit, $offset, $dateFrom, $dateTo, $total, $q);
 }
+$submissions = array_map('bbf_record_public', $submissions);
 if ($id && $submissions) {
     $deliveryPath = bbf_outbox_existing_path($config, $formId, $id);
     $submissions[0]['delivery'] = bbf_outbox_status($deliveryPath);

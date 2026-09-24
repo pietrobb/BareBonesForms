@@ -436,6 +436,22 @@ if ($config) {
 }
 
 // ═════════════════════════════════════════════════════════════
+// File uploads (2.2)
+// ═════════════════════════════════════════════════════════════
+
+if (empty($config['uploads']['enabled'])) {
+    check('Uploads', 'File uploads', true, 'Disabled (uploads.enabled = false).');
+} else {
+    try {
+        require_once __DIR__ . '/bbf_submit_tx.php';
+        $existsFor = static fn(string $form, string $id): string => bbf_record_exists(bbf_effective_storage_config($config, $form), $form, $id);
+        foreach (bbf_uploads_diagnostics($config, $existsFor) as [$name, $pass, $detail, $level]) check('Uploads', $name, $pass, $detail, $level);
+    } catch (Throwable $error) {
+        check('Uploads', 'Upload diagnostics', false, $error->getMessage());
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
 // Results
 // ═════════════════════════════════════════════════════════════
 

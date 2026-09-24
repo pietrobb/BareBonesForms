@@ -176,9 +176,18 @@ function bbf_auth_path_identity($dir, string $expected, ?bool $directory = false
 function bbf_auth_definition_identity(array $config, string $form): bool {
     return bbf_auth_id($form) !== '' && bbf_auth_path_identity($config['forms_dir'] ?? __DIR__ . '/forms', "$form.json", null);
 }
+/** Unpublished leftovers of a restore that died after placing files stay unreachable until restore-abort (upload spec §10). */
+function bbf_auth_restore_pending(array $config, string $form): bool {
+    if (!is_array($config['uploads'] ?? null) || (string)($config['uploads']['dir'] ?? '') === '') return false;
+    if (is_file(($config['forms_dir'] ?? __DIR__ . '/forms') . "/$form.json")) return false;
+    require_once __DIR__ . '/bbf_uploads.php';
+    $root = bbf_uploads_existing_root($config);
+    return $root !== null && is_file("$root/restore/$form.json");
+}
 /** Response authorization additionally validates the definition and effective store; exact-scope orphans remain valid. */
 function bbf_auth_form_identity(array $config, string $form): bool {
     if (!bbf_auth_definition_identity($config, $form) || !bbf_auth_path_identity($config['forms_dir'] ?? __DIR__ . '/forms', "$form.json")) return false;
+    if (bbf_auth_restore_pending($config, $form)) return false;
     try { require_once __DIR__ . '/bbf_storage.php'; $effective = bbf_effective_storage_config($config, $form); } catch (Throwable $error) { return false; }
     $storage = $effective['storage']; if ($storage === 'file' || $storage === 'csv') return bbf_auth_path_identity($effective['submissions_dir'] ?? __DIR__ . '/submissions', $form . ($storage === 'csv' ? '.csv' : ''), $storage === 'file');
     if ($storage === 'sqlite') { $path = $effective['sqlite']['path'] ?? ($effective['submissions_dir'] ?? __DIR__ . '/submissions') . '/bbf.sqlite'; return is_string($path) && $path !== '' && bbf_auth_path_identity(dirname($path), basename($path)); } return true;

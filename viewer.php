@@ -17,17 +17,20 @@ if (!file_exists(__DIR__ . '/config.php')) {
     die('Missing config.php. Copy config.example.php to config.php and edit it.');
 }
 require_once __DIR__ . '/bbf_auth.php'; $config = bbf_auth_load_config(__DIR__ . '/config.php');
-require_once __DIR__ . '/bbf_functions.php'; require_once __DIR__ . '/bbf_export.php'; require_once __DIR__ . '/bbf_read.php'; require_once __DIR__ . '/bbf_review.php'; require_once __DIR__ . '/bbf_versions.php';
+require_once __DIR__ . '/bbf_functions.php'; require_once __DIR__ . '/bbf_export.php'; require_once __DIR__ . '/bbf_read.php'; require_once __DIR__ . '/bbf_review.php'; require_once __DIR__ . '/bbf_versions.php'; require_once __DIR__ . '/bbf_submit_tx.php';
 set_exception_handler(static function (Throwable $error): void { error_log('BareBonesForms viewer: ' . $error->getMessage()); viewerRespond(500, ['error' => 'Cannot read submissions.']); });
 // Shared access is required on every host, including loopback.
 require_once __DIR__ . '/bbf_auth.php';
 $viewerActions = ['', 'list_forms', 'dashboard', 'submissions', 'detail', 'stats', 'export', 'print', 'delete',
-    'bulk_delete', 'forward', 'retry_delivery', 'review_filters', 'review_update', 'review_filter_save', 'review_filter_delete'];
+    'bulk_delete', 'forward', 'retry_delivery', 'review_filters', 'review_update', 'review_filter_save', 'review_filter_delete', 'file'];
 $action = is_string($_GET['action'] ?? '') && in_array($_GET['action'] ?? '', $viewerActions, true) ? ($_GET['action'] ?? '') : 'invalid';
+// A download is a hidden form POST (no custom headers possible): IDs and the viewer token travel in its body, never the URL.
+$fileDownload = $action === 'file';
+if ($fileDownload && !array_key_exists('HTTP_X_BBF_CSRF', $_SERVER) && is_string($_POST['csrf'] ?? null)) $_SERVER['HTTP_X_BBF_CSRF'] = $_POST['csrf'];
 $principal = bbf_authenticate($config, true, $action === '');
 $reviewActions = ['review_filters', 'review_update', 'review_filter_save', 'review_filter_delete'];
 $mutation = in_array($action, ['delete', 'bulk_delete', 'forward', 'retry_delivery', 'review_update', 'review_filter_save', 'review_filter_delete'], true);
-if ($mutation && (!$principal || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !bbf_auth_csrf_valid())) {
+if (($mutation || $fileDownload) && (!$principal || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !bbf_auth_csrf_valid())) {
     // Denials are audited before any caller-controlled body is read.
     bbf_access_begin($config, $principal, 'viewer_' . $action, '', [], false, true, []);
 }
@@ -36,15 +39,16 @@ if ($bodyError !== null) {
     bbf_access_begin($config, $principal, 'viewer_' . $action, '', [], false, true, []);
     viewerRespond($bodyError === 'too_large' ? 413 : 400, ['error' => 'Invalid request body.']);
 }
-$accessForm = bbf_auth_id($mutation ? ($accessBody['form'] ?? null) : ($_GET['form'] ?? null));
-$permissions = in_array($action, ['submissions', 'detail', 'stats', 'export', 'print', 'delete', 'bulk_delete', 'forward', 'retry_delivery'], true) ? ['read'] : [];
+$accessForm = bbf_auth_id($mutation ? ($accessBody['form'] ?? null) : ($fileDownload ? ($_POST['form'] ?? null) : ($_GET['form'] ?? null)));
+$permissions = in_array($action, ['submissions', 'detail', 'stats', 'export', 'print', 'delete', 'bulk_delete', 'forward', 'retry_delivery', 'file'], true) ? ['read'] : [];
 if (in_array($action, $reviewActions, true) || ($action === 'submissions'
     && (array_key_exists('review', $_GET) || array_key_exists('status', $_GET) || array_key_exists('tags', $_GET)))) $permissions = ['read', 'review'];
 if (in_array($action, ['export', 'print', 'forward'], true)) $permissions[] = 'export';
 if (in_array($action, ['delete', 'bulk_delete'], true)) $permissions[] = 'delete';
-$accessIds = $action === 'bulk_delete' ? ($accessBody['ids'] ?? []) : [$mutation ? ($accessBody['id'] ?? '') : ($_GET['id'] ?? '')];
+$accessIds = $action === 'bulk_delete' ? ($accessBody['ids'] ?? [])
+    : [$mutation ? ($accessBody['id'] ?? '') : ($fileDownload ? ($_POST['id'] ?? '') : ($_GET['id'] ?? ''))];
 bbf_access_begin($config, $principal, 'viewer_' . ($action ?: 'page'), $accessForm,
-    $permissions, $action === 'retry_delivery', $mutation, is_array($accessIds) ? $accessIds : []);
+    $permissions, $action === 'retry_delivery', $mutation || $fileDownload, is_array($accessIds) ? $accessIds : []);
 if ($permissions && !$accessForm) viewerRespond(400, ['error' => 'Invalid form ID.']);
 if (!in_array($action, $viewerActions, true)) viewerRespond(400, ['error' => 'Unknown action.']);
 $viewerToken = bbf_auth_csrf();
@@ -75,6 +79,8 @@ function viewerRespond(int $code, $data): void {
         ? max(0, (int)$data['_audit_count'])
         : ($code < 400 ? (int)($data['deleted'] ?? (isset($data['submissions']) ? count($data['submissions']) : (isset($data['submission']) || isset($data['ok']) ? 1 : ($data['total'] ?? count($data))))) : 0);
     if (is_array($data)) unset($data['_audit_count']);
+    if (is_array($data['submission'] ?? null)) $data['submission'] = bbf_record_public($data['submission']);
+    if (is_array($data['submissions'] ?? null)) $data['submissions'] = array_map(static fn($s) => is_array($s) ? bbf_record_public($s) : $s, $data['submissions']);
     bbf_access_finish($auditCount, $code < 400); http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
@@ -365,7 +371,7 @@ function deleteSubs(string $formId, array $subIds, array $config): array { $conf
         };
         $deletions[] = ['path' => $path, 'delete' => $delete];
     }
-    return bbf_outbox_delete_submissions($deletions);
+    return bbf_submissions_delete($config, $formId, array_values($ids), static fn() => bbf_outbox_delete_submissions($deletions));
 }
 
 function deleteSub(string $formId, string $subId, array $config): array {
@@ -466,6 +472,27 @@ if ($action === 'detail' || $action === 'print') {
         if (bbf_auth_can($principal, $formId, 'review')) $response['review'] = bbf_review_get($config, $formId, $subId);
     }
     viewerRespond(200, $response);
+}
+
+if ($action === 'file') {
+    $formId = $accessForm;
+    $subId = sanitizeId(is_string($_POST['id'] ?? null) ? $_POST['id'] : '');
+    $fileId = is_string($_POST['file_id'] ?? null) ? $_POST['file_id'] : '';
+    if (!$subId || !preg_match('/\Af_[a-f0-9]{16}\z/D', $fileId)) viewerRespond(400, ['error' => 'Missing submission or file ID.']);
+    $sub = loadOneSub($formId, $subId, $config);
+    if (!$sub || ($sub['id'] ?? '') !== $subId) viewerRespond(404, ['error' => 'Submission not found.']);
+    // Only a file listed in this record's descriptors can be downloaded.
+    $descriptor = null;
+    foreach ((array)($sub['data'] ?? []) as $value) {
+        if (!bbf_uploads_is_descriptor_list($value)) continue;
+        foreach ($value as $candidate) if ($candidate['id'] === $fileId) $descriptor = $candidate;
+    }
+    if ($descriptor === null) viewerRespond(404, ['error' => 'File not found in this submission.']);
+    $path = bbf_upload_path($config, $formId, $subId, $fileId);
+    if ($path === null) viewerRespond(404, ['error' => 'The file is missing from the upload directory.']);
+    bbf_access_finish(1);
+    bbf_uploads_stream($path, $descriptor);
+    exit;
 }
 
 if ($action === 'stats') {
@@ -890,6 +917,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .detail-value a { color: var(--accent); text-decoration: none; }
 .detail-value a:hover { text-decoration: underline; }
 .detail-value .pre-wrap { white-space: pre-wrap; }
+.detail-value .file-list { list-style: none; margin: 0; padding: 0; }
+.detail-value .btn-file { background: none; border: none; padding: 0; font: inherit; color: var(--accent-text); text-decoration: underline; cursor: pointer; }
+.detail-value .file-size { color: var(--text-muted); font-size: 0.8rem; }
 .detail-value .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--accent-light); color: var(--accent-text); font-size: 0.78rem; margin: 2px 2px 2px 0; }
 .detail-value .stars { color: var(--amber); font-size: 1.1rem; letter-spacing: 1px; }
 .detail-value .empty-val { color: var(--text-light); font-style: italic; }
@@ -1082,7 +1112,7 @@ const I18N = {
         deleting:'Deleting...', deleted:'Deleted',
         fwd_title:'Forward submission', fwd_to:'To (email)', fwd_note:'Note (optional)',
         cancel:'Cancel', send:'Send', sending:'Sending...', fwd_ok:'Forwarded to',
-        copy:'Copy', copied:'Copied!', copy_fail:'Copy failed',
+        copy:'Copy', copied:'Copied!', copy_fail:'Copy failed', download_failed:'The file could not be downloaded.',
         popup_blocked:'Popup blocked — allow popups.',
         meta:'Submission metadata', submitted:'Submitted', ip:'IP', ua:'User agent',
         other:'Other fields', prev:'Prev', next:'Next',
@@ -1112,7 +1142,7 @@ const I18N = {
         deleting:'Mazanie...', deleted:'Vymazané',
         fwd_title:'Preposlať odoslanie', fwd_to:'Komu (email)', fwd_note:'Poznámka (voliteľné)',
         cancel:'Zrušiť', send:'Odoslať', sending:'Odosielam...', fwd_ok:'Preposlané na',
-        copy:'Kopírovať', copied:'Skopírované!', copy_fail:'Kopírovanie zlyhalo',
+        copy:'Kopírovať', copied:'Skopírované!', copy_fail:'Kopírovanie zlyhalo', download_failed:'Súbor sa nepodarilo stiahnuť.',
         popup_blocked:'Popup zablokovaný — povoľte vyskakovacie okná.',
         meta:'Metadáta odoslania', submitted:'Odoslané', ip:'IP', ua:'Prehliadač',
         other:'Ostatné polia', prev:'Predch.', next:'Ďalšie',
@@ -1142,7 +1172,7 @@ const I18N = {
         deleting:'Lösche...', deleted:'Gelöscht',
         fwd_title:'Einreichung weiterleiten', fwd_to:'An (E-Mail)', fwd_note:'Notiz (optional)',
         cancel:'Abbrechen', send:'Senden', sending:'Sende...', fwd_ok:'Weitergeleitet an',
-        copy:'Kopieren', copied:'Kopiert!', copy_fail:'Kopieren fehlgeschlagen',
+        copy:'Kopieren', copied:'Kopiert!', copy_fail:'Kopieren fehlgeschlagen', download_failed:'Die Datei konnte nicht heruntergeladen werden.',
         popup_blocked:'Popup blockiert — bitte Pop-ups erlauben.',
         meta:'Einreichungs-Metadaten', submitted:'Eingereicht', ip:'IP', ua:'Browser',
         other:'Weitere Felder', prev:'Zurück', next:'Weiter',
@@ -2211,8 +2241,52 @@ function copyToClipboard(text, btn) {
 }
 
 // ─── Value formatting ────────────────────────────────────────────
+const isFileList = value => Array.isArray(value) && value.length > 0
+    && value.every(d => d && typeof d === 'object' && /^f_[a-f0-9]{16}$/.test(String(d.id || '')));
+
+function fileSize(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+/** Hidden form POST into a hidden iframe: the IDs and token stay out of the URL, the page stays intact. */
+function downloadFile(formId, subId, fileId) {
+    let frame = document.getElementById('file-download-frame');
+    if (!frame) {
+        frame = document.createElement('iframe');
+        frame.id = frame.name = 'file-download-frame';
+        frame.hidden = true;
+        // A successful download is an attachment and never loads a document; only an error response does.
+        frame.addEventListener('load', () => {
+            let text = '';
+            try { text = frame.contentDocument?.body?.textContent || ''; } catch (e) { return; }
+            if (!text.trim()) return;
+            let message = '';
+            try { message = JSON.parse(text).error || ''; } catch (e) { /* non-JSON error page */ }
+            flash(message || t('download_failed'), true);
+        });
+        document.body.appendChild(frame);
+    }
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = 'viewer.php?action=file';
+    form.target = frame.name;
+    form.hidden = true;
+    Object.entries({ form: formId, id: subId, file_id: fileId, csrf: TOKEN }).forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden'; input.name = name; input.value = value;
+        form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+}
+
 function valueText(value) {
     if (value === null || value === undefined) return '';
+    if (isFileList(value)) return value.map(d => String(d.name || d.id)).join(', ');
     if (Array.isArray(value) && value.every(item => item === null || typeof item !== 'object')) {
         return value.map(item => String(item ?? '')).join(', ');
     }
@@ -2226,6 +2300,10 @@ function formatValue(value, type) {
     }
     if (Array.isArray(value) && type === 'checkbox' && value.every(item => item === null || typeof item !== 'object')) {
         return value.map(v => `<span class="tag">${esc(String(v))}</span>`).join('');
+    }
+    if (isFileList(value)) {
+        return '<ul class="file-list">' + value.map(d => `<li><button type="button" class="btn-file" data-file-id="${esc(d.id)}">`
+            + `${esc(String(d.name || d.id))}</button> <span class="file-size">${esc(fileSize(d.size))}</span></li>`).join('') + '</ul>';
     }
     if (typeof value === 'object') return `<div class="pre-wrap">${esc(valueText(value))}</div>`;
     const str = String(value);
@@ -2441,6 +2519,12 @@ panelMain.addEventListener('click', (e) => {
                 delBtn.textContent = t('del');
             }, 3000);
         }
+        return;
+    }
+
+    const fileBtn = e.target.closest('.btn-file');
+    if (fileBtn && panelMain._currentSub) {
+        downloadFile(state.formId, panelMain._currentSub.id, fileBtn.dataset.fileId);
         return;
     }
 

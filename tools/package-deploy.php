@@ -214,10 +214,10 @@ function bbf_deploy_validate_manifest(array $manifest, string $root): void
         'api-psc.php' => ['data/city-to-psc.json', 'data/psc-to-city.json'],
         'bbf_functions.php' => ['bbf_delivery.php', 'bbf_outbox.php', 'bbf_storage.php', 'bbf_uploads.php'],
         'bbf_uploads.php' => ['bbf_storage.php', 'bbf_diagnostics.php'],
-        'check.php' => ['bbf_auth.php', 'bbf_diagnostics.php'],
+        'check.php' => ['bbf_auth.php', 'bbf_diagnostics.php', 'bbf_submit_tx.php', 'bbf_uploads.php'],
         'submissions.php' => ['bbf_auth.php', 'bbf_export.php', 'bbf_outbox.php', 'bbf_read.php'],
         'submit.php' => ['bbf_auth.php', 'bbf_functions.php', 'bbf_read.php', 'bbf_submit_tx.php'],
-        'viewer.php' => ['bbf_auth.php', 'bbf_export.php', 'bbf_functions.php', 'bbf_read.php', 'bbf_review.php'],
+        'viewer.php' => ['bbf_auth.php', 'bbf_export.php', 'bbf_functions.php', 'bbf_read.php', 'bbf_review.php', 'bbf_submit_tx.php'],
     ];
 
     $realRoot = realpath($root);

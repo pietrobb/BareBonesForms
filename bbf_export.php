@@ -51,7 +51,9 @@ function bbf_export_repeatable_keys(?array $form): array {
 }
 
 function bbf_export_cell($value, bool $structured = false): string {
-    if (is_array($value)) {
+    if (bbf_uploads_is_descriptor_list($value) && $value !== []) {
+        $value = bbf_uploads_describe($value); // CSV shows file names and sizes; JSON export keeps the descriptors
+    } elseif (is_array($value)) {
         $nested = $structured || array_filter($value, 'is_array') !== [];
         $value = $nested
             ? json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)

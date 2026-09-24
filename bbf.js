@@ -869,7 +869,7 @@
             const allowed = new Set(allowlist || []);
             const body = {};
             fields.forEach(field => {
-                if (!allowed.has(field.name) || field.sensitive || ['password', 'hidden'].includes(field.type)) return;
+                if (!allowed.has(field.name) || field.sensitive || ['password', 'hidden', 'file'].includes(field.type)) return;
                 const inputs = formEl.querySelectorAll(`[name="${field.name}"]`);
                 if (!inputs.length) return;
                 if (field.type === 'checkbox') {
@@ -896,7 +896,7 @@
             const names = Array.isArray(allowlist) ? allowlist : Object.keys(data || {});
             names.forEach(name => {
                 const field = fieldMap.get(name);
-                if (!field || field.sensitive || ['password', 'hidden'].includes(field.type)) return;
+                if (!field || field.sensitive || ['password', 'hidden', 'file'].includes(field.type)) return;
                 const inputs = formEl.querySelectorAll(`[name="${name}"]`);
                 if (field.type === 'checkbox') {
                     const values = Array.isArray(data[name]) ? data[name].map(String) : [];

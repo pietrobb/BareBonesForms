@@ -24,7 +24,7 @@ function up_config(string $root, string $uploads, array $overrides = [], array $
         'mail' => ['method' => 'mail', 'from_email' => 'fixture@example.test', 'from_name' => 'Fixture'],
         'webhook_secret' => '', 'delivery' => ['max_attempts' => 3, 'lease_seconds' => 1, 'retry_delay' => 30],
         'submit_transaction_timeout' => 10, 'submit_replay_rate' => 1000, 'submit_recovery_budget' => 0,
-        'sqlite' => ['path' => "$root/submissions/bbf.sqlite"],
+        'sqlite' => ['path' => "$root/submissions/bbf.sqlite"], 'api_token' => hash('sha256', 'bbf-upload-test-token'),
         'uploads' => array_replace(['enabled' => true, 'dir' => $uploads, 'rate_limit' => ['max' => 100000, 'window' => 600]], $uploadOverrides),
     ], $overrides);
     $php = '<?php defined("BBF_LOADED") || exit; $root = ' . var_export($root, true) . ';'
@@ -177,6 +177,8 @@ up_check(bbf_uploads_content_disposition("a\"b\r\nc\\ž.pdf") === 'attachment; f
 
 $source = dirname(__DIR__);
 $root = bbf_test_installation($source);
+bbf_test_copy("$source/viewer.php", "$root/viewer.php");
+bbf_test_copy("$source/check.php", "$root/check.php");
 $private = str_replace('\\', '/', sys_get_temp_dir()) . '/bbf-upload-test-' . bin2hex(random_bytes(8));
 mkdir($private, 0700);
 $private = str_replace('\\', '/', realpath($private));
@@ -230,6 +232,40 @@ try {
     up_check($replay['code'] === 200 && ($replay['json']['already_submitted'] ?? false) && count(up_records($root, 'up')) === 1, 'replay: same key → 200, no second record');
     $reuse = up_submit($server, 'up', ['answer' => 'hi', 'cv' => [$token]], bin2hex(random_bytes(16)));
     up_check($reuse['code'] === 422 && count(up_records($root, 'up')) === 1, 'a used token cannot be claimed again (single use)');
+
+    // ── Viewer download (§10): hidden-form POST, IDs and token in the body ──
+    $viewer = fn(string $query, array $options = []) => bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . '/viewer.php' . $query, null, $options + ['timeout' => 60]);
+    $page = $viewer('', ['headers' => ['X-BBF-Token' => hash('sha256', 'bbf-upload-test-token')]]);
+    preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', (string)($page['headers'] ?? ''), $cookieMatch);
+    preg_match('/const TOKEN = ("[^"]+");/', (string)($page['body'] ?? ''), $csrfMatch);
+    $cookie = $cookieMatch[1] ?? '';
+    $csrf = json_decode($csrfMatch[1] ?? '""', true);
+    $download = fn(array $fields, string $method = 'POST', bool $withCookie = true) => $viewer('?action=file',
+        ['method' => $method, 'raw' => $method === 'POST' ? http_build_query($fields) : ''] + ($withCookie && $cookie !== '' ? ['cookie' => $cookie] : []));
+    $fields = ['form' => 'up', 'id' => $id, 'file_id' => $desc['id'] ?? '', 'csrf' => $csrf];
+    $got = $download($fields);
+    $headers = (string)($got['headers'] ?? '');
+    up_check($cookie !== '' && $got['code'] === 200 && ($got['body'] ?? null) === $pdf, 'viewer download returns the exact bytes');
+    $expected = ['Content-Type: application/octet-stream', 'Content-Disposition: attachment; filename="Jana Novak CV.pdf"',
+        'X-Content-Type-Options: nosniff', 'Content-Security-Policy: sandbox', 'Cross-Origin-Resource-Policy: same-origin',
+        'Referrer-Policy: no-referrer', 'Cache-Control: private, no-store', 'Content-Length: ' . strlen($pdf)];
+    up_check(count(array_filter($expected, fn($h) => stripos($headers, $h) !== false)) === count($expected) && stripos($headers, 'Content-Encoding') === false,
+        'download headers: octet-stream attachment, nosniff, CSP sandbox, CORP, no-store, exact length, no compression');
+    up_check($download(['csrf' => 'x' . $csrf] + $fields)['code'] === 403 && $download(array_diff_key($fields, ['csrf' => 1]))['code'] === 403,
+        'download without the viewer token in the body → 403');
+    up_check($download($fields, 'POST', false)['code'] === 403, 'download without a viewer session → 403');
+    up_check(in_array($download($fields, 'GET')['code'], [403, 405], true), 'download by GET is refused');
+    up_check($download(['file_id' => 'f_' . str_repeat('0', 16)] + $fields)['code'] === 404, 'a file ID not in the record → 404');
+    up_check($download(['id' => 'bbf_' . str_repeat('0', 16)] + $fields)['code'] === 404, 'another submission ID → 404');
+    $csv = $viewer('?action=export&form=up', ['headers' => ['X-BBF-Token' => hash('sha256', 'bbf-upload-test-token')]]);
+    up_check($csv['code'] === 200 && str_contains((string)$csv['body'], 'Jana Novak CV.pdf (') && !str_contains((string)$csv['body'], $desc['id'] ?? '-'),
+        'CSV export shows file names and sizes, not descriptors');
+    $api = bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . '/submissions.php?form=up', null,
+        ['headers' => ['X-BBF-Token' => hash('sha256', 'bbf-upload-test-token')], 'timeout' => 60]);
+    up_check(str_contains((string)$api['body'], (string)($desc['id'] ?? '-')) && str_contains((string)$api['body'], (string)($desc['sha256'] ?? '-')),
+        'JSON API returns the descriptors');
+    $audit = (string)@file_get_contents("$root/logs/access-audit.php");
+    up_check(str_contains($audit, '"action":"viewer_file"') && str_contains($audit, '"result":"completed"'), 'download is written to the access audit log');
 
     // Replay survives definition drift (Review 11).
     up_form($root, 'up', [], [['name' => 'answer', 'type' => 'text', 'label' => 'Answer']]);
@@ -440,6 +476,250 @@ try {
     $report = json_decode($out, true);
     up_check($code === 0 && !is_file("$data/staging/" . hash('sha256', $te)) && !is_file("$data/staging/" . str_repeat('b', 64))
         && up_exact($data) && ($report['unresolved_write_ahead'] ?? null) === [], 'uploads-cleanup: expired entries and orphan bytes removed, exact recount');
+
+    // ── Deletion (§10): files and the transaction intent follow the record ──
+    $viewerDelete = fn(string $subId) => $viewer('?action=delete', ['method' => 'POST', 'cookie' => $cookie,
+        'headers' => ['Content-Type' => 'application/json', 'X-BBF-CSRF' => $csrf], 'raw' => json_encode(['form' => 'up', 'id' => $subId])]);
+    $submitWithFiles = function (string $key) use ($server, $pdf): string {
+        $t1 = up_upload($server, 'up', 'cv', 'd1.pdf', $pdf)['json']['token'] ?? '';
+        $t2 = up_upload($server, 'up', 'cv', 'd2.pdf', $pdf . ' ')['json']['token'] ?? '';
+        return up_submit($server, 'up', ['cv' => [$t1, $t2]], $key)['json']['submission_id'] ?? '';
+    };
+    $kd = bin2hex(random_bytes(16));
+    $sid = $submitWithFiles($kd);
+    $onDisk = (string)@file_get_contents("$root/submissions/up/$sid.json");
+    $detail = $viewer("?action=detail&form=up&id=$sid", ['cookie' => $cookie]);
+    $apiOne = bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . "/submissions.php?form=up&id=$sid", null,
+        ['headers' => ['X-BBF-Token' => hash('sha256', 'bbf-upload-test-token')], 'timeout' => 60]);
+    up_check(str_contains($onDisk, 'submit_key_hash') && $detail['code'] === 200 && $apiOne['code'] === 200
+        && !str_contains((string)$detail['body'], 'submit_key_hash') && !str_contains((string)$apiOne['body'], 'submit_key_hash'),
+        'submit_key_hash stays internal: stored, never in the viewer or API response (submit spec #35)');
+    $deleted = $viewerDelete($sid);
+    up_check($deleted['code'] === 200 && !is_file("$root/submissions/up/$sid.json") && !is_dir("$data/up/$sid") && up_exact($data)
+        && !glob("$data/deleting/*"), 'viewer delete removes the record, its files and directory; exact ledger; no intent left');
+    up_check(up_intent($root, 'up', $kd) === null, 'deleting a submission deletes its transaction intent');
+    $retryAfterDelete = up_submit($server, 'up', ['answer' => 'again'], $kd);
+    up_check($retryAfterDelete['code'] !== 200 || empty($retryAfterDelete['json']['already_submitted']), 'the deleted submission is not replayed');
+
+    // Death after the records are deleted, before the files: cleanup finishes the intent.
+    $sid = $submitWithFiles(bin2hex(random_bytes(16)));
+    up_fault($root, 'upload:deletion_files');
+    $viewerDelete($sid);
+    $pending = glob("$data/deleting/*.json") ?: [];
+    $usage = up_usage($data);
+    up_check(!is_file("$root/submissions/up/$sid.json") && count(glob("$data/up/$sid/f_*") ?: []) === 2 && count($pending) === 1
+        && $usage['ledger'][1][0] >= $usage['disk'][1][0], 'death between record and file deletion: record gone, files and intent stay, ledger over-counts');
+    [$code, $out] = up_maintenance($root, 'uploads-cleanup');
+    $report = json_decode($out, true);
+    up_check($code === 0 && !is_dir("$data/up/$sid") && !glob("$data/deleting/*") && up_exact($data) && ($report['pending_deletions'] ?? null) === [],
+        'uploads-cleanup finishes the deletion with exact numbers');
+
+    // An intent listing a record that still exists: the ID is dropped, its files are kept.
+    $sid = $submitWithFiles(bin2hex(random_bytes(16)));
+    $batch = bin2hex(random_bytes(8));
+    file_put_contents("$data/deleting/$batch.lock", '');
+    file_put_contents("$data/deleting/$batch.json", json_encode(['form' => 'up', 'submission_ids' => [$sid],
+        'storage_fingerprint' => 'file:' . str_replace('\\', '/', realpath("$root/submissions")), 'created' => time()]));
+    [$code] = up_maintenance($root, 'uploads-cleanup');
+    up_check($code === 0 && count(glob("$data/up/$sid/f_*") ?: []) === 2 && !glob("$data/deleting/*"), 'record still exists → the intent drops the ID and keeps its files');
+    // A storage fingerprint that no longer matches: nothing is deleted.
+    unlink("$root/submissions/up/$sid.json");
+    file_put_contents("$data/deleting/$batch.lock", '');
+    file_put_contents("$data/deleting/$batch.json", json_encode(['form' => 'up', 'submission_ids' => [$sid],
+        'storage_fingerprint' => 'mysql:elsewhere', 'created' => time()]));
+    [$code, $out] = up_maintenance($root, 'uploads-cleanup');
+    $report = json_decode($out, true);
+    up_check(count(glob("$data/up/$sid/f_*") ?: []) === 2 && ($report['pending_deletions'] ?? []) === [$batch],
+        'storage fingerprint changed → nothing deleted, the intent stays pending');
+    unlink("$data/deleting/$batch.json");
+    unlink("$data/deleting/$batch.lock");
+    // A directory without a record and without an intent is reported, never deleted.
+    [$code, $out] = up_maintenance($root, 'uploads-cleanup');
+    $report = json_decode($out, true);
+    up_check(in_array("up/$sid", $report['directories_without_record'] ?? [], true) && count(glob("$data/up/$sid/f_*") ?: []) === 2,
+        'directory without record → reported, never deleted');
+
+    // ── Retention (§10): dry run counts files, the digest covers them, archive_files copies them ──
+    up_form($root, 'upret');
+    $tr = up_upload($server, 'upret', 'cv', 'old.pdf', $pdf)['json']['token'] ?? '';
+    $rid = up_submit($server, 'upret', ['cv' => [$tr]], bin2hex(random_bytes(16)))['json']['submission_id'] ?? '';
+    $recPath = "$root/submissions/upret/$rid.json";
+    $rec = json_decode((string)file_get_contents($recPath), true);
+    $rec['meta']['submitted'] = '2000-01-01T00:00:00Z';
+    file_put_contents($recPath, json_encode($rec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    $archive = "$private/archive";
+    $retention = ['enabled' => true, 'days' => 30, 'archive_dir' => $archive];
+    up_config($root, $data, ['retention' => $retention + ['archive_files' => true]]);
+    [$code] = up_maintenance($root, 'retention --form=upret');
+    up_check($code !== 0, 'retention.archive_files without archive_files_days is refused');
+    up_config($root, $data, ['retention' => $retention]);
+    [$code, $out] = up_maintenance($root, 'retention --form=upret');
+    $withoutFiles = json_decode($out, true)['confirmation'] ?? '';
+    up_config($root, $data, ['retention' => $retention + ['archive_files' => true, 'archive_files_days' => 30]]);
+    [$code, $out] = up_maintenance($root, 'retention --form=upret');
+    $plan = json_decode($out, true);
+    up_check($code === 0 && ($plan['ids'] ?? null) === [$rid] && ($plan['file_count'] ?? 0) === 1 && ($plan['file_bytes'] ?? 0) === strlen($pdf)
+        && is_string($plan['confirmation'] ?? null) && $plan['confirmation'] !== $withoutFiles,
+        'retention dry run reports file count and bytes; the digest covers the file IDs and archive_files');
+    [$code, $out] = up_maintenance($root, 'retention --form=upret --apply --confirm=' . ($plan['confirmation'] ?? ''));
+    $archived = glob("$archive/*.files/$rid/f_*") ?: [];
+    up_check($code === 0 && !is_file($recPath) && !is_dir("$data/upret/$rid") && up_exact($data)
+        && count($archived) === 1 && file_get_contents($archived[0]) === $pdf, 'retention deletes record and files; archive_files keeps a verified copy');
+    up_config($root, $data);
+
+    // ── Drafts never store file fields (§4.8) ───────────────────
+    up_form($root, 'updr', ['drafts' => ['enabled' => true, 'ttl_seconds' => 300, 'fields' => ['answer', 'cv']]]);
+    $json = ['headers' => ['Content-Type' => 'application/json']];
+    $refused = bbf_test_http($server, up_url($server, 'form=updr&action=draft_save'), null, $json + ['raw' => json_encode(['answer' => 'hi'])]);
+    up_check($refused['code'] === 500 && str_contains($refused['body'], 'drafts.fields[1]'), 'a file field listed in drafts.fields is refused by the definition check');
+    up_form($root, 'updr', ['drafts' => ['enabled' => true, 'ttl_seconds' => 300, 'fields' => ['answer']]]);
+    $tok = up_upload($server, 'updr', 'cv', 'draft.pdf', $pdf)['json']['token'] ?? '';
+    $saved = bbf_test_http($server, up_url($server, 'form=updr&action=draft_save'), null, $json + ['raw' => json_encode(['answer' => 'hi', 'cv' => [$tok]])]);
+    $loaded = bbf_test_http($server, up_url($server, 'form=updr&action=draft_load'), null,
+        $json + ['raw' => json_encode(['_bbf_draft_handle' => $saved['json']['handle'] ?? ''])]);
+    up_check($saved['code'] === 201 && $loaded['code'] === 200 && ($loaded['json']['data']['answer'] ?? '') === 'hi'
+        && !array_key_exists('cv', (array)($loaded['json']['data'] ?? [])) && !str_contains($loaded['body'], $tok),
+        'draft_save with an upload token stores no file field');
+
+    // ── Backup and restore (§10) ────────────────────────────────
+    $backupCfg = ['backup' => ['directory' => "$private/backups"]];
+    up_config($root, $data, $backupCfg);
+    up_form($root, 'upbk');
+    $bkIds = [];
+    foreach (['one.pdf' => $pdf, 'two.pdf' => $pdf . ' two'] as $name => $bytes) {
+        $tok = up_upload($server, 'upbk', 'cv', $name, $bytes)['json']['token'] ?? '';
+        $bkIds[] = up_submit($server, 'upbk', ['cv' => [$tok]], bin2hex(random_bytes(16)))['json']['submission_id'] ?? '';
+    }
+    [$code, $out] = up_maintenance($root, 'backup --form=upbk');
+    $backup = json_decode($out, true);
+    $bundle = (string)($backup['path'] ?? '');
+    $sidecar = glob("$bundle.files/*/f_*") ?: [];
+    $bundleDoc = json_decode((string)@file_get_contents($bundle), true);
+    up_check($code === 0 && ($backup['file_count'] ?? 0) === 2 && count($sidecar) === 2
+        && count($bundleDoc['payload']['files'] ?? []) === 2 && !str_contains((string)file_get_contents($bundle), base64_encode($pdf)),
+        'backup: descriptors with SHA-256 in the bundle, bytes in the <bundle>.files sidecar, never embedded');
+    // An empty restore target: no definition, records, versions, files or audit history for the form.
+    $wipe = static function () use ($root, $data, $private): void {
+        $rm = static function (string $dir) use (&$rm, $root, $private): void {
+            if (!str_starts_with($dir, "$root/") && !str_starts_with($dir, "$private/")) throw new RuntimeException('Refusing cleanup outside the fixture.');
+            if (is_link($dir) || !is_dir($dir)) return;
+            foreach (array_diff(scandir($dir) ?: [], ['.', '..']) as $name) is_dir("$dir/$name") ? $rm("$dir/$name") : unlink("$dir/$name");
+            rmdir($dir);
+        };
+        foreach (["$root/forms/.versions/upbk", "$root/submissions/upbk", "$root/submissions/.delivery/upbk", "$data/upbk", "$data/restore/upbk.tmp"] as $dir) $rm($dir);
+        foreach (["$root/forms/upbk.json", "$root/submissions/.review/upbk.json", "$data/restore/upbk.json"] as $file) @unlink($file);
+        $audit = "$root/logs/access-audit.php";
+        if (is_file($audit)) {
+            $lines = file($audit, FILE_IGNORE_NEW_LINES);
+            $kept = array_filter($lines, static fn($line, $i) => $i === 0 || (json_decode($line, true)['form'] ?? null) !== 'upbk', ARRAY_FILTER_USE_BOTH);
+            file_put_contents($audit, implode("\n", $kept) . "\n");
+        }
+    };
+    $restorePlan = static function () use ($root, $bundle): array {
+        [$code, $out] = up_maintenance($root, 'restore --bundle=' . escapeshellarg($bundle));
+        return json_decode($out, true) ?: ['code' => $code, 'raw' => $out];
+    };
+    $restoreApply = static function (string $confirm) use ($root, $bundle): array {
+        [$code, $out] = up_maintenance($root, 'restore --bundle=' . escapeshellarg($bundle) . ' --apply --confirm=' . $confirm);
+        return (json_decode($out, true) ?: []) + ['exit' => $code, 'raw' => $out];
+    };
+    $wipe();
+    up_maintenance($root, 'uploads-cleanup');
+    mkdir("$data/upbk");
+    $bkPlan = $restorePlan();
+    rmdir("$data/upbk");
+    up_check(($bkPlan['empty'] ?? true) === false && !is_string($bkPlan['confirmation'] ?? null), 'restore refuses a target whose uploads directory exists');
+    $bkPlan = $restorePlan();
+    up_check(($bkPlan['empty'] ?? false) === true && ($bkPlan['file_count'] ?? 0) === 2 && is_string($bkPlan['confirmation'] ?? null) && up_exact($data),
+        'restore dry run on an empty target: files counted, confirmation issued');
+
+    // Sidecar hash mismatch and missing file fail the dry run.
+    $original = file_get_contents($sidecar[0]);
+    file_put_contents($sidecar[0], $original . 'x');
+    $tampered = $restorePlan();
+    rename($sidecar[0], $sidecar[0] . '.moved');
+    $missing = $restorePlan();
+    rename($sidecar[0] . '.moved', $sidecar[0]);
+    file_put_contents($sidecar[0], $original);
+    up_check(!is_string($tampered['confirmation'] ?? null) && str_contains((string)($tampered['files_error'] ?? ''), 'does not match')
+        && !is_string($missing['confirmation'] ?? null) && str_contains((string)($missing['files_error'] ?? ''), 'missing'),
+        'restore dry run: sidecar hash mismatch and missing file are refused');
+    up_config($root, $data, $backupCfg, ['max_stored_files' => 1]);
+    up_check(str_contains((string)($restorePlan()['files_error'] ?? ''), 'capacity'), 'restore dry run: insufficient stored capacity is refused');
+    up_config($root, $data, $backupCfg);
+    $confirm = (string)$bkPlan['confirmation'];
+
+    // Death between the reservation and the restore state → the reservation is dead and dropped.
+    up_fault($root, 'upload:restore_reserved');
+    $restoreApply($confirm);
+    $afterReserve = up_usage($data)['reservations'];
+    [$code, $out] = up_maintenance($root, 'uploads-cleanup');
+    up_check($afterReserve === 1 && up_usage($data)['reservations'] === 0 && !is_file("$data/restore/upbk.json") && up_exact($data),
+        'death between reservation and state: cleanup drops the dead restore reservation');
+
+    // Death while copying (phase "files") → cleanup removes the partial copy and the state.
+    up_fault($root, 'upload:restore_copy', 'exit', 1);
+    $restoreApply($confirm);
+    $midCopy = is_file("$data/restore/upbk.json") && count(glob("$data/restore/upbk.tmp/*/f_*") ?: []) === 1;
+    [$code, $out] = up_maintenance($root, 'uploads-cleanup');
+    up_check($midCopy && !file_exists("$data/restore/upbk.tmp") && !is_file("$data/restore/upbk.json")
+        && up_usage($data)['reservations'] === 0 && up_exact($data), 'death while copying: cleanup removes the copy, state and reservation');
+
+    // Death right after the move, before the ledger write → the next restore recovers exactly, then succeeds.
+    up_fault($root, 'upload:restore_moved');
+    $restoreApply($confirm);
+    $afterMove = count(glob("$data/upbk/*/f_*") ?: []) === 2 && !is_file("$root/forms/upbk.json") && up_usage($data)['wal'] === 1;
+    $done = $restoreApply($confirm);
+    $restoredFiles = glob("$data/upbk/*/f_*") ?: [];
+    up_check($afterMove && ($done['ok'] ?? false) === true && ($done['files'] ?? 0) === 2 && count($restoredFiles) === 2
+        && is_file("$root/forms/upbk.json") && count(up_records($root, 'upbk')) === 2 && !is_file("$data/restore/upbk.json") && up_exact($data),
+        'death after the move: the next restore recovers, then restores records and files with an exact ledger');
+    $restoredBytes = array_map('file_get_contents', $restoredFiles);
+    sort($restoredBytes);
+    up_check($restoredBytes === [$pdf, $pdf . ' two'], 'restored files are byte-identical');
+    $abortPublished = json_decode(up_maintenance($root, 'restore-abort --form=upbk')[1], true);
+    up_check(($abortPublished['published'] ?? false) === true && !is_string($abortPublished['confirmation'] ?? null),
+        'restore-abort refuses a published form');
+
+    // Death after records, before publish (phase "records") → nothing deleted; restore-abort removes both together.
+    $wipe();
+    up_maintenance($root, 'uploads-cleanup');
+    up_fault($root, 'upload:restore_before_publish');
+    $restoreApply($confirm);
+    [$code, $out] = up_maintenance($root, 'uploads-cleanup');
+    $report = json_decode($out, true);
+    up_check(($report['unfinished_restores']['upbk'] ?? '') === 'records_pending' && count(glob("$data/upbk/*/f_*") ?: []) === 2
+        && count(up_records($root, 'upbk')) === 2 && !is_file("$root/forms/upbk.json") && up_exact($data),
+        'death before publish: cleanup reports records_pending and deletes nothing');
+    $token = ['headers' => ['X-BBF-Token' => hash('sha256', 'bbf-upload-test-token')]];
+    up_check(bbf_test_http($server, "http://127.0.0.1:{$server['port']}/submissions.php?form=upbk", null, $token)['code'] !== 200
+        && bbf_test_http($server, "http://127.0.0.1:{$server['port']}/viewer.php?action=detail&form=upbk&id=" . $bkIds[0], null, $token)['code'] !== 200,
+        'unpublished restore leftovers are unreachable through the API and the viewer');
+    up_check(($restoreApply($confirm)['reason'] ?? '') === 'restore_abort_required', 'a new restore over records_pending leftovers asks for restore-abort');
+    $abortPlan = json_decode(up_maintenance($root, 'restore-abort --form=upbk')[1], true);
+    [$code, $out] = up_maintenance($root, 'restore-abort --form=upbk --apply --confirm=' . ($abortPlan['confirmation'] ?? ''));
+    up_check($code === 0 && is_string($abortPlan['confirmation'] ?? null) && !file_exists("$data/upbk") && up_records($root, 'upbk') === []
+        && !file_exists("$root/forms/.versions/upbk") && !is_file("$data/restore/upbk.json") && up_exact($data),
+        'restore-abort removes unpublished records, versions, files and state together');
+    $wipe(); // the reachability probes above audited form upbk
+    $final = $restoreApply((string)($restorePlan()['confirmation'] ?? ''));
+    up_check(($final['ok'] ?? false) === true && count(glob("$data/upbk/*/f_*") ?: []) === 2 && up_exact($data), 'after restore-abort a full restore succeeds');
+    up_config($root, $data);
+
+    // ── Diagnostics (§12) ───────────────────────────────────────
+    $diag = [];
+    foreach (bbf_uploads_diagnostics(['uploads' => ['enabled' => true, 'dir' => $data]],
+        static fn(string $form, string $id): string => is_file("$root/submissions/$form/$id.json") ? 'exists' : 'not_found') as [$name, $pass, $detail]) {
+        $diag[$name] = [$pass, $detail];
+    }
+    up_check(($diag['Unresolved write-ahead entries'][0] ?? false) === true && ($diag['Unfinished restores'][0] ?? false) === true
+        && isset($diag['Stored bytes below 80 %'], $diag['Pending deletion intents']) && !isset($diag['Upload ledger'])
+        && str_contains($diag['Directories without a record'][1] ?? '', "up/$sid") && up_exact($data),
+        'diagnostics: exact recount, write-ahead entries, restores, deletions and directories without a record reported');
+    $checkPage = bbf_test_http($server, "http://127.0.0.1:{$server['port']}/check.php", null,
+        ['headers' => ['X-BBF-Token' => hash('sha256', 'bbf-upload-test-token')], 'timeout' => 60]);
+    up_check($checkPage['code'] === 200 && str_contains($checkPage['body'], 'Unresolved write-ahead entries')
+        && str_contains($checkPage['body'], 'fileinfo extension'), 'check.php shows the upload diagnostics');
 
     // ── Rate limit and location ─────────────────────────────────
     foreach (glob("$root/logs/ratelimit_upload_*") ?: [] as $file) unlink($file);

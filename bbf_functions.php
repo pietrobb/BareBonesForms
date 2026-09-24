@@ -357,6 +357,7 @@ function bbf_delivery_payment_template_bindings(): array {
 }
 
 function bbf_delivery_finalize_submission(string $path, array $submission, ?int $now = null): array {
+    $submission = bbf_record_public($submission); // planned payloads were prepared without it
     if (!is_array($submission['meta'] ?? null)
         || ($submission['meta']['payment_status'] ?? null) !== 'paid') return ['ok' => false, 'reason' => 'payment'];
     $now = bbf_outbox_now($now);
@@ -567,6 +568,7 @@ function bbf_delivery_runtime_action(array $payload, array $config): array {
 
 /** Build the complete immutable execution plan before any delivery effect runs. */
 function bbf_delivery_prepare_jobs(array $form, array $submission, array $config, array $templateData = []): array {
+    $submission = bbf_record_public($submission);
     $paymentBindings = is_array($templateData['_bbf_payment_bindings'] ?? null)
         ? $templateData['_bbf_payment_bindings'] : [];
     unset($templateData['_bbf_payment_bindings']);

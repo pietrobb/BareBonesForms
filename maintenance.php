@@ -21,6 +21,7 @@ function bbf_maintenance_fail(string $message, int $code = 2): never {
 $usage = 'Usage: php maintenance.php retention --form=<id> [--apply --confirm=<retention-digest>]'
     . "\n       php maintenance.php backup --form=<id>"
     . "\n       php maintenance.php restore --bundle=<path> [--apply --confirm=<restore-digest>]"
+    . "\n       php maintenance.php restore-abort --form=<id> [--apply --confirm=<restore-abort-digest>]"
     . "\n       php maintenance.php submit-recover"
     . "\n       php maintenance.php uploads-cleanup";
 $arguments = $argv;
@@ -30,6 +31,7 @@ $allowed = match ($command) {
     'retention' => ['form', 'confirm'],
     'backup' => ['form'],
     'restore' => ['bundle', 'confirm'],
+    'restore-abort' => ['form', 'confirm'],
     'submit-recover', 'uploads-cleanup' => [],
     default => bbf_maintenance_fail($usage),
 };
@@ -46,7 +48,7 @@ foreach ($arguments as $argument) {
     }
     $options[$match[1]] = $match[2];
 }
-if (in_array($command, ['retention', 'backup'], true)) {
+if (in_array($command, ['retention', 'backup', 'restore-abort'], true)) {
     $formId = bbf_auth_id($options['form'] ?? null);
     if ($formId === '') bbf_maintenance_fail('A valid --form is required.');
 }
@@ -68,9 +70,11 @@ if ($command === 'submit-recover') {
     exit(0);
 }
 if ($command === 'uploads-cleanup') {
-    require_once __DIR__ . '/bbf_functions.php';
+    require_once __DIR__ . '/bbf_submit_tx.php';
     try {
-        $report = bbf_uploads_cleanup($config);
+        $report = bbf_uploads_cleanup($config,
+            static fn(string $form, string $id) => bbf_record_exists(bbf_effective_storage_config($config, $form), $form, $id),
+            static fn(string $form) => bbf_tx_storage_fingerprint(bbf_effective_storage_config($config, $form)));
     } catch (Throwable $error) {
         bbf_maintenance_fail('Upload cleanup failed: ' . $error->getMessage(), 1);
     }
@@ -86,6 +90,9 @@ try {
         'restore' => $options['apply']
             ? bbf_backup_restore($config, $options['bundle'], $options['confirm'])
             : bbf_backup_restore_plan($config, $options['bundle']),
+        'restore-abort' => $options['apply']
+            ? bbf_backup_restore_abort($config, $formId, $options['confirm'])
+            : bbf_backup_restore_abort_plan($config, $formId),
     };
 } catch (Throwable $error) {
     error_log('BareBonesForms maintenance: ' . $error->getMessage());
