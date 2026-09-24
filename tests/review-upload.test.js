@@ -115,6 +115,22 @@ async function browserChecks() {
     check('a third file exceeds max_files and is not sent', () => uploads.length === 3 && wrap.textContent.includes('allows at most 2 files'));
     wrap.querySelector('.bbf-file-error .bbf-file-remove').click();
 
+    // A permanent server refusal (422) cannot be retried, so it must not hold a max_files slot.
+    wrap.querySelectorAll('.bbf-file-done .bbf-file-remove')[1].click();
+    await tick();
+    fetches.shift().resolve(response(200, { status: 'ok' }));
+    select([pdf('fake.pdf')]);
+    uploads[3].answer(422, { status: 'error', message: 'The file content does not match its type.' });
+    await tick();
+    select([pdf('b2.pdf')]);
+    check('a 422-refused file shows no retry and does not block the next file', () =>
+        uploads.length === 5 && !wrap.querySelector('.bbf-file-retry') && !wrap.textContent.includes('allows at most 2 files'));
+    uploads[4].answer(200, { token: 'b'.repeat(32), expires_at: soon, file: { name: 'b2.pdf', size: 10, type: 'application/pdf' } });
+    await tick();
+    wrap.querySelector('.bbf-file-error .bbf-file-remove').click();
+    check('after removing the refused row two files are done again', () =>
+        wrap.querySelectorAll('.bbf-file-done').length === 2 && wrap.querySelectorAll('.bbf-file-error').length === 0);
+
     // Remove the second file: upload_delete with the token in the JSON body, never the URL.
     wrap.querySelectorAll('.bbf-file-done .bbf-file-remove')[1].click();
     await tick();
@@ -168,7 +184,7 @@ test('file upload client in real Chromium', () => {
         const browserResults = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
         const failures = browserResults.filter(check => !check.ok);
         assert.equal(failures.length, 0, JSON.stringify({ passed: browserResults.length - failures.length, failures }, null, 2));
-        assert.equal(browserResults.length, 15, 'all upload browser checks executed');
+        assert.equal(browserResults.length, 17, 'all upload browser checks executed');
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }

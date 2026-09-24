@@ -721,6 +721,8 @@ try {
         ['headers' => ['X-BBF-Token' => hash('sha256', 'bbf-upload-test-token')], 'timeout' => 60]);
     up_check($checkPage['code'] === 200 && str_contains($checkPage['body'], 'Unresolved write-ahead entries')
         && str_contains($checkPage['body'], 'fileinfo extension'), 'check.php shows the upload diagnostics');
+    up_check(str_contains($checkPage['body'], 'up.json: field definitions') && !str_contains($checkPage['body'], 'unknown type'),
+        'check.php accepts type "file" in form definitions');
 
     // ── Rate limit and location ─────────────────────────────────
     foreach (glob("$root/logs/ratelimit_upload_*") ?: [] as $file) unlink($file);

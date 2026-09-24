@@ -646,7 +646,7 @@
                         if (e.lengthComputable && entry.progressEl) entry.progressEl.value = Math.round(e.loaded / e.total * 100);
                     });
                     const fail = (message, retryable) => {
-                        entry.xhr = null; entry.state = 'error'; entry.retryable = retryable;
+                        entry.xhr = null; entry.state = 'error'; entry.retryable = retryable; entry.rejected = !retryable;
                         entry.message = message || t('fileUploadFailed', { name: entry.name });
                         render(entry); changed();
                         status.textContent = entry.message;

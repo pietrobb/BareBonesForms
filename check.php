@@ -307,7 +307,7 @@ foreach ($formFiles as $formFile) {
     $fieldsOk = true;
     $fieldIssue = '';
     $checkFieldList = function(array $fields, string $path) use (&$checkFieldList, &$fieldNames, &$fieldsOk, &$fieldIssue) {
-        $validTypes = ['text', 'email', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkbox', 'hidden', 'password', 'section', 'page_break', 'rating', 'group'];
+        $validTypes = ['text', 'email', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkbox', 'hidden', 'password', 'section', 'page_break', 'rating', 'group', 'file'];
         foreach ($fields as $i => $field) {
             if (!$fieldsOk) break;
             if (empty($field['name'])) {
