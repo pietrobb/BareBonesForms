@@ -4,7 +4,7 @@
 
 Define a form as JSON. Upload one folder. Embed with two lines. Submissions land on *your* server.
 
-*Bare bones means: no form builder — forms are JSON files you write by hand (an optional JSON editor with live preview is included). No dependencies, no build step, no database required.*
+*Bare bones means: no drag-and-drop form builder — describe the form to an AI assistant or edit its JSON yourself (an optional JSON editor with live preview is included). No dependencies, no build step, no database required.*
 
 PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 34 Languages · ~22 KB gzipped JS
 
@@ -15,6 +15,41 @@ PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 34 Languages · ~2
 Hosted form services (Formspree, Tally, Typeform…) are convenient until you care about where your leads are stored, what it costs per month, or what happens when their API changes. Classic PHP form plugins drag in a framework, a database, and a build pipeline. BareBonesForms sits in between: drop a folder on any PHP host and you own everything — the forms, the data, the emails.
 
 It has run in production on several business websites since spring 2026, collecting real leads in multiple languages.
+
+### No visual builder required
+
+If you don't want to hand-code a form, describe it to an AI assistant. BareBonesForms uses small, declarative JSON files: you can inspect the result, diff it in git, and copy it to another host. For example, ask:
+
+> Create a BareBonesForms form JSON for a contact form with a required name and email, a department dropdown (Sales or Support), and a required privacy-consent checkbox. Use `forms/form.schema.json` as the specification; store submissions, but do not send emails.
+
+Save the result as `forms/contact.json`:
+
+```json
+{
+  "$schema": "form.schema.json",
+  "schema_version": 1,
+  "id": "contact",
+  "name": "Contact us",
+  "fields": [
+    { "name": "name", "type": "text", "label": "Name", "required": true },
+    { "name": "email", "type": "email", "label": "Email", "required": true },
+    {
+      "name": "department", "type": "select", "label": "Department", "required": true,
+      "options": [
+        { "value": "sales", "label": "Sales" },
+        { "value": "support", "label": "Support" }
+      ]
+    },
+    {
+      "name": "privacy_consent", "type": "checkbox", "label": "Privacy consent", "required": true,
+      "options": [{ "value": "yes", "label": "I agree to the processing of my personal data" }]
+    }
+  ],
+  "on_submit": { "store": true }
+}
+```
+
+The included [`forms/form.schema.json`](forms/form.schema.json) gives AI a precise format and editors autocomplete/early error detection. **Review the generated JSON and your consent wording**, then run `php smoketest.php` before deploying; AI output and schema checks do not replace server-side validation or legal review.
 
 ---
 
