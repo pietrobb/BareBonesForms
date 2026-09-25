@@ -118,14 +118,14 @@ function deploy_test_expected_files(): array
         'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_uploads.php', 'bbf_versions.php', 'check.php', 'config.example.php',
         'data/city-to-psc.json', 'data/psc-to-city.json', 'demo.css', 'demo.html',
         'demo1.html', 'demo2.html', 'demo3.html', 'demo4.html', 'demo5.html', 'demo6.html',
-        'demo7.html', 'demo8.html', 'demo9.html', 'docs.html', 'editor.php', 'index.html',
+        'demo7.html', 'demo8.html', 'demo9.html', 'demo10.html', 'docs.html', 'editor.php', 'index.html',
         'logs/.gitkeep', 'maintenance.php', 'payment.php', 'sandbox.php', 'smoketest.php', 'submissions.php',
         'submissions/.gitkeep', 'submit.php', 'viewer.php', 'bbf-context.js', 'bbf-analytics.js', 'gclid.js', 'bbf_context.php', 'config.attribution.example.php', 'actions/google-ads-conversion.php', 'tools/migrate-system-fields.php',
     ];
     foreach ([
         'demo-advanced.json', 'demo-allergy.json', 'demo-csv.json', 'demo-file.json',
         'demo-modalities.json', 'demo-order.json', 'demo-psc.json', 'demo-quiz.json',
-        'demo-webhook.json', 'form.schema.json', 'kontakt.json', 'newsletter.json',
+        'demo-retro.json', 'demo-webhook.json', 'form.schema.json', 'kontakt.json', 'newsletter.json',
     ] as $form) {
         $files[] = 'forms/' . $form;
     }
@@ -176,7 +176,7 @@ try {
     $expected = deploy_test_expected_files();
     $actual = deploy_test_files($destination);
     deploy_test_check($actual === $expected, 'package has the exact independently specified sorted file set');
-    deploy_test_check(count($actual) === 144, 'package manifest contains exactly 144 files');
+    deploy_test_check(count($actual) === 146, 'package manifest contains exactly 146 files');
 
     foreach ([
         'bbf_auth.php', 'bbf_backup.php', 'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php',

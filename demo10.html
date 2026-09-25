@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>~*~ Welcome 2 My Homepage!!! ~*~ Demo 10 — BareBonesForms</title>
+<link rel="stylesheet" href="bbf.css">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   PART 1 — THE PAGE. Pure 1998. Nothing here touches the form.
+   ═══════════════════════════════════════════════════════════════ */
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    color: #00ff00;
+    font-family: "Comic Sans MS", "Comic Neue", "Chalkboard SE", "Comic Sans", cursive;
+    font-size: 16px;
+    background-color: #000018;
+    /* A starfield. In 1998 this was stars.gif, 4 KB, tiled. */
+    background-image:
+        radial-gradient(1px 1px at 20px 30px, #fff 50%, transparent 51%),
+        radial-gradient(1px 1px at 90px 120px, #fff 50%, transparent 51%),
+        radial-gradient(2px 2px at 150px 60px, #ffd 50%, transparent 51%),
+        radial-gradient(1px 1px at 40px 170px, #aaf 50%, transparent 51%),
+        radial-gradient(1.5px 1.5px at 180px 190px, #fff 50%, transparent 51%),
+        radial-gradient(1px 1px at 120px 10px, #faf 50%, transparent 51%);
+    background-size: 200px 200px;
+}
+
+a { color: #00ffff; }
+a:visited { color: #ff66ff; }
+a:hover { color: #ffff00; background: #ff0000; }
+code { font-family: "Courier New", monospace; color: #ffff00; }
+
+.timewarp {
+    background: #fff; color: #333; font: 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 6px 12px; text-align: center; border-bottom: 1px solid #ccc;
+}
+.timewarp a, .timewarp a:visited { color: #2563eb; }
+.timewarp a:hover { background: none; color: #1d4ed8; }
+
+.page { max-width: 780px; margin: 0 auto; padding: 16px 10px 40px; } /* optimized for 800x600 */
+
+.uc {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    padding: 8px; margin-bottom: 14px;
+    background: repeating-linear-gradient(45deg, #ffd700 0 18px, #000 18px 36px);
+    border: 3px solid #ffd700;
+}
+.uc strong {
+    background: #ffd700; color: #000; padding: 4px 12px; border: 2px solid #000;
+    font-family: Impact, "Arial Black", sans-serif; letter-spacing: 1px; font-weight: normal;
+}
+.digger { display: inline-block; font-size: 28px; animation: dig .5s steps(2) infinite; }
+
+.wordart {
+    margin: 6px 0 0; text-align: center; line-height: 1.05;
+    font: 44px/1.05 Impact, "Arial Black", sans-serif; letter-spacing: 1px;
+    background: linear-gradient(90deg, #ff0000, #ff8000, #ffff00, #00ff00, #00ffff, #0080ff, #ff00ff, #ff0000);
+    background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(3px 3px 0 #0000aa);
+    transform: perspective(300px) rotateX(12deg);
+    animation: rainbow 3s linear infinite;
+}
+.new {
+    display: inline-block; background: #ff0000; color: #ffff00; font: bold 14px Arial, sans-serif;
+    padding: 2px 6px; transform: rotate(-12deg); border: 2px solid #ffff00; vertical-align: middle;
+    animation: blink 1s steps(1) infinite;
+}
+.subtitle { text-align: center; color: #ffff00; margin: 10px 0 4px; }
+
+.marquee {
+    overflow: hidden; white-space: nowrap; margin: 12px 0;
+    background: #000080; color: #ffff00; border: 3px ridge #c0c0c0; padding: 4px 0; font-weight: bold;
+}
+.marquee span { display: inline-block; padding-left: 100%; animation: marquee 22s linear infinite; }
+
+.rainbow-hr {
+    height: 6px; border: 0; margin: 18px 0;
+    background: linear-gradient(90deg, #ff0000, #ff8000, #ffff00, #00ff00, #00ffff, #0080ff, #ff00ff, #ff0000);
+    background-size: 200% 100%; animation: rainbow 2s linear infinite;
+}
+
+.blink { animation: blink 1s steps(1) infinite; }
+
+.layout { display: grid; grid-template-columns: 170px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 700px) { .layout { grid-template-columns: 1fr; } .layout main { order: -1; } .wordart { font-size: 32px; } }
+
+.links { border: 3px ridge #c0c0c0; background: #000080; padding: 10px; font-size: 14px; }
+.links h3 { margin: 0 0 8px; color: #ffff00; font-size: 16px; text-decoration: underline; }
+.links ul { list-style: none; margin: 0; padding: 0; }
+.links li { margin: 6px 0; }
+.links li::before { content: "\1F449  "; }
+.links .new { font-size: 10px; padding: 0 3px; }
+.baby { text-align: center; margin-top: 14px; font-size: 12px; color: #ff66ff; }
+.baby span { display: inline-block; font-size: 38px; animation: dance .6s ease-in-out infinite alternate; }
+
+.counter { text-align: center; margin: 0 0 14px; color: #fff; }
+.odometer {
+    display: inline-block; font: bold 20px/1 "Courier New", monospace; letter-spacing: 4px;
+    color: #ff2020; background: #000; padding: 4px 6px; border: 2px inset #808080;
+    text-shadow: 0 0 6px #ff0000;
+}
+
+/* Windows 95 */
+.win95 { background: #c0c0c0; color: #000; border: 2px outset #fff; box-shadow: 2px 2px 0 #000; margin: 0 0 16px; font-family: Tahoma, "MS Sans Serif", Arial, sans-serif; font-size: 13px; }
+.win95 .titlebar { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(90deg, #000080, #1084d0); color: #fff; font-weight: bold; padding: 3px 4px 3px 6px; }
+.win95 .tb-btn { display: inline-block; width: 16px; height: 14px; line-height: 12px; margin-left: 2px; background: #c0c0c0; color: #000; border: 1px outset #fff; text-align: center; font-size: 10px; }
+.win95 .win-body { padding: 12px; }
+.win95 button { font: inherit; background: #c0c0c0; border: 2px outset #fff; padding: 3px 18px; cursor: pointer; }
+.win95 button:active { border-style: inset; }
+.dialog .win-body { display: flex; gap: 12px; align-items: flex-start; }
+.dialog .icon { font-size: 30px; line-height: 1; }
+.dialog code { color: #000080; font-weight: bold; }
+.dialog .actions { text-align: center; margin-top: 10px; }
+.notepad pre, .notepad .paper {
+    margin: 0; background: #fff; border: 2px inset #808080; padding: 10px;
+    font: 13px/1.5 "Courier New", monospace; white-space: pre-wrap; color: #000; overflow-x: auto;
+}
+.notepad .menu { padding: 2px 6px; }
+.notepad .menu u { margin-right: 10px; text-decoration: none; }
+.notepad .menu u::first-letter { text-decoration: underline; }
+.notepad code { color: #000080; }
+.notepad a, .notepad a:visited { color: #0000ee; }
+.notepad a:hover { background: #ffff00; color: #0000ee; }
+
+/* WINAMP. It really whips the llama's ass. */
+.winamp { background: #232335; border: 2px outset #555; color: #00ff00; margin: 0 0 16px; font: 12px/1.4 "Courier New", monospace; position: relative; }
+.winamp-title { background: linear-gradient(90deg, #3a3a5a, #6a6a9a, #3a3a5a); color: #fff; font-weight: bold; padding: 2px 8px; font-size: 11px; letter-spacing: 1px; }
+.winamp-display { margin: 6px 8px; background: #000; border: 2px inset #444; padding: 6px 8px; overflow: hidden; white-space: nowrap; }
+.winamp.playing #midi-status { display: inline-block; padding-left: 100%; animation: marquee 14s linear infinite; }
+.winamp-btns { display: flex; gap: 8px; padding: 0 8px 8px; align-items: center; flex-wrap: wrap; }
+.winamp button { font: bold 12px "Courier New", monospace; background: #444; color: #00ff00; border: 2px outset #777; padding: 4px 10px; cursor: pointer; }
+.winamp button:active { border-style: inset; }
+.winamp #midi-play:not([disabled]) { animation: blink 1s steps(1) infinite; }
+.winamp-note { padding: 0 8px 8px; color: #9f9; }
+.eq { display: inline-flex; gap: 2px; height: 16px; align-items: flex-end; margin-left: auto; }
+.eq i { width: 4px; height: 3px; background: #00ff00; }
+.winamp.playing .eq i { animation: eq .4s ease-in-out infinite alternate; }
+.winamp.playing .eq i:nth-child(2) { animation-delay: -.1s; background: #aaff00; }
+.winamp.playing .eq i:nth-child(3) { animation-delay: -.25s; background: #ffff00; }
+.winamp.playing .eq i:nth-child(4) { animation-delay: -.05s; background: #ff8000; }
+.winamp.playing .eq i:nth-child(5) { animation-delay: -.3s; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 18px 0; }
+.badges span {
+    display: inline-flex; width: 88px; height: 31px; align-items: center; justify-content: center; text-align: center;
+    font: bold 9px/1.1 Verdana, Arial, sans-serif; border: 1px solid #fff; overflow: hidden;
+}
+.b1 { background: #000; color: #fff; } .b1 b { color: #00c0ff; }
+.b2 { background: #fff; color: #000; }
+.b3 { background: #008000; color: #ffff00; }
+.b4 { background: linear-gradient(#ff00ff, #800080); color: #fff; }
+.b5 { background: #c0c0c0; color: #000080; }
+.b6 { background: #000080; color: #fff; }
+.b7 { background: #ffff00; color: #ff0000; }
+.b8 { background: #000; color: #00ff00; }
+
+.webring { text-align: center; border: 3px double #ffff00; padding: 10px; margin: 16px 0; color: #fff; }
+.webring .ring { font-size: 20px; }
+.flames { text-align: center; font-size: 30px; letter-spacing: -4px; overflow: hidden; white-space: nowrap; }
+.flames span { display: inline-block; animation: flicker .3s ease-in-out infinite alternate; }
+.flames span:nth-child(odd) { animation-delay: -.15s; }
+.footer { text-align: center; font-size: 13px; color: #c0c0c0; }
+.footer .times { font-family: "Times New Roman", Times, serif; font-size: 15px; }
+
+.sparkle { position: fixed; pointer-events: none; z-index: 9999; font-size: 14px; transform: translate(-50%, -50%); animation: sparkle .8s ease-out forwards; }
+
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes rainbow { to { background-position: 200% 0; } }
+@keyframes marquee { to { transform: translateX(-100%); } }
+@keyframes dig { 50% { transform: rotate(-20deg) translateY(3px); } }
+@keyframes dance { from { transform: rotate(-15deg) translateY(0); } to { transform: rotate(15deg) translateY(-6px); } }
+@keyframes flicker { from { transform: scaleY(1) translateY(0); } to { transform: scaleY(1.2) translateY(-3px); } }
+@keyframes eq { from { height: 2px; } to { height: 16px; } }
+@keyframes sparkle { to { opacity: 0; transform: translate(-50%, 30px) scale(.3) rotate(180deg); } }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.06); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes party { 0% { background-color: #00ff00; } 33% { background-color: #ffff00; } 66% { background-color: #00ffff; } }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+/* ═══════════════════════════════════════════════════════════════
+   PART 2 — THE FORM. This is the actual point of the demo.
+   Step 1: override the --bbf-* variables. That alone gets you 80%.
+   ═══════════════════════════════════════════════════════════════ */
+
+.retro-guestbook {
+    --bbf-font: "Comic Sans MS", "Comic Neue", "Chalkboard SE", "Comic Sans", cursive;
+    --bbf-font-size: 16px;
+    --bbf-max-width: 100%;
+    --bbf-radius: 0;
+    --bbf-spacing: 20px;
+    --bbf-text: #000080;
+    --bbf-text-muted: #800080;
+    --bbf-text-light: #007070;
+    --bbf-bg: #ffffff;
+    --bbf-bg-alt: #c0c0c0;
+    --bbf-border: #808080;
+    --bbf-border-light: #ff00ff;
+    --bbf-focus: #ff00ff;
+    --bbf-focus-shadow: rgba(255, 0, 255, 0.45);
+    --bbf-btn-bg: #ff00ff;
+    --bbf-btn-text: #ffff00;
+    --bbf-btn-hover: #00c0c0;
+    --bbf-btn-disabled: #808080;
+    --bbf-error: #ff0000;
+    --bbf-error-bg: #ffff00;
+    --bbf-error-border: #ff0000;
+    --bbf-error-shadow: rgba(255, 0, 0, 0.4);
+    --bbf-success: #000080;
+    --bbf-success-bg: #00ff00;
+    --bbf-success-border: #008000;
+    --bbf-star: #a0a0a0;
+    --bbf-star-active: #ffd700;
+    --bbf-star-hover: #ff00ff;
+
+    background: #ffffcc;
+    border: 6px ridge #c0c0c0;
+    box-shadow: 8px 8px 0 #ff00ff;
+    padding: 18px 20px 22px;
+}
+
+/* Step 2: a few .bbf-* selectors for the parts no variable covers.
+   Still no change to bbf.js, bbf.css or the form JSON. */
+
+.retro-guestbook .bbf-title {
+    font: bold 2em/1.1 "Times New Roman", Times, serif; text-align: center; color: #ff0000;
+    text-shadow: 2px 2px 0 #ffff00, 4px 4px 0 #0000ff;
+}
+.retro-guestbook .bbf-description { text-align: center; font-style: italic; }
+.retro-guestbook .bbf-label { font-weight: bold; font-size: 1.05em; }
+.retro-guestbook .bbf-required { display: inline-block; animation: blink .8s steps(1) infinite; }
+.retro-guestbook .bbf-input,
+.retro-guestbook .bbf-form select,
+.retro-guestbook .bbf-form textarea { border: 3px inset #c0c0c0; }
+.retro-guestbook .bbf-field-error:not(:empty) {
+    display: inline-block; margin-top: 4px; padding: 2px 8px; font-weight: bold;
+    background: #ffff00; border: 2px solid #ff0000; animation: shake .3s 2;
+}
+.retro-guestbook .bbf-field-error:not(:empty)::before { content: "\26A0\FE0F  ERROR!!! "; }
+.retro-guestbook .bbf-section { border-top: 3px dashed var(--bbf-border-light); }
+.retro-guestbook .bbf-section-title { color: #ff0000; animation: blink 1s steps(1) infinite; }
+.retro-guestbook .bbf-section-desc { color: #000; }
+.retro-guestbook .bbf-star { font-size: 2.2em; text-shadow: 1px 1px 0 #000; display: inline-block; }
+.retro-guestbook .bbf-star-active { animation: spin 2s linear infinite; }
+.retro-guestbook .bbf-submit {
+    display: block; margin: 8px auto 0; padding: 12px 38px;
+    font: 900 26px/1 Impact, "Arial Black", sans-serif; letter-spacing: 3px;
+    border: 5px outset #ff80ff; text-shadow: 2px 2px 0 #000; box-shadow: 6px 6px 0 #000;
+    animation: pulse .7s ease-in-out infinite alternate;
+}
+.retro-guestbook .bbf-submit:active { border-style: inset; box-shadow: 2px 2px 0 #000; }
+.retro-guestbook .bbf-success {
+    font-size: 1.15em; font-weight: bold; text-align: center;
+    border: 4px dashed #ff00ff; animation: party 1.5s steps(1) infinite;
+}
+
+/* Step 3: be decent. Everything above stops moving for people who ask. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .marquee span, .winamp.playing #midi-status { padding-left: 0; white-space: normal; }
+    .marquee { white-space: normal; padding: 4px 8px; }
+}
+</style>
+</head>
+<body>
+
+<div class="timewarp">
+    You have entered <strong>1998</strong>. This is Demo 10 of BareBonesForms.
+    <a href="demo1.html">Return to the present</a> &middot; <a href="docs.html">Docs</a>
+</div>
+
+<div class="page">
+
+    <div class="uc" role="img" aria-label="Under construction">
+        <span class="digger" aria-hidden="true">&#128119;</span>
+        <strong>UNDER CONSTRUCTION</strong>
+        <span class="digger" aria-hidden="true">&#128679;</span>
+    </div>
+
+    <h1 class="wordart">Welcome 2 My Homepage!!!</h1>
+    <p class="subtitle"><span class="new">NEW!</span> &nbsp;Now with a GUESTBOOK!!! &nbsp;<span class="new">NEW!</span></p>
+
+    <div class="marquee" aria-hidden="true"><span>*** Welcome to my homepage *** Best viewed in Netscape Navigator 4.0 at 800x600 *** Please sign my guestbook!!! *** This form is stored as JSON on a real PHP server *** No drag-and-drop form builder was harmed in the making of this page *** Hi mom!!! ***</span></div>
+
+    <div class="counter">
+        You are visitor #<span class="odometer" id="hits">0001337</span>
+        &nbsp; <span class="blink" style="color:#ffff00">~*~ THANK U ~*~</span>
+    </div>
+
+    <!-- PHP notice, dressed for the occasion -->
+    <div class="win95 dialog" id="php-dialog" role="note">
+        <div class="titlebar"><span>GUESTBK.EXE</span><span><span class="tb-btn" aria-hidden="true">?</span><span class="tb-btn" aria-hidden="true">&#10005;</span></span></div>
+        <div class="win-body">
+            <span class="icon" aria-hidden="true">&#9888;&#65039;</span>
+            <div>
+                This guestbook has performed a <strong>legal</strong> operation and needs PHP to run.<br>
+                Run <code>php -S localhost:8000</code> in the project folder, then open <code>http://localhost:8000/demo10.html</code>.
+                Just like 1998, except PHP got a lot better and the form did not need a CGI-BIN.
+                <div class="actions"><button type="button" id="php-ok">OK</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="winamp" id="midi">
+        <div class="winamp-title">WINAMP 2.95 &mdash; rogue_bard_-_16bit_llama_blues.mid</div>
+        <div class="winamp-display"><span id="midi-status" aria-live="polite">&#9632; STOPPED &mdash; ur browser blocked the autoplay. Browsers learned from 1998. We did not: touch anything on this page and it plays.</span></div>
+        <div class="winamp-btns">
+            <button type="button" id="midi-play">&#9654; CLICK HERE 4 MUSIC</button>
+            <button type="button" id="midi-stop">&#9632; Stop</button>
+            <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="winamp-note">12-bar blues in A, played live by the Web Audio API. Want the real thing, with actual musicians? <a href="https://roguebard.net/" target="_blank" rel="noopener">Rogue Bard</a> &mdash; soulful jazz, blues and rock. Zero MIDI.</div>
+    </div>
+
+    <hr class="rainbow-hr">
+
+    <div class="layout">
+
+        <nav class="links" aria-label="My links">
+            <h3>My Links</h3>
+            <ul>
+                <li><a href="demo1.html">Home</a></li>
+                <li><a href="docs.html">About Me</a></li>
+                <li><a href="#404" id="my-cat">My Cat</a></li>
+                <li><a href="demo4.html">Cool Features</a></li>
+                <li><a href="#guestbook">Guestbook</a> <span class="new">NEW!</span></li>
+                <li><a href="https://lasttrial.art/" target="_blank" rel="noopener">A Dark Fantasy Comic</a></li>
+            </ul>
+            <div class="baby"><span aria-hidden="true">&#128118;</span><br>the dancing baby<br>says hi</div>
+        </nav>
+
+        <main id="guestbook">
+
+            <!-- ════════════════════════════════════════════════════
+                 EMBED — identical to every other demo:
+                 1. <script src="bbf.js"></script>
+                 2. forms/demo-retro.json
+                 The only difference is the wrapper class and the CSS above.
+                 ════════════════════════════════════════════════════ -->
+            <div class="retro-guestbook">
+                <div data-form="demo-retro" data-show-title="true"></div>
+            </div>
+
+        </main>
+    </div>
+
+    <hr class="rainbow-hr">
+
+    <!-- The part for grown-ups -->
+    <div class="win95 notepad">
+        <div class="titlebar"><span>readme.txt - Notepad</span><span><span class="tb-btn" aria-hidden="true">_</span><span class="tb-btn" aria-hidden="true">&#9633;</span><span class="tb-btn" aria-hidden="true">&#10005;</span></span></div>
+        <div class="menu" aria-hidden="true"><u>File</u><u>Edit</u><u>Search</u><u>Help</u></div>
+        <div class="paper">OK, SERIOUSLY FOR A MOMENT.
+
+This is an ordinary BareBonesForms form. Nothing about it is special:
+
+  * The form is <code>forms/demo-retro.json</code> &mdash; the same JSON format as
+    every other demo. Text, e-mail, URL, radio, select, checkbox with
+    "other", star rating, and two sections that appear with <code>show_if</code>
+    (pick a 14.4k modem, or admit to FrontPage).
+  * The server validates everything, checks CSRF and the honeypot, and
+    stores the entry in <code>submissions/demo-retro/</code>. Same as Demo 1.
+  * bbf.js and bbf.css were not modified. Not one line.
+
+The whole look comes from the &lt;style&gt; block in this page:
+
+  1. About 30 <code>--bbf-*</code> CSS variables on a wrapper element
+     (fonts, colors, borders, buttons, errors, stars).
+  2. About 15 <code>.bbf-*</code> selectors for what variables don't cover
+     (the WordArt title, the pulsing SUBMIT!!!!, the spinning stars).
+  3. One <code>prefers-reduced-motion</code> block that stops all of it.
+     Even in 1998 we had standards. We just didn't follow them.
+
+If a form survives THIS, it will survive your brand guidelines.
+View source. It's all there. Just like 1998.
+
+See also: <a href="bbf-theme.css">bbf-theme.css</a> (tasteful themes) &middot; <a href="docs.html">Docs</a> &middot; <a href="demo4.html">Demo 4</a> (the serious feature showcase)</div>
+    </div>
+
+    <div class="badges" aria-label="Badges">
+        <span class="b1">Netscape <b>&nbsp;NOW!</b></span>
+        <span class="b2">Made with<br>Notepad</span>
+        <span class="b3">Y2K<br>COMPLIANT</span>
+        <span class="b4">BareBones<br>POWERED</span>
+        <span class="b5">HTML 3.2<br>(probably)</span>
+        <span class="b6">NO FRAMES<br>ZONE</span>
+        <span class="b7">NO npm<br>REQUIRED</span>
+        <span class="b8">&gt; 0 KB<br>JavaScript builds</span>
+    </div>
+
+    <nav class="webring" aria-label="Demo webring">
+        This site is a proud member of the<br>
+        <strong class="ring">~*~ BareBonesForms Demo WebRing ~*~</strong><br>
+        [ <a href="demo9.html">&lt;&lt; Prev</a> | <a href="#" id="ring-random">Random</a> | <a href="demo1.html">Next &gt;&gt;</a> ]
+    </nav>
+
+    <div class="flames" aria-hidden="true"><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span><span>&#128293;</span></div>
+
+    <div class="footer">
+        <p class="times">&copy; 1998&ndash;2026 The Webmaster. All rights reserved. All wrongs reversed.</p>
+        <p>Last updated: sometime in 1998 &middot; Y2K countdown: <span id="y2k">-9,764</span> days (we made it, mostly)</p>
+        <p>Best viewed in Netscape Navigator 4.0 at 800x600 with 256 colors. Also works in every browser from this decade.</p>
+        <p>BareBonesForms &mdash; forms for developers, not for clicking around. <a href="demo1.html">Back to the present</a></p>
+    </div>
+
+</div>
+
+<script src="bbf.js"></script>
+<script>
+(function () {
+    'use strict';
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function $(id) { return document.getElementById(id); }
+
+    // ─── Hit counter (yours alone, stored in localStorage — just like the real ones were honest) ───
+    var hits = 1337;
+    try {
+        hits = (parseInt(localStorage.getItem('bbf-retro-hits'), 10) || 1336) + 1;
+        localStorage.setItem('bbf-retro-hits', String(hits));
+    } catch (e) { /* private mode: you are visitor 1337 forever */ }
+    $('hits').textContent = String(hits).padStart(7, '0');
+
+    // ─── Y2K countdown ───
+    $('y2k').textContent = '-' + Math.floor((Date.now() - Date.UTC(2000, 0, 1)) / 86400000).toLocaleString('en-US');
+
+    // ─── Links ───
+    $('ring-random').addEventListener('click', function (e) {
+        e.preventDefault();
+        location.href = 'demo' + (1 + Math.floor(Math.random() * 9)) + '.html';
+    });
+    $('my-cat').addEventListener('click', function (e) {
+        e.preventDefault();
+        alert('404 Not Found\n\nThe page about my cat is still UNDER CONSTRUCTION.\nPlease check back in 1999.');
+    });
+    $('php-ok').addEventListener('click', function () { $('php-dialog').hidden = true; });
+    // The PHP dialog only matters while there is no form. Once bbf.js renders it, the dialog goes away.
+    var guestbook = document.querySelector('.retro-guestbook');
+    new MutationObserver(function (records, observer) {
+        if (!guestbook.querySelector('form.bbf-form')) return;
+        $('php-dialog').hidden = true;
+        observer.disconnect();
+    }).observe(guestbook, { childList: true, subtree: true });
+
+    // ─── Scrolling title bar and a sparkly cursor. Skipped for reduced motion. ───
+    if (!reduce) {
+        var title = document.title + '   ***   ';
+        setInterval(function () { title = title.slice(1) + title.charAt(0); document.title = title; }, 250);
+
+        var last = 0, live = 0, glyphs = '\u2726\u2727\u2605\u22C6*', colors = ['#ff0', '#f0f', '#0ff', '#fff', '#0f0'];
+        document.addEventListener('pointermove', function (e) {
+            if (e.pointerType !== 'mouse') return;
+            var now = performance.now();
+            if (now - last < 35 || live > 40) return;
+            last = now;
+            var s = document.createElement('span');
+            s.className = 'sparkle';
+            s.setAttribute('aria-hidden', 'true');
+            s.textContent = glyphs.charAt(Math.floor(Math.random() * glyphs.length));
+            s.style.left = e.clientX + 'px';
+            s.style.top = e.clientY + 'px';
+            s.style.color = colors[Math.floor(Math.random() * colors.length)];
+            live++;
+            s.addEventListener('animationend', function () { s.remove(); live--; });
+            document.body.appendChild(s);
+        });
+    }
+
+    // ─── The MIDI. 16-bit 12-bar blues in A, generated live. ───
+    var player = $('midi'), status = $('midi-status'), playBtn = $('midi-play'), stopBtn = $('midi-stop');
+    var AudioCtx = window.AudioContext || window.webkitAudioContext;
+    var ctx = null, master = null, noise = null, timer = null, step = 0, nextTime = 0, runaways = 0, stopX = 0, lastRunaway = 0;
+    var BEAT = 60 / 126;
+    var ROOTS = [45, 45, 45, 45, 50, 50, 45, 45, 52, 50, 45, 52];   // A A A A D D A A E D A E
+    var BOOGIE = [0, 4, 7, 9, 10, 9, 7, 4];                          // the left hand of every blues pianist ever
+    // The tune: one row per bar, one MIDI note per swung eighth, 0 = rest.
+    var RIFF = [
+        [69, 72, 73, 76,  0, 79, 76,  0],   // A  — the hook
+        [79, 78, 76, 72, 69,  0,  0,  0],   // A  — and the answer
+        [69, 72, 73, 76,  0, 79, 76,  0],   // A  — hook again
+        [81,  0, 79, 76, 79, 81,  0,  0],   // A  — up to the top
+        [74, 77, 78, 81,  0, 84, 81,  0],   // D  — hook, up a fourth
+        [84, 83, 81, 77, 74,  0,  0,  0],   // D
+        [69, 72, 73, 76,  0, 79, 76,  0],   // A  — back home
+        [81,  0, 79, 76, 72, 69,  0,  0],   // A
+        [64, 67, 68, 71,  0, 74, 71,  0],   // E
+        [74, 72, 69,  0, 74, 72, 69,  0],   // D
+        [69, 72, 73, 76, 79, 76, 73, 72],   // A
+        [76, 75, 74, 73, 72, 71,  0, 64]    // E  — turnaround, go again
+    ];
+    var TAUNTS = ['\u25A0 nope', '\u25A0 nice try', '\u25A0 almost!', '\u25A0 u can\'t stop the MIDI', '\u25A0 OK FINE. Stop.'];
+    var IDLE = '\u25A0 STOPPED. Fine. U win. Press Play if u miss it.';
+
+    function hz(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+    function tone(m, t, d, type, vol) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = type;
+        o.frequency.setValueAtTime(hz(m), t);
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+        o.connect(g); g.connect(master);
+        o.start(t); o.stop(t + d + 0.05);
+    }
+    function hat(t) {
+        var src = ctx.createBufferSource(), g = ctx.createGain();
+        src.buffer = noise;
+        g.gain.setValueAtTime(0.18, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+        src.connect(g); g.connect(master);
+        src.start(t); src.stop(t + 0.06);
+    }
+    function schedule() {
+        while (nextTime < ctx.currentTime + 0.15) {
+            var bar = Math.floor(step / 8) % 12, pos = step % 8;
+            var len = (pos % 2 === 0 ? 2 : 1) * BEAT / 3;          // swing: long-short
+            tone(ROOTS[bar] + BOOGIE[pos], nextTime, len * 0.95, 'triangle', 0.5);
+            if (pos % 2 === 1) hat(nextTime);
+            if (RIFF[bar][pos]) tone(RIFF[bar][pos], nextTime, len * 0.9, 'square', 0.2);
+            nextTime += len;
+            step++;
+        }
+    }
+    function resetStop() {
+        runaways = 0;
+        stopX = 0;
+        stopBtn.style.transform = '';
+        stopBtn.textContent = '\u25A0 Stop';
+    }
+    function init() {
+        if (!ctx) {
+            ctx = new AudioCtx();
+            master = ctx.createGain();
+            master.gain.value = 0.2;
+            master.connect(ctx.destination);
+            noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.1), ctx.sampleRate);
+            var data = noise.getChannelData(0);
+            for (var i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        }
+    }
+    function play() {
+        if (!AudioCtx) { status.textContent = 'Ur browser has no sound card. Lucky u.'; return; }
+        disarm();
+        init();
+        ctx.resume();
+        if (timer) return;
+        step = 0;
+        nextTime = ctx.currentTime + 0.05;
+        timer = setInterval(schedule, 25);
+        player.classList.add('playing');
+        playBtn.disabled = true;
+        status.textContent = '\u25B6 NOW PLAYING: 12-bar blues in A *** 126 BPM *** 100% synthesized *** It really whips the llama\'s ass *** Press Esc if the Stop button gives u trouble ***';
+    }
+    function stop() {
+        if (!timer) return;
+        clearInterval(timer);
+        timer = null;
+        player.classList.remove('playing');
+        playBtn.disabled = false;
+        status.textContent = IDLE;
+        resetStop();
+    }
+    playBtn.addEventListener('click', play);
+    stopBtn.addEventListener('click', function (e) {
+        // A mouse click that lands while the button is still escaping does not count. Keyboard clicks (detail 0) always do.
+        if (e.detail > 0 && runaways > 0 && runaways < TAUNTS.length && performance.now() - lastRunaway < 400) return;
+        stop();
+    });
+    // The Stop button runs away from the mouse. Five times. Keyboard users and Esc are never teased.
+    stopBtn.addEventListener('pointerenter', function (e) {
+        if (e.pointerType !== 'mouse' || !timer || runaways >= TAUNTS.length || reduce) return;
+        stopBtn.textContent = TAUNTS[runaways];
+        runaways++;
+        lastRunaway = performance.now();
+        if (runaways < TAUNTS.length) {
+            var x;
+            do { x = Math.round(90 + Math.random() * 220); } while (Math.abs(x - stopX) < 100);
+            stopX = x;
+            stopBtn.style.transform = 'translate(' + x + 'px, ' + Math.round(Math.random() * 16 - 8) + 'px)';
+        }
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') stop(); });
+
+    // "Autoplay". Browsers only allow sound after the visitor clicks or types, so the first click
+    // or key anywhere on the page starts the MIDI. Sites Chrome knows you like may play right away.
+    // Visitors who asked for reduced motion get a quiet page and the Play button.
+    function autoplay(e) {
+        if (e.type === 'keydown' && e.key === 'Escape') return;
+        if (player.contains(e.target)) return;   // the Winamp buttons handle themselves
+        play();
+    }
+    function disarm() {
+        document.removeEventListener('pointerdown', autoplay, true);
+        document.removeEventListener('keydown', autoplay, true);
+    }
+    if (AudioCtx && !reduce) {
+        document.addEventListener('pointerdown', autoplay, true);
+        document.addEventListener('keydown', autoplay, true);
+        init();
+        if (ctx.state === 'running') play();
+    }
+})();
+</script>
+</body>
+</html>

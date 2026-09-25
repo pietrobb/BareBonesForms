@@ -396,7 +396,7 @@ validator = Draft202012Validator(schema)
 shipped = [
     'demo-advanced.json', 'demo-allergy.json', 'demo-csv.json', 'demo-file.json',
     'demo-modalities.json', 'demo-order.json', 'demo-psc.json', 'demo-quiz.json',
-    'demo-webhook.json', 'kontakt.json', 'newsletter.json',
+    'demo-retro.json', 'demo-webhook.json', 'kontakt.json', 'newsletter.json',
 ]
 failures = []
 for name in shipped:
@@ -480,7 +480,7 @@ if (is_resource($schemaProcess)) {
     $schemaCode = proc_close($schemaProcess);
 }
 acceptance_check($schemaCode === 0 && $schemaError === ''
-    && str_contains($schemaOutput, '11 shipped forms, historical string options, and 9 negative payment contracts passed'),
+    && str_contains($schemaOutput, '12 shipped forms, historical string options, and 9 negative payment contracts passed'),
     'official Draft 2020-12 validator accepts shipped and historical forms and rejects invalid payment modes');
 
 $readme = acceptance_source($root, 'README.md'); $htaccess = acceptance_source($root, '.htaccess');

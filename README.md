@@ -113,7 +113,7 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 
 ## Live Demos
 
-Nine demos, each building on the previous. From "hello world" to business logic:
+Ten demos. The first nine build on each other, from "hello world" to business logic; the tenth is a joke with a point:
 
 | # | Demo | What it shows |
 |---|------|---------------|
@@ -126,8 +126,9 @@ Nine demos, each building on the previous. From "hello world" to business logic:
 | **7** | [Spanish Inquisition Quiz](demo7.html) | `shuffle` on options, post-submit results panel, scoring, `data-hide-on-success` |
 | **8** | [Homeopathic Modalities](demo8.html) | **Reusable templates** — define fields once, use with `"use"` + `"prefix"` across multiple groups |
 | **9** | [PSČ Lookup](demo9.html) | **Lookup + autocomplete** — enter PSČ to auto-fill city, or type city for typeahead suggestions that auto-fill PSČ back. 4 094 postal codes, bidirectional. |
+| **10** | [Retro Guestbook](demo10.html) | **Theming, taken too far** — a 1998 GeoCities guestbook (Comic Sans, WordArt, hit counter, a MIDI player whose Stop button runs away). Only `--bbf-*` variables and a few `.bbf-*` selectors; `bbf.js` and `bbf.css` untouched. Respects `prefers-reduced-motion`. |
 
-Demos 1–3 cover backend configuration. Demo 4 showcases the form engine's core. Demos 5–9 prove it can handle decision flows, business logic, reusable components, interactive experiences, and external data integration — not just contact forms.
+Demos 1–3 cover backend configuration. Demo 4 showcases the form engine's core. Demos 5–9 prove it can handle decision flows, business logic, reusable components, interactive experiences, and external data integration — not just contact forms. Demo 10 shows how far the look bends without touching the engine.
 
 ---
 
@@ -1500,7 +1501,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 
 1. **This README** — you're here. Gives you the concept, JSON structure, field types, and `on_submit` pipeline.
 2. **[docs.html](docs.html)** — the full reference. Contains CSS class table (21 entries), `show_if` operators, `config.php` options, storage backends, per-form overrides, and everything not covered here.
-3. **At least one demo** (`demo1.html`–`demo9.html`) — see real embedding in context. Demo 1 is the simplest; Demo 4 is the feature showcase; Demo 8 shows reusable templates.
+3. **At least one demo** (`demo1.html`–`demo10.html`) — see real embedding in context. Demo 1 is the simplest; Demo 4 is the feature showcase; Demo 8 shows reusable templates.
 4. **[form.schema.json](forms/form.schema.json)** — the machine-readable schema. Use it to validate JSON you generate.
 
 **Common pitfalls to avoid:**

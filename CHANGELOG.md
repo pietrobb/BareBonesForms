@@ -5,6 +5,9 @@ Items marked **Breaking** need action when you upgrade an existing installation.
 
 ## [Unreleased]
 
+### Added
+- **Demo 10: Retro Guestbook** — a 1998 GeoCities guestbook, styled only with `--bbf-*` variables and a few `.bbf-*` selectors in the page. The form is plain JSON with `show_if` sections, a rating and "other" options; the server validates and stores it like any other form. All animation stops under `prefers-reduced-motion`.
+
 ### Fixed
 - **Translations:** all 34 language packs now carry the messages for drafts, repeatable groups, submit retries and file uploads (they showed in English). Server upload errors come from `lang/*.php`, and the server answers in the form's `data-lang` when that pack exists. A new CI suite fails when any pack misses a message or a placeholder. Lithuanian and Latvian packs preserve their original airdomes.sk messages and now ship with the package.
 

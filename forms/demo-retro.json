@@ -1,0 +1,137 @@
+{
+    "$schema": "form.schema.json",
+    "schema_version": 1,
+    "id": "demo-retro",
+    "name": "~*~ Sign My Guestbook!!! ~*~",
+    "description": "Its my 1st guestbook and it took me 3 weekends 2 make. Please sign it!!! Flames will be deleted.",
+    "submit_label": "SUBMIT!!!!",
+    "submitting_label": "Dialing in... *kshhhhhh* *bee-boo-beeee*",
+    "success_message": "THANK U 4 SIGNING MY GUESTBOOK!!! U R AWESOME!!! Please come back soon, I update every day (not really). P.S. Your entry was saved on the server as a plain JSON file. Some things never change.",
+    "fields": [
+        {
+            "name": "handle",
+            "type": "text",
+            "label": "Ur Name (or Handle)",
+            "placeholder": "xX_DaRkAnGeL_Xx",
+            "required": true,
+            "minlength": 2,
+            "maxlength": 40
+        },
+        {
+            "name": "email",
+            "type": "email",
+            "label": "E-Mail",
+            "placeholder": "cooldude1998@hotmail.com",
+            "description": "I promise not to sell it. Nobody would buy it anyway.",
+            "required": true
+        },
+        {
+            "name": "homepage",
+            "type": "url",
+            "label": "Ur Homepage",
+            "placeholder": "http://www.geocities.com/SiliconValley/Heights/1998/",
+            "description": "GeoCities, Angelfire or Tripod. Xoom accepted grudgingly."
+        },
+        {
+            "name": "found_via",
+            "type": "radio",
+            "label": "How did u find my page?",
+            "required": true,
+            "options": [
+                { "value": "webring", "label": "The Cool Sites WebRing\u2122" },
+                { "value": "altavista", "label": "AltaVista (page 47 of results)" },
+                { "value": "yahoo", "label": "Yahoo! directory (they ACCEPTED me!!!)" },
+                { "value": "aol", "label": "AOL Keyword" },
+                { "value": "guestbook", "label": "Someone else's guestbook" },
+                { "value": "mom", "label": "My mom made me" }
+            ]
+        },
+        {
+            "name": "connection",
+            "type": "select",
+            "label": "Ur connection speed",
+            "required": true,
+            "options": [
+                { "value": "14k4", "label": "14.4k (I started loading this page in 1998)" },
+                { "value": "28k8", "label": "28.8k" },
+                { "value": "33k6", "label": "33.6k" },
+                { "value": "56k", "label": "56k (the future is NOW)" },
+                { "value": "isdn", "label": "ISDN (show-off)" },
+                { "value": "t1", "label": "T1 at my dad's office" }
+            ]
+        },
+        {
+            "name": "slow_modem_notice",
+            "type": "section",
+            "title": "Please wait... still loading the background MIDI",
+            "description": "Estimated time remaining: 3 days, 14 hours. Do NOT pick up the phone, it will disconnect u.",
+            "show_if": { "field": "connection", "value": ["14k4", "28k8"] }
+        },
+        {
+            "name": "setup",
+            "type": "checkbox",
+            "label": "Ur setup (check all that apply)",
+            "columns": 2,
+            "other": true,
+            "other_label": "Something even more 1998",
+            "options": [
+                { "value": "netscape", "label": "Netscape Navigator 4.0" },
+                { "value": "ie4", "label": "Internet Explorer 4 (boooo)" },
+                { "value": "winamp", "label": "Winamp (it really whips the llama's ass)" },
+                { "value": "icq", "label": "ICQ (uh-oh!)" },
+                { "value": "realplayer", "label": "RealPlayer (buffering...)" },
+                { "value": "frontpage", "label": "Microsoft FrontPage 98" }
+            ]
+        },
+        {
+            "name": "frontpage_notice",
+            "type": "section",
+            "title": "FrontPage detected!!!",
+            "description": "Ur HTML now weighs 4 MB and every paragraph lives in its own table cell. Welcome, brother.",
+            "show_if": { "field": "setup", "value": "frontpage" }
+        },
+        {
+            "name": "best_part",
+            "type": "select",
+            "label": "Best part of my page",
+            "required": true,
+            "options": [
+                { "value": "construction", "label": "The UNDER CONSTRUCTION sign" },
+                { "value": "counter", "label": "The hit counter" },
+                { "value": "midi", "label": "The MIDI (u can't turn it off lol)" },
+                { "value": "baby", "label": "The dancing baby" },
+                { "value": "flames", "label": "The flames at the bottom" },
+                { "value": "all", "label": "ALL OF IT!!!!!!" }
+            ]
+        },
+        {
+            "name": "rating",
+            "type": "rating",
+            "label": "Rate my homepage",
+            "description": "5 stars = COOL SITE OF THE DAY material.",
+            "required": true
+        },
+        {
+            "name": "message",
+            "type": "textarea",
+            "label": "Sign my guestbook!!!",
+            "placeholder": "Kewl page!!! Check out mine 2!!! (it's under construction)",
+            "required": true,
+            "minlength": 10,
+            "maxlength": 1000,
+            "rows": 5
+        },
+        {
+            "name": "chain_letter",
+            "type": "checkbox",
+            "label": "The Legal Stuff\u2122",
+            "required": true,
+            "options": [
+                { "value": "yes", "label": "I will forward this guestbook to 10 friends within 10 minutes. If I don't, Bill Gates will NOT send me $1,000 for testing his e-mail tracking program." }
+            ]
+        }
+    ],
+    "on_submit": {
+        "store": true
+    }
+}
