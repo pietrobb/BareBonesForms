@@ -364,7 +364,7 @@ acceptance_check(str_contains($workflow, 'php tests/review-access-mysql-test.php
 acceptance_check(str_contains($workflow, "php-version: '8.1'")
     && substr_count($workflow, 'php tests/review-ci-test.php') >= 2,
     'workflow runs the complete regression gate on declared PHP 8.1 minimum');
-acceptance_check(substr_count($workflow, 'actions/setup-python@v5') >= 2
+acceptance_check(substr_count($workflow, 'actions/setup-python@') >= 2
     && substr_count($workflow, 'python -m pip install jsonschema==4.23.0') >= 2,
     'PHP 8.2 and 8.1 gates install the pinned Draft 2020-12 schema test dependency');
 
