@@ -2,7 +2,7 @@
 
 **Self-hosted PHP forms for shared hosting. No build step, no Composer, no npm, no SaaS.**
 
-Define a form as JSON. Upload one folder. Embed with two lines. Submissions land on *your* server.
+Define a form as JSON — or let AI write it. Upload one folder. Embed with two lines. Submissions land on *your* server.
 
 *Bare bones means: no drag-and-drop form builder — describe the form to an AI assistant or edit its JSON yourself (an optional JSON editor with live preview is included). No dependencies, no build step, no database required.*
 
