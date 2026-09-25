@@ -10,6 +10,7 @@ Items marked **Breaking** need action when you upgrade an existing installation.
 
 ### Fixed
 - **Translations:** all 34 language packs now carry the messages for drafts, repeatable groups, submit retries and file uploads (they showed in English). Server upload errors come from `lang/*.php`, and the server answers in the form's `data-lang` when that pack exists. A new CI suite fails when any pack misses a message or a placeholder. Lithuanian and Latvian packs preserve their original airdomes.sk messages and now ship with the package.
+- **Form load errors:** when loading a form definition fails with anything other than 404, `bbf.js` now shows the server's message (for example "Missing config.php. Copy config.example.php to config.php and edit it.") instead of a misleading "Form not found". A 404 still shows the translated "not found" message.
 
 ### Documentation
 - README now answers the questions a first reviewer asks before trusting file storage: how concurrent submissions are written (lock, temp file, atomic rename), when to switch from files to SQLite or MySQL, how to keep submissions outside the web root, what retention does and why you might want it, and how the JSON Schema catches typos in the editor. File uploads are listed as not supported yet.

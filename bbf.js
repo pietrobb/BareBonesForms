@@ -195,7 +195,17 @@
                 // server-side config and works with .htaccess protection)
                 const formUrl = `${baseUrl}submit.php?form=${formId}&action=definition`;
                 const resp = await fetch(formUrl);
-                if (!resp.ok) throw new Error(this._t('formNotFound', { id: formId, status: resp.status }, langCode));
+                if (!resp.ok) {
+                    // 404 means the form is missing; anything else is a server problem worth showing verbatim
+                    // (e.g. "Missing config.php"), so the installer looks in the right place.
+                    let serverMessage = '';
+                    if (resp.status !== 404) {
+                        try { serverMessage = String((await resp.json()).message || ''); } catch (e) { /* not JSON */ }
+                    }
+                    throw new Error(serverMessage
+                        ? `${serverMessage} (${resp.status})`
+                        : this._t('formNotFound', { id: formId, status: resp.status }, langCode));
+                }
                 const form = await resp.json();
                 if (!isCurrent()) return;
 
