@@ -64,9 +64,9 @@ The included [`forms/form.schema.json`](forms/form.schema.json) gives AI a preci
 <script src="bbf.js"></script>
 ```
 
-`kontakt` is the bundled example form (`forms/kontakt.json`); use `data-form="contact"` for the form created above.
-
 That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — no `<link>` tag needed. The form definition is fetched via `submit.php`, validated client-side, and submitted back to `submit.php`.
+
+`kontakt` is the bundled example form (`forms/kontakt.json`); use `data-form="contact"` for the form created above.
 
 ---
 
