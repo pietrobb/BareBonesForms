@@ -22,6 +22,8 @@ If you don't want to hand-code a form, describe it to an AI assistant. BareBones
 
 > Create a BareBonesForms form JSON for a contact form with a required name and email, a department dropdown (Sales or Support), and a required privacy-consent checkbox. Use `forms/form.schema.json` as the specification; store submissions, but do not send emails.
 
+If you're using a chat assistant without access to this repository, attach or paste [`forms/form.schema.json`](forms/form.schema.json) with your prompt.
+
 Save the result as `forms/contact.json`:
 
 ```json
@@ -49,6 +51,8 @@ Save the result as `forms/contact.json`:
 }
 ```
 
+Embed that form with `<div data-form="contact"></div>` and `<script src="bbf.js"></script>`.
+
 The included [`forms/form.schema.json`](forms/form.schema.json) gives AI a precise format and editors autocomplete/early error detection. **Review the generated JSON and your consent wording**, then run `php smoketest.php` before deploying; AI output and schema checks do not replace server-side validation or legal review.
 
 ---
@@ -59,6 +63,8 @@ The included [`forms/form.schema.json`](forms/form.schema.json) gives AI a preci
 <div data-form="kontakt"></div>
 <script src="bbf.js"></script>
 ```
+
+`kontakt` is the bundled example form (`forms/kontakt.json`); use `data-form="contact"` for the form created above.
 
 That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — no `<link>` tag needed. The form definition is fetched via `submit.php`, validated client-side, and submitted back to `submit.php`.
 
@@ -1486,15 +1492,9 @@ The git repository additionally contains `tests/` and `tools/package-deploy.php`
 
 ---
 
-## Let AI Write Your Forms
+## Note for AI assistants
 
-The schema is simple enough that any AI can produce a valid form:
-
-> "Create a BareBonesForms JSON (schema_version 1) for a job application form with name, email, phone, position dropdown, portfolio URL (optional), cover letter (textarea, min 50 chars), and GDPR consent checkbox."
-
-Copy the JSON, save as `forms/job-application.json`, embed. The `form.schema.json` schema file gives AI and your IDE the exact format spec.
-
-### Note for AI assistants
+For a prompt and example JSON, see [No visual builder required](#no-visual-builder-required).
 
 If you're an AI helping a user build, embed, or style a BareBonesForms form, read these files — in this order — before writing code:
 
