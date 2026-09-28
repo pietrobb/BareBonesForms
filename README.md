@@ -791,7 +791,7 @@ Move all four paths together: `drafts_dir` and `sqlite.path` have their own sett
 
 | Protection                | How                                                            |
 |---------------------------|----------------------------------------------------------------|
-| **CSRF tokens**           | Session-based HMAC, automatic via `bbf.js`                     |
+| **CSRF tokens**           | Session-based HMAC, automatic via `bbf.js` (same-origin only — see note below) |
 | **Honeypot**              | Hidden field catches bots                                      |
 | **Rate limiting**         | File-locked per-IP counter (default: 10/min)                   |
 | **Server-side validation**| All field rules enforced on server                             |
@@ -808,6 +808,8 @@ Move all four paths together: `drafts_dir` and `sqlite.path` have their own sett
 | **SSRF protection**       | Webhook URLs validated — private/reserved IPs blocked           |
 | **Error suppression**     | `display_errors` forced OFF — errors logged, never shown       |
 | **Definition stripping**  | API form endpoint strips `on_submit` and `storage` from response |
+
+> **Cross-origin embedding:** submissions from origins listed in `allowed_origins` skip the CSRF token and rely on the honeypot and per-IP rate limit. For full protection host BBF on the same domain as the site.
 
 ### What `.htaccess` blocks
 

@@ -65,6 +65,9 @@ return [
     'csrf' => true,
 
     // Allowed origins for CORS (empty = same origin only)
+    // Cross-origin submissions from these origins skip the CSRF token and rely on
+    // the honeypot and per-IP rate limit. For full protection host BBF on the same
+    // domain as the site.
     'allowed_origins' => [],
 
     // Rate limiting: max submissions per IP per minute
