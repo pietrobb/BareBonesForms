@@ -6,6 +6,7 @@ Items marked **Breaking** need action when you upgrade an existing installation.
 ## [Unreleased]
 
 ### Added
+- **Problem alerts by email (`error_notify`).** BareBonesForms now tells you when a form stops working instead of leaving you to find out from a customer: a form that worked before is missing or its definition is invalid, a notification email, webhook or action fails, storage or a payment fails, uploads are blocked, or `submit.php` hits a PHP fatal error. Every incident goes to `logs_dir/incidents.log`; the email is sent after the visitor has a response, through your SMTP with a PHP `mail()` fallback, grouped into one message and throttled per form and problem (`error_notify_interval`, default one hour), with a hard ceiling of 6 alert emails per hour. New commands: `php maintenance.php selfcheck` (daily cron: forms, writable folders, SMTP login, stuck deliveries), `alerts`, `alerts-test`. Recipients come only from `config.php` and visitors cannot write or multiply alert emails; see [Error notifications](README.md#error-notifications). Replaces the previous single global 24-hour notification.
 - **Demo 10: Retro Guestbook** — a 1998 GeoCities guestbook, styled only with `--bbf-*` variables and a few `.bbf-*` selectors in the page. The form is plain JSON with `show_if` sections, a rating and "other" options; the server validates and stores it like any other form. All animation stops under `prefers-reduced-motion`.
 
 ### Fixed

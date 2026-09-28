@@ -166,5 +166,51 @@ $last = end($incidents);
 check_alert($last['type'] === 'PHP fatal error' && $last['form'] === 'kontakt' && str_contains($last['detail'], 'bbf_this_function_does_not_exist'),
     'a fatal error is recorded with the form id');
 
+// ─── Abuse: nobody outside can turn alerts into a mail cannon ────
+// A crash under a made-up form id (e.g. a huge JSON body to ?form=random) must not open a new alert group per request.
+foreach (['random1', 'random2', '../../x'] as $fake) {
+    file_put_contents($script, str_replace("\$formId = 'kontakt'", '$formId = ' . var_export($fake, true), (string)file_get_contents($script)));
+    shell_exec(escapeshellarg(PHP_BINARY) . ' -d display_errors=0 -d log_errors=0 ' . escapeshellarg($script));
+    file_put_contents($script, str_replace('$formId = ' . var_export($fake, true), "\$formId = 'kontakt'", (string)file_get_contents($script)));
+}
+$tail = array_slice(alert_incidents($logs), -3);
+check_alert(array_column($tail, 'form') === ['-', '-', '-'], 'a crash under an unknown form id is filed under "-", not a new group per id');
+
+check_alert(bbf_alert_recipients("a@example.com\r\nBcc: evil@example.net, b@example.com") === ['b@example.com'],
+    'CR/LF in error_notify cannot add a Bcc or any other header');
+check_alert(bbf_alert_recipients('evil@example.net>, x') === [], 'invalid recipient text is dropped');
+$savedServer = $_SERVER['SERVER_NAME'] ?? null;
+$_SERVER['SERVER_NAME'] = "phish.example\r\nBcc: evil@example.net";
+[$subject] = bbf_alert_message(['logs_dir' => $logs], ['k' => ['form' => 'f', 'type' => 't', 'count' => 1, 'detail' => 'd']], 3600);
+check_alert(preg_match('/^BareBonesForms: 1 problem on [a-zA-Z0-9.-]+$/', $subject) === 1, 'a hostile Host header cannot inject into the subject: ' . $subject);
+[$subject] = bbf_alert_message(['logs_dir' => $logs, 'mail' => ['from_email' => 'noreply@shop.example']], ['k' => ['form' => 'f', 'type' => 't', 'count' => 1, 'detail' => 'd']], 3600);
+check_alert(str_ends_with($subject, ' on shop.example'), 'the configured From domain beats the request Host header');
+if ($savedServer === null) unset($_SERVER['SERVER_NAME']); else $_SERVER['SERVER_NAME'] = $savedServer;
+
+$capLogs = $root . '/cap-logs';
+mkdir($capLogs, 0700, true);
+$capRecord = ['logs_dir' => $capLogs, 'submissions_dir' => $root . '/submissions', 'forms_dir' => $root . '/forms'];
+$capNotify = $capRecord + ['error_notify' => 'admin@example.com', 'error_notify_interval' => 3600];
+$capMails = [];
+$capSender = static function (string $to, string $subject, string $body) use (&$capMails): bool { $capMails[] = $body; return true; };
+$reasons = [];
+for ($i = 1; $i <= 8; $i++) {
+    bbf_alert_record($capRecord, "form$i", 'Form not found', "hit $i");
+    $reasons[] = bbf_alert_flush($capNotify, $capSender, $now + $i * 60)['reason'];
+}
+check_alert(count($capMails) === BBF_ALERT_MAX_PER_HOUR && array_slice($reasons, -2) === ['hourly_cap', 'hourly_cap'],
+    'no more than ' . BBF_ALERT_MAX_PER_HOUR . ' alert emails per hour, however many groups appear: ' . implode(',', $reasons));
+check_alert((int)file_get_contents($capLogs . '/.alerts_due') === $now + 60 + 3600, 'capped alerts are due when the oldest email leaves the hour');
+$afterCap = bbf_alert_flush($capNotify, $capSender, $now + 60 + 3600);
+check_alert($afterCap['sent'] && $afterCap['groups'] === 2 && str_contains(end($capMails), '[form7]') && str_contains(end($capMails), '[form8]'),
+    'held-back alerts arrive later in one email, nothing is lost');
+
+$bigLogs = $root . '/big-logs';
+mkdir($bigLogs, 0700, true);
+file_put_contents($bigLogs . '/incidents.log', str_repeat('x', 5 * 1048576 + 10));
+bbf_alert_record(['logs_dir' => $bigLogs], 'kontakt', 'Flood', 'x');
+check_alert(filesize($bigLogs . '/incidents.log') < 1000 && is_file($bigLogs . '/incidents.log.1'),
+    'without error_notify the incident log is still capped (no disk fill by flooding)');
+
 echo "\n$passed passed, $failed failed\n";
 exit($failed === 0 ? 0 : 1);

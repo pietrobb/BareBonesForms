@@ -171,6 +171,7 @@ details summary:hover { text-decoration: underline; }
 <p>What this engine provides:</p>
 <ul>
     <li><strong>Server-side validation</strong> &mdash; the client is for appearances; the server is the law</li>
+    <li><strong><a href="#error-notify">Problem alerts</a></strong> &mdash; a missing or broken form, a failed email or webhook, a crash: you get an email instead of finding out weeks later from a customer</li>
     <li><strong>Email confirmation + admin notifications</strong> &mdash; so you know when someone knocks</li>
     <li><strong>Four storage backends</strong> &mdash; file, SQLite, MySQL, CSV &mdash; one config line, per-form override</li>
     <li><strong>Signed webhooks</strong> &mdash; HMAC-SHA256, because trust is a luxury</li>
@@ -1968,7 +1969,12 @@ php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CON
 <!-- ============================================================ -->
 <h2 id="error-notify">Error Notifications</h2>
 
-<p>You find out when a form breaks, without checking each site. Set <code>error_notify</code> in <code>config.php</code>:</p>
+<div class="callout tip">
+    <strong>Turn this on for every site.</strong>
+    A form that silently stops working is the most expensive failure a form can have: the page looks fine, visitors fill it in, and the leads go nowhere. With <code>error_notify</code> set, BareBonesForms tells you itself, so you never have to check each form by hand.
+</div>
+
+<p>You find out when a form breaks, without checking each site. Set <code>error_notify</code> in <code>config.php</code> (one address, or several separated by commas):</p>
 
 <div class="code-block"><span class="lang">php</span><pre>'error_notify'          => 'admin@example.com',
 'error_notify_interval' => 3600,   // same problem on the same form: at most one email per hour</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
@@ -1983,6 +1989,18 @@ php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CON
 php maintenance.php alerts-test   # confirm the alert email reaches you</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p>If the whole server is down, nothing in BareBonesForms can run to tell you. Point a free external uptime monitor at <code>submit.php?form=&lt;your-form&gt;&amp;action=definition</code>; it returns HTTP 200 only when PHP runs and the definition loads.</p>
+
+<h3>Why alerts cannot be abused to send mail</h3>
+<ul>
+    <li><strong>Recipients come only from <code>config.php</code>.</strong> Nothing in a request can add or change a recipient; CR/LF in <code>error_notify</code> cannot turn into extra headers or a Bcc.</li>
+    <li><strong>No web endpoint sends an alert on demand.</strong> <code>alerts-test</code>, <code>alerts</code> and <code>selfcheck</code> run from the command line only.</li>
+    <li><strong>Visitors cannot write the email.</strong> The subject and the problem descriptions are fixed texts. The form id is reduced to letters, digits, <code>-</code> and <code>_</code>, and the site name comes from your <code>from_email</code> domain, not from the request&rsquo;s <code>Host</code> header.</li>
+    <li><strong>Visitors cannot multiply emails.</strong> A 404 counts only for forms that have existed here. A crash under a form id that does not exist (for example a huge request body sent to <code>?form=random</code>) is filed under <code>-</code>, not as a new problem per id. On top of the per-problem throttle, no installation sends more than 6 alert emails per hour; anything beyond that goes out later, folded into one email, so nothing is lost.</li>
+    <li><strong>The log cannot fill the disk.</strong> <code>incidents.log</code> rotates after 1&nbsp;MB, or after 5&nbsp;MB when <code>error_notify</code> is empty and nothing reads it.</li>
+    <li><strong>The log is not public.</strong> It lives in <code>logs_dir</code>, which the shipped <code>.htaccess</code> denies (its comments include the equivalent nginx rule).</li>
+</ul>
+
+<p>Retiring a form on purpose? Pages that still embed it will keep reporting &ldquo;Form not found&rdquo; (at most hourly). Remove the embed, or delete <code>logs_dir/.forms_seen/&lt;form-id&gt;</code> if the form never stored submissions.</p>
 
 <!-- ============================================================ -->
 <h2 id="production">Production Checklist</h2>

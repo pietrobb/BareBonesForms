@@ -6,6 +6,8 @@
  */
 defined('BBF_LOADED') || exit;
 
+const BBF_ALERT_MAX_PER_HOUR = 6;
+
 function bbf_alert_dir(array $config): string {
     return rtrim((string)($config['logs_dir'] ?? __DIR__ . '/logs'), '/\\');
 }
@@ -16,10 +18,12 @@ function bbf_alert_record(array $config, string $formId, string $type, string $d
     if ($formId === '') $formId = '-';
     $type = substr(str_replace(["\r", "\n", "\0"], ' ', $type), 0, 120);
     $detail = substr(str_replace("\0", '', $detail), 0, 2000);
-    error_log("BareBonesForms incident ($formId): $type — $detail");
+    error_log("BareBonesForms incident ($formId): $type — " . str_replace(["\r", "\n"], ' ', $detail));
     try {
         $dir = bbf_alert_dir($config);
         if (!is_dir($dir)) @mkdir($dir, 0700, true);
+        // Without error_notify nothing ever reads (and rotates) the log, so cap it here too.
+        if ((int)@filesize($dir . '/incidents.log') > 5 * 1048576) @rename($dir . '/incidents.log', $dir . '/incidents.log.1');
         $line = json_encode(['at' => time(), 'form' => $formId, 'type' => $type, 'detail' => $detail],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
         if (is_string($line)) @file_put_contents($dir . '/incidents.log', $line . "\n", FILE_APPEND | LOCK_EX);
@@ -56,8 +60,13 @@ function bbf_alert_fatal_guard(): void {
     }
     if (!is_array($config)) return;
     $formId = $GLOBALS['formId'] ?? ($_GET['form'] ?? '-');
+    $formId = is_string($formId) ? (string)preg_replace('/[^a-zA-Z0-9_-]/', '', $formId) : '';
+    // The id comes from the URL: an attacker who can crash the request (e.g. a huge JSON body) must not mint
+    // a fresh alert group (= a fresh email) per request, so only real forms keep their name.
+    $formsDir = rtrim((string)($config['forms_dir'] ?? __DIR__ . '/forms'), '/\\');
+    if ($formId === '' || !(is_file("$formsDir/$formId.json") || bbf_alert_form_known($config, $formId))) $formId = '-';
     $message = strtok((string)$error['message'], "\n");
-    bbf_alert_record($config, is_string($formId) ? $formId : '-', 'PHP fatal error',
+    bbf_alert_record($config, $formId, 'PHP fatal error',
         $message . ' in ' . basename((string)$error['file']) . ':' . (int)$error['line']);
 }
 
@@ -93,7 +102,16 @@ function bbf_alert_flush(array $config, ?callable $send = null, ?int $now = null
             else $nextDue = min($nextDue ?? $at, $at);
         }
 
+        // Hard ceiling across all groups, whatever the cause: at most BBF_ALERT_MAX_PER_HOUR emails per hour.
+        // Anything due beyond it waits and goes out folded into the next email.
+        $recent = array_values(array_filter(array_map('intval', (array)($state['sent_at'] ?? [])), static fn(int $at) => $at > $now - 3600));
+        $state['sent_at'] = $recent;
         $result = ['sent' => false, 'reason' => 'nothing_due', 'groups' => 0];
+        if ($due !== [] && count($recent) >= BBF_ALERT_MAX_PER_HOUR) {
+            $nextDue = min($nextDue ?? PHP_INT_MAX, min($recent) + 3600);
+            $result = ['sent' => false, 'reason' => 'hourly_cap', 'groups' => count($due)];
+            $due = [];
+        }
         if ($due !== []) {
             [$subject, $body] = bbf_alert_message($config, $due, $interval);
             $sent = false;
@@ -102,6 +120,7 @@ function bbf_alert_flush(array $config, ?callable $send = null, ?int $now = null
                 foreach ($due as $key => $group) {
                     $state['groups'][$key] = ['form' => $group['form'], 'type' => $group['type'], 'count' => 0, 'last_sent' => $now];
                 }
+                $state['sent_at'][] = $now;
                 $result = ['sent' => true, 'reason' => 'sent', 'groups' => count($due)];
             } else {
                 $nextDue = min($nextDue ?? $now + 900, $now + 900);
@@ -155,11 +174,26 @@ function bbf_alert_collect(string $log, int $offset, array &$groups): int {
     return $offset;
 }
 
-/** Site label for alerts; from cron (no SERVER_NAME) the From domain beats the shared-hosting machine name. */
+/**
+ * Site label for alerts. The admin-configured From domain comes first: SERVER_NAME can echo the visitor's
+ * Host header (Apache, UseCanonicalName Off), and cron has none at all. Whatever is used is reduced to
+ * hostname characters, so it can never carry text or headers into the subject.
+ */
 function bbf_alert_site(array $config): string {
     $from = (string)($config['mail']['from_email'] ?? '');
-    $fromDomain = filter_var($from, FILTER_VALIDATE_EMAIL) ? substr($from, strrpos($from, '@') + 1) : '';
-    return (string)($_SERVER['SERVER_NAME'] ?? '') ?: ($fromDomain ?: (gethostname() ?: 'server'));
+    $candidates = [filter_var($from, FILTER_VALIDATE_EMAIL) ? substr($from, strrpos($from, '@') + 1) : '',
+        (string)($_SERVER['SERVER_NAME'] ?? ''), (string)gethostname()];
+    foreach ($candidates as $candidate) {
+        $candidate = substr((string)preg_replace('/[^a-zA-Z0-9.-]/', '', $candidate), 0, 100);
+        if ($candidate !== '') return $candidate;
+    }
+    return 'server';
+}
+
+/** error_notify → valid addresses only; CR/LF can never split it into extra headers or recipients. */
+function bbf_alert_recipients(string $to): array {
+    return array_values(array_filter(array_map('trim', explode(',', str_replace(["\r", "\n", "\0"], '', $to))),
+        static fn($address) => filter_var($address, FILTER_VALIDATE_EMAIL) !== false));
 }
 
 function bbf_alert_message(array $config, array $groups, int $interval): array {
@@ -188,8 +222,7 @@ function bbf_alert_duration(int $seconds): string {
 /** Configured SMTP first (if any); PHP mail() as the fallback, so a broken SMTP can still report itself. */
 function bbf_alert_send(string $to, string $subject, string $body, array $config): bool {
     $mail = is_array($config['mail'] ?? null) ? $config['mail'] : [];
-    $addresses = array_values(array_filter(array_map('trim', explode(',', str_replace(["\r", "\n", "\0"], '', $to))),
-        static fn($address) => filter_var($address, FILTER_VALIDATE_EMAIL)));
+    $addresses = bbf_alert_recipients($to);
     if ($addresses === []) return false;
     if (($mail['method'] ?? 'mail') === 'smtp' && function_exists('sendEmail')) {
         try {
@@ -205,7 +238,8 @@ function bbf_alert_send(string $to, string $subject, string $body, array $config
     $headers = "From: $fromName <" . str_replace(["\r", "\n", "\0"], '', $from) . ">\r\n"
         . "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n";
     // Envelope sender = From, so SPF/DMARC align with the site's domain instead of the hosting account's.
-    $params = filter_var($from, FILTER_VALIDATE_EMAIL) ? '-f' . $from : '';
+    // Plain characters only: FILTER_VALIDATE_EMAIL admits quotes and shell-special characters, and this goes to the sendmail command line.
+    $params = preg_match('/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$/', $from) ? '-f' . $from : '';
     return function_exists('mail') && @mail(implode(', ', $addresses), $encodedSubject, $body, $headers, $params);
 }
 

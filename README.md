@@ -6,7 +6,7 @@ Define a form as JSON — or let AI write it. Upload one folder. Embed with two 
 
 *Bare bones means: no drag-and-drop form builder — describe the form to an AI assistant or edit its JSON yourself (an optional JSON editor with live preview is included). No dependencies, no build step, no database required.*
 
-PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 34 Languages · ~22 KB gzipped JS
+PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · Problem alerts by email · 34 Languages · ~22 KB gzipped JS
 
 **[Download →](https://github.com/pietrobb/BareBonesForms/releases/latest)** · **[Documentation →](docs.html)** · **[Changelog →](CHANGELOG.md)** · **[Upgrading →](#upgrading)** · **[Live Demos →](demo1.html)**
 
@@ -15,6 +15,10 @@ PHP 8.1+ · File / SQLite / MySQL / CSV · SMTP + Webhooks · 34 Languages · ~2
 Hosted form services (Formspree, Tally, Typeform…) are convenient until you care about where your leads are stored, what it costs per month, or what happens when their API changes. Classic PHP form plugins drag in a framework, a database, and a build pipeline. BareBonesForms sits in between: drop a folder on any PHP host and you own everything — the forms, the data, the emails.
 
 It has run in production on several business websites since spring 2026, collecting real leads in multiple languages.
+
+### It tells you when something breaks
+
+The most expensive failure of a form is the silent one: the page looks fine, people fill it in, and the leads go nowhere. Set one line, `'error_notify' => 'you@example.com'`, and BareBonesForms emails you when a form goes missing or its definition breaks, when a notification email, webhook or action fails (for example after an SMTP password change), when storage or a payment fails, or when PHP crashes. A daily `php maintenance.php selfcheck` also catches problems while nobody is submitting. Alerts are grouped and throttled, sent after the visitor already has a response, and cannot be abused to send mail. See [Error notifications](#error-notifications).
 
 ### No visual builder required
 
@@ -890,6 +894,17 @@ php maintenance.php alerts-test   # once, to confirm the alert email reaches you
 `selfcheck` records what it finds as incidents, sends pending alerts and exits with code 1 when something is wrong. `php maintenance.php alerts` only sends pending alerts.
 
 If the whole server or PHP is down, nothing in BareBonesForms can run to tell you. For that, point a free external uptime monitor at `submit.php?form=<your-form>&action=definition`: it returns HTTP 200 only when PHP runs and the form definition loads.
+
+**Why alerts cannot be abused to send mail**
+
+- **Recipients come only from `config.php`.** Nothing in a request can add or change a recipient; CR/LF in `error_notify` cannot turn into extra headers or a Bcc.
+- **No web endpoint sends an alert on demand.** `alerts-test`, `alerts` and `selfcheck` run from the command line only.
+- **Visitors cannot write the email.** Subjects and problem descriptions are fixed texts; the form id is reduced to letters, digits, `-` and `_`; the site name comes from your `from_email` domain, not from the request's `Host` header.
+- **Visitors cannot multiply emails.** A 404 counts only for forms that have existed here. A crash under a form id that does not exist (for example a huge request body sent to `?form=random`) is filed under `-`, not as a new problem per id. On top of the per-problem throttle, no installation sends more than 6 alert emails per hour; anything beyond waits and goes out folded into one email, so nothing is lost.
+- **The log cannot fill the disk.** `incidents.log` rotates after 1 MB, or after 5 MB when `error_notify` is empty and nothing reads it.
+- **The log is not public.** It lives in `logs_dir`, which the shipped `.htaccess` denies (its comments include the equivalent nginx rule).
+
+Retiring a form on purpose? Pages that still embed it keep reporting "Form not found" (at most hourly). Remove the embed, or delete `logs_dir/.forms_seen/<form-id>` if the form never stored submissions.
 
 ---
 
