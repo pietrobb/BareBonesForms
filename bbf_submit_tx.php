@@ -45,7 +45,6 @@ function bbf_tx_flush_notices(array $config): void {
     $notices = $GLOBALS['_bbf_tx_notices'] ?? [];
     $GLOBALS['_bbf_tx_notices'] = [];
     foreach ($notices as [$formId, $context, $detail]) {
-        error_log("BareBonesForms submit transaction ($formId): $context — $detail");
         bbfNotifyError($formId, $context, $detail, $config);
     }
 }

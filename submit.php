@@ -18,6 +18,9 @@ if (!file_exists(__DIR__ . '/config.php')) {
     echo json_encode(['status' => 'error', 'message' => 'Missing config.php. Copy config.example.php to config.php and edit it.']);
     exit;
 }
+// Loaded before everything else so a fatal error in any later include still reaches the admin.
+require_once __DIR__ . '/bbf_alerts.php';
+register_shutdown_function('bbf_alert_fatal_guard');
 
 // Check required extensions
 $missing = [];
@@ -36,6 +39,7 @@ require_once __DIR__ . '/bbf_drafts.php'; require_once __DIR__ . '/bbf_context.p
 require_once __DIR__ . '/bbf_read.php'; require_once __DIR__ . '/bbf_submit_tx.php';
 
 require_once __DIR__ . '/bbf_auth.php'; $config = bbf_auth_load_config(__DIR__ . '/config.php');
+bbf_alert_flush_if_due($config);
 
 
 // A requested sandbox never falls back to real processing, even when disabled.
@@ -146,11 +150,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $defFormId = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['form'] ?? '');
         if (!$defFormId) respond(400, 'Missing ?form= parameter.');
         $defFile = $config['forms_dir'] . "/$defFormId.json";
-        if (!file_exists($defFile)) respond(404, "Form '$defFormId' not found.");
+        if (!file_exists($defFile)) {
+            bbf_submit_form_incident($config, $defFormId, true, 'The page asked for this form, but its definition file is missing.');
+            respond(404, "Form '$defFormId' not found.");
+        }
         // Strip server-side config from response — client doesn't need
         // webhook URLs, email addresses, actions, or storage settings
         $def = json_decode(file_get_contents($defFile), true);
-        if (!is_array($def) || ($def['id'] ?? null) !== $defFormId) respond(500, 'Invalid form definition.');
+        if (!is_array($def) || ($def['id'] ?? null) !== $defFormId) {
+            bbf_submit_form_incident($config, $defFormId, false, 'The definition file is not valid JSON or its id does not match the file name; visitors cannot load the form.');
+            respond(500, 'Invalid form definition.');
+        }
+        bbf_alert_form_seen($config, $defFormId);
         $def = bbfSystemDefinition($def, $config); $def['_bbf_client'] = bbfClientConfiguration($config); unset($def['on_submit'], $def['storage']);
         $def['fields'] = bbf_submit_client_file_fields($config, (array)($def['fields'] ?? []));
         echo json_encode($def, JSON_UNESCAPED_UNICODE);
@@ -196,18 +207,20 @@ if (!$isSandbox && !$isDraftAction && $txKey !== null) bbf_submit_step_a($config
 
 $formFile = $config['forms_dir'] . "/$formId.json";
 if (!file_exists($formFile)) {
+    bbf_submit_form_incident($config, $formId, true, 'A visitor submitted this form, but its definition file is missing; the submission was rejected.');
     respond(404, "Form '$formId' not found.");
 }
 
 $form = json_decode(file_get_contents($formFile), true);
 if (!$form || ($form['id'] ?? null) !== $formId || empty($form['fields'])) {
+    bbf_submit_form_incident($config, $formId, false, 'The definition file is not valid JSON, has no fields, or its id does not match; a submission was rejected.');
     respond(500, 'Invalid form definition.');
 }
 
 // ─── Validate form schema ───────────────────────────────────────
 $schemaErrors = validateFormDefinition($form);
 if (!empty($schemaErrors)) {
-    error_log('BareBonesForms schema errors in ' . $formId . ': ' . implode('; ', $schemaErrors));
+    bbf_submit_form_incident($config, $formId, false, 'Schema errors, a submission was rejected: ' . implode('; ', array_slice($schemaErrors, 0, 5)));
     respond(500, 'Invalid form definition.', ['schema_errors' => $schemaErrors]);
 }
 $form = bbfSystemDefinition($form, $config); $publishedDefinitionVersion = bbf_version_id($form);
@@ -533,10 +546,9 @@ if (!$isPayment) {
 if (!$storeEnabled) {
     $inlineResults = [];
     foreach ($deliveryJobs as $job) {
-        $inlineResults[] = [
-            'job' => $job,
-            'outcome' => bbf_delivery_execute_job($job, $storeConfig, $actionResponse),
-        ];
+        $outcome = bbf_delivery_execute_job($job, $storeConfig, $actionResponse);
+        if (empty($outcome['ok'])) bbf_alert_delivery_failure($config, $formId, '', bbf_alert_job_label($job), $outcome, 'inline');
+        $inlineResults[] = ['job' => $job, 'outcome' => $outcome];
     }
     $deliveryStatus = bbf_delivery_inline_status($inlineResults);
 } else {
@@ -686,6 +698,17 @@ function respond(int $code, string $message, array $extra = []): void {
     exit;
 }
 
+/** A missing or broken form is an admin incident; a 404 only for a form that has existed here (not bot noise). */
+function bbf_submit_form_incident(array $config, string $formId, bool $missing, string $detail): void {
+    global $isSandbox;
+    if (!empty($isSandbox)) return;
+    if (!$missing) {
+        bbf_alert_record($config, $formId, 'Invalid form definition', $detail);
+    } elseif (bbf_alert_form_known($config, $formId)) {
+        bbf_alert_record($config, $formId, 'Form not found', $detail);
+    }
+}
+
 // ─── Submit transactions (docs/SUBMIT-TRANSACTIONS.md) ───────────
 
 /** Release the intent, send queued owner notices, and schedule bounded opportunistic recovery. */
@@ -778,9 +801,13 @@ function bbf_submit_upload_csrf(array $config, string $formId): void {
 /** The published definition's file field named in ?field=, or a 4xx response. */
 function bbf_submit_upload_field(array $config, string $formId): array {
     $path = $config['forms_dir'] . "/$formId.json";
-    if (!is_file($path)) respond(404, "Form '$formId' not found.");
+    if (!is_file($path)) {
+        bbf_submit_form_incident($config, $formId, true, 'A visitor tried to upload a file to this form, but its definition file is missing.');
+        respond(404, "Form '$formId' not found.");
+    }
     $form = json_decode((string)file_get_contents($path), true);
     if (!is_array($form) || ($form['id'] ?? null) !== $formId || empty($form['fields']) || validateFormDefinition($form)) {
+        bbf_submit_form_incident($config, $formId, false, 'The definition is invalid; a file upload was rejected.');
         respond(500, 'Invalid form definition.');
     }
     $form = bbfSystemDefinition($form, $config);

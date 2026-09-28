@@ -127,10 +127,16 @@ return [
     ],
 
     // ─── Error notifications ─────────────────────────────────────
-    // Email address to notify when form processing fails
-    // (storage, email, or webhook errors). Max one email per 24 hours.
-    // Leave empty to disable.
+    // Email address (or comma-separated list) alerted when something breaks: a form that is missing or
+    // invalid, failed email/webhook/action delivery, storage failure, payment problems, PHP fatal errors.
+    // Incidents are always written to logs_dir/incidents.log; the email goes out after the visitor already
+    // has a response, through the SMTP settings above (falls back to PHP mail() if SMTP itself is broken).
+    // Also add a daily cron: php maintenance.php selfcheck   (test delivery: php maintenance.php alerts-test)
+    // Leave empty to disable emails.
     'error_notify' => '',
+    // The same problem on the same form is emailed at most once per this many seconds; repeats are
+    // counted and included in the next email.
+    'error_notify_interval' => 3600,
 
     // ─── API & management access ────────────────────────────────
     // (api_token is at the top of this file.)

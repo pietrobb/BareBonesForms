@@ -5,7 +5,7 @@
  * Used by submit.php (form processing) and payment.php (webhook handler).
  * Not meant to be accessed directly via browser.
  */
-defined('BBF_LOADED') || exit; require_once __DIR__ . '/bbf_storage.php'; require_once __DIR__ . '/bbf_delivery.php'; require_once __DIR__ . '/bbf_outbox.php'; require_once __DIR__ . '/bbf_uploads.php';
+defined('BBF_LOADED') || exit; require_once __DIR__ . '/bbf_alerts.php'; require_once __DIR__ . '/bbf_storage.php'; require_once __DIR__ . '/bbf_delivery.php'; require_once __DIR__ . '/bbf_outbox.php'; require_once __DIR__ . '/bbf_uploads.php';
 
 // Safe string length (mbstring optional, falls back to strlen)
 function safeStrlen(string $s): int {
@@ -847,7 +847,7 @@ function bbf_delivery_abort_for_storage(string $path, array $jobs, array $config
 /** Claim and execute one persisted immutable delivery job. */
 function bbf_delivery_run_job(string $path, string $jobKey, array $config, array &$actionResponse = [], bool $alreadyRetried = false, bool $firstAttemptOnly = false): array {
     // The caller may already have moved a failed/ambiguous job to pending. The runner never retries state itself.
-    unset($alreadyRetried);
+    // A manual retry has the admin watching the result, so only automatic attempts raise an alert.
     $claim = bbf_outbox_claim($path, $jobKey, null, $firstAttemptOnly);
     if (!($claim['ok'] ?? false)) {
         $reason = (string)($claim['reason'] ?? 'unavailable');
@@ -863,9 +863,13 @@ function bbf_delivery_run_job(string $path, string $jobKey, array $config, array
     $outcome = bbf_delivery_execute_job($job, $config, $actionResponse);
     $retryDelay = (int)($config['delivery']['retry_delay'] ?? 60);
     $completed = bbf_outbox_complete($path, $jobKey, (string)$claim['token'], $outcome, null, $retryDelay);
+    [$formId, $submissionId] = array_pad(explode(':', (string)($claim['submission_key'] ?? ''), 2), 2, '');
+    if (empty($outcome['ok']) && !$alreadyRetried) {
+        bbf_alert_delivery_failure($config, $formId, $submissionId, bbf_alert_job_label($job), $outcome,
+            (string)($completed['job']['state'] ?? 'failed'));
+    }
     // Best-effort projection only AFTER delivery settlement. Never feed metadata failure into retry state.
     try {
-        [$formId, $submissionId] = array_pad(explode(':', (string)($claim['submission_key'] ?? ''), 2), 2, '');
         $result = array_key_exists('action_result', $outcome) ? $outcome['action_result'] : [
             'status' => !empty($outcome['ok']) ? 'ok' : 'error',
             'detail' => ['stage' => $outcome['stage'] ?? 'delivery', 'code' => $outcome['code'] ?? 0,
@@ -1928,37 +1932,7 @@ function validateCrossFields(array $rules, array $data): array {
 
 // ─── Error Notifications ────────────────────────────────────────
 
+/** Kept for existing callers: records an incident; the email is sent later by bbf_alerts.php. */
 function bbfNotifyError(string $formId, string $context, string $detail, array $config): void {
-    $to = $config['error_notify'] ?? '';
-    if ($to === '') return;
-
-    $logsDir = $config['logs_dir'] ?? __DIR__ . '/logs';
-    $throttleFile = $logsDir . '/.error_notify';
-
-    // Throttle: max one notification per 24 hours
-    if (file_exists($throttleFile) && filemtime($throttleFile) > time() - 86400) {
-        return;
-    }
-
-    // Touch throttle file before sending (prevents retries if mail is slow)
-    if (!is_dir($logsDir)) @mkdir($logsDir, 0755, true);
-    @file_put_contents($throttleFile, date('c'));
-
-    $from = $config['mail']['from_email'] ?? 'noreply@example.com';
-    $fromName = $config['mail']['from_name'] ?? 'BareBonesForms';
-    $subject = "BareBonesForms error: $context ($formId)";
-
-    $body = "A processing error occurred on your BareBonesForms installation.\n\n"
-          . "Form:    $formId\n"
-          . "Error:   $context\n"
-          . "Detail:  $detail\n"
-          . "Time:    " . date('Y-m-d H:i:s T') . "\n"
-          . "Server:  " . ($_SERVER['SERVER_NAME'] ?? gethostname()) . "\n\n"
-          . "This notification is sent at most once per 24 hours.\n"
-          . "Check your PHP error_log for the full history.";
-
-    $headers = "From: $fromName <$from>\r\n"
-             . "Content-Type: text/plain; charset=UTF-8\r\n";
-
-    @mail($to, $subject, $body, $headers);
+    bbf_alert_record($config, $formId, $context, $detail);
 }

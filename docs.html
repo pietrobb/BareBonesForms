@@ -1968,13 +1968,21 @@ php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CON
 <!-- ============================================================ -->
 <h2 id="error-notify">Error Notifications</h2>
 
-<p>When form processing fails &mdash; storage, email, or webhook errors &mdash; the admin can be notified by email. Set <code>error_notify</code> in <code>config.php</code>:</p>
+<p>You find out when a form breaks, without checking each site. Set <code>error_notify</code> in <code>config.php</code>:</p>
 
-<div class="code-block"><span class="lang">php</span><pre>'error_notify' => 'admin@example.com',</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<div class="code-block"><span class="lang">php</span><pre>'error_notify'          => 'admin@example.com',
+'error_notify_interval' => 3600,   // same problem on the same form: at most one email per hour</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
-<p>Notifications are throttled to <strong>at most one email per 24 hours</strong> to prevent inbox flooding. The notification includes the form ID, error type, and a timestamp. Leave empty (the default) to disable.</p>
+<p>An incident is recorded when a form that worked before is missing or its definition is invalid, when a notification email, webhook or action fails (the submission itself stays saved and can be retried from the viewer), when storage or a payment fails, and when <code>submit.php</code> stops with a PHP fatal error. Every incident goes to <code>logs_dir/incidents.log</code> and <code>error_log</code>.</p>
 
-<p>The notification is sent via PHP <code>mail()</code> directly (not SMTP), so it works even when SMTP itself is the cause of the failure. Errors are always logged to PHP <code>error_log</code> regardless of this setting.</p>
+<p>The email is sent <strong>after</strong> the visitor already has a response, through your SMTP settings, with a fallback to PHP <code>mail()</code> when SMTP itself is broken. One email lists all current problems; repeats of the same problem are counted into the next email instead of flooding your inbox. A 404 is only reported for forms that have existed on the installation, so bots probing random IDs do not trigger alerts.</p>
+
+<p>Some problems happen while nobody submits anything, so add a daily cron job, and test delivery once:</p>
+
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php selfcheck     # forms, writable folders, SMTP login, deliveries stuck in the last 7 days
+php maintenance.php alerts-test   # confirm the alert email reaches you</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>If the whole server is down, nothing in BareBonesForms can run to tell you. Point a free external uptime monitor at <code>submit.php?form=&lt;your-form&gt;&amp;action=definition</code>; it returns HTTP 200 only when PHP runs and the definition loads.</p>
 
 <!-- ============================================================ -->
 <h2 id="production">Production Checklist</h2>
@@ -1993,7 +2001,7 @@ php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CON
     <li>Verify <code>submissions/</code> and <code>logs/</code> are not web-accessible</li>
     <li>Set <code>allowed_origins</code> if embedding cross-domain</li>
     <li>Review privacy settings: <code>store_ip</code> / <code>store_user_agent</code></li>
-    <li>Set <code>error_notify</code> to receive alerts when form processing fails</li>
+    <li>Set <code>error_notify</code>, run <code>php maintenance.php alerts-test</code>, and schedule a daily <code>php maintenance.php selfcheck</code></li>
     <li>Set <code>stripe</code> keys if using payment forms</li>
     <li>Disable sandbox mode: <code>'sandbox' => false</code></li>
     <li>Set <code>smoke_token</code> if you want HTTP smoke tests after deploys (leave empty to disable)</li>

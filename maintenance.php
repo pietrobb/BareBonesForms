@@ -23,7 +23,10 @@ $usage = 'Usage: php maintenance.php retention --form=<id> [--apply --confirm=<r
     . "\n       php maintenance.php restore --bundle=<path> [--apply --confirm=<restore-digest>]"
     . "\n       php maintenance.php restore-abort --form=<id> [--apply --confirm=<restore-abort-digest>]"
     . "\n       php maintenance.php submit-recover"
-    . "\n       php maintenance.php uploads-cleanup";
+    . "\n       php maintenance.php uploads-cleanup"
+    . "\n       php maintenance.php selfcheck      (daily cron: check forms, folders, SMTP, stuck deliveries; email problems)"
+    . "\n       php maintenance.php alerts         (send pending admin alerts now)"
+    . "\n       php maintenance.php alerts-test    (send a test alert to error_notify)";
 $arguments = $argv;
 array_shift($arguments);
 $command = array_shift($arguments);
@@ -32,13 +35,13 @@ $allowed = match ($command) {
     'backup' => ['form'],
     'restore' => ['bundle', 'confirm'],
     'restore-abort' => ['form', 'confirm'],
-    'submit-recover', 'uploads-cleanup' => [],
+    'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test' => [],
     default => bbf_maintenance_fail($usage),
 };
 $options = ['apply' => false];
 foreach ($arguments as $argument) {
     if ($argument === '--apply') {
-        if ($options['apply'] || in_array($command, ['backup', 'submit-recover', 'uploads-cleanup'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
+        if ($options['apply'] || in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
         $options['apply'] = true;
         continue;
     }
@@ -55,10 +58,25 @@ if (in_array($command, ['retention', 'backup', 'restore-abort'], true)) {
 if ($command === 'restore' && !is_string($options['bundle'] ?? null)) {
     bbf_maintenance_fail('A --bundle path is required.');
 }
-if (!in_array($command, ['backup', 'submit-recover', 'uploads-cleanup'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
+if (!in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
     bbf_maintenance_fail('--apply and --confirm must be supplied together.');
 }
 $config = bbf_auth_load_config(__DIR__ . '/config.php');
+if (in_array($command, ['selfcheck', 'alerts', 'alerts-test'], true)) {
+    require_once __DIR__ . '/bbf_functions.php';
+    if ($command === 'alerts-test') {
+        $to = trim((string)($config['error_notify'] ?? ''));
+        if ($to === '') bbf_maintenance_fail('error_notify is empty in config.php.');
+        $sent = bbf_alert_send($to, 'BareBonesForms: test alert',
+            "This is a test alert from BareBonesForms on " . bbf_alert_site($config) . ".\nIf you can read this, problem reports will reach you.\n", $config);
+        fwrite($sent ? STDOUT : STDERR, $sent ? "Test alert sent to $to.\n" : "Test alert could not be sent (SMTP and mail() both failed).\n");
+        exit($sent ? 0 : 1);
+    }
+    $report = $command === 'selfcheck' ? bbf_alert_selfcheck($config) : ['ok' => true];
+    $report['alerts'] = bbf_alert_flush($config);
+    fwrite(STDOUT, json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+    exit(($report['ok'] ?? false) && ($report['alerts']['reason'] ?? '') !== 'send_failed' ? 0 : 1);
+}
 if ($command === 'submit-recover') {
     // Recovery for every form's submit intents (docs/SUBMIT-TRANSACTIONS.md §7); no time budget.
     require_once __DIR__ . '/bbf_submit_tx.php';

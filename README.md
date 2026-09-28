@@ -765,7 +765,7 @@ Two people submitting at the same moment cannot corrupt or lose each other's dat
 - **CSV:** appends run under the same exclusive lock, so rows from parallel requests are never interleaved.
 - **SQLite / MySQL:** each submission is one `INSERT` inside the database's own locking; SQLite runs in WAL mode.
 
-If storing fails for any reason (disk full, permissions, lock unavailable), the respondent gets an error instead of a success message, the admin gets an email (if `error_notify` is set), and no confirmation email or webhook is sent for a submission that was not saved. A lead does not silently disappear.
+If storing fails for any reason (disk full, permissions, lock unavailable), the respondent gets an error instead of a success message, the admin gets an email (if `error_notify` is set, see [Error notifications](#error-notifications)), and no confirmation email or webhook is sent for a submission that was not saved. A lead does not silently disappear.
 
 The rename is atomic, not a power-loss guarantee: BareBonesForms does not `fsync` the directory. For that level of durability use MySQL.
 
@@ -871,7 +871,25 @@ Access control: `api_token` is required everywhere, including localhost. `check.
 'error_notify' => 'admin@example.com',
 ```
 
-When form processing fails (storage, email, or webhook errors), the admin receives an email — at most once per 24 hours. Sent via `mail()` directly, so it works even when SMTP is the problem. Errors are always logged to `error_log` regardless.
+You find out when a form breaks, without checking each site. BareBonesForms records an incident when:
+
+- a form that worked before is suddenly **missing** (404) or its definition is **invalid** (bad JSON, schema errors);
+- a notification **email, webhook or action fails** (for example a changed SMTP password) — the submission itself is still saved and can be retried from the viewer;
+- **storage** fails, a **payment** cannot be finished, uploads are blocked;
+- `submit.php` stops with a **PHP fatal error** (for example after a bad edit or a missing extension).
+
+Every incident is appended to `logs_dir/incidents.log` and to `error_log`. When `error_notify` is set, the email is sent **after** the visitor already has a response, through your SMTP settings; if SMTP itself is broken it falls back to PHP `mail()`. One email lists all current problems. The same problem on the same form is emailed at most once per `error_notify_interval` (default 3600 s); repeats are counted into the next email, so a flood of failures cannot flood your inbox. A 404 is only reported for forms that have existed on this installation, so bots probing random form IDs do not trigger alerts.
+
+Some problems happen while nobody submits anything. Add a daily cron job:
+
+```bash
+php maintenance.php selfcheck     # every form definition, writable data folders, SMTP login, deliveries stuck in the last 7 days
+php maintenance.php alerts-test   # once, to confirm the alert email reaches you
+```
+
+`selfcheck` records what it finds as incidents, sends pending alerts and exits with code 1 when something is wrong. `php maintenance.php alerts` only sends pending alerts.
+
+If the whole server or PHP is down, nothing in BareBonesForms can run to tell you. For that, point a free external uptime monitor at `submit.php?form=<your-form>&action=definition`: it returns HTTP 200 only when PHP runs and the form definition loads.
 
 ---
 
@@ -1536,7 +1554,7 @@ If you're an AI helping a user build, embed, or style a BareBonesForms form, rea
 - [ ] Storage backend matches expected volume (SQLite or MySQL beyond ~1000 submissions per form)
 - [ ] Retention period decided (`retention` in `config.php`) if your privacy policy promises one
 - [ ] `allowed_origins` set if embedding cross-domain
-- [ ] `error_notify` set for admin error alerts (max 1/day)
+- [ ] `error_notify` set for admin error alerts, `php maintenance.php alerts-test` received, daily cron `php maintenance.php selfcheck` ([details](#error-notifications))
 - [ ] `stripe` keys set if using payments
 - [ ] `'sandbox' => false` for production
 - [ ] `smoke_token` set if you want post-deploy smoke testing (leave empty to disable)

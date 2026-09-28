@@ -119,7 +119,7 @@ $source = dirname(__DIR__);
 $root = bbf_test_installation($source);
 $server = null;
 try {
-    foreach (['bbf_submit_tx.php', 'bbf_context.php'] as $file) {
+    foreach (['bbf_alerts.php', 'bbf_submit_tx.php', 'bbf_context.php'] as $file) {
         if (!is_file("$root/$file")) copy("$source/$file", "$root/$file");
     }
     file_put_contents("$root/actions/tx-probe.php", <<<'PHP'

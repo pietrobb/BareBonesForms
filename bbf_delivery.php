@@ -155,6 +155,11 @@ function bbf_delivery_smtp(array $message, array $config, array $io = []): array
         $result = $expect('auth_password', [235]);
         if (!$result['ok']) return $finish($result);
     }
+    // Probe mode (maintenance selfcheck): connection, TLS and login only, nothing is sent.
+    if (($message['probe'] ?? false) === true) {
+        $command('QUIT');
+        return $finish(bbf_delivery_result(true, 'accepted', 'probe', 250, false, 'SMTP login succeeded'));
+    }
 
     $sender = (string)($config['from_email'] ?? $user);
     if (!$command('MAIL FROM:<' . $sender . '>')) return $finish(bbf_delivery_smtp_failure('mail_from_write', 0));
