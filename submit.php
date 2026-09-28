@@ -189,7 +189,7 @@ if (($_GET['action'] ?? '') === 'upload_delete') bbf_submit_upload_delete($confi
 // ─── Parse input ────────────────────────────────────────────────
 $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
 if (stripos($contentType, 'application/json') !== false) {
-    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $input = bbf_submit_json_body() ?? [];
 } else {
     $input = $_POST;
 }
@@ -862,12 +862,27 @@ function bbf_submit_upload(array $config, string $formId, bool $isSandbox): neve
     respond(200, 'OK', $stored);
 }
 
+/**
+ * Decode a JSON request body without letting a stranger exhaust memory. Files use the upload endpoint,
+ * so 1 MB is far above any real submission; the container cap stops tiny-array bodies (1 MB of "[1],"
+ * would otherwise cost ~60 MB) from crashing PHP before the rate limit even runs.
+ */
+function bbf_submit_json_body(): mixed {
+    $max = 1048576;
+    if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $max) respond(413, 'Request body is too large.');
+    $raw = (string)file_get_contents('php://input', false, null, 0, $max + 1);
+    if (strlen($raw) > $max || substr_count($raw, '{') + substr_count($raw, '[') > 20000) {
+        respond(413, 'Request body is too large.');
+    }
+    return json_decode($raw, true, 64);
+}
+
 function bbf_submit_upload_delete(array $config, string $formId, bool $isSandbox): never {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, 'Method not allowed.');
     $root = bbf_uploads_root($config, false);
     if (!$root['ok']) respond($root['code'], $root['error']);
     if (!$isSandbox) bbf_submit_upload_csrf($config, $formId);
-    $body = json_decode((string)file_get_contents('php://input'), true);
+    $body = bbf_submit_json_body();
     $token = is_array($body) ? ($body['token'] ?? null) : null;
     if ($isSandbox) {
         bbf_access_finish(0, true);

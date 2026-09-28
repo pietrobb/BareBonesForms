@@ -798,6 +798,7 @@ Move all four paths together: `drafts_dir` and `sqlite.path` have their own sett
 | **CSRF tokens**           | Session-based HMAC, automatic via `bbf.js` (same-origin only — see note below) |
 | **Honeypot**              | Hidden field catches bots                                      |
 | **Rate limiting**         | File-locked per-IP counter (default: 10/min)                   |
+| **Request size**          | JSON submissions over 1 MB or with more than 20,000 objects/arrays get 413 before they are parsed |
 | **Server-side validation**| All field rules enforced on server                             |
 | **Input sanitization**    | `htmlspecialchars()` in all email templates                     |
 | **Signed webhooks**       | HMAC-SHA256 via `X-BBF-Signature`                              |
@@ -1460,7 +1461,7 @@ php maintenance.php uploads-cleanup
 
 These commands **perform recovery/cleanup immediately**; they are not dry runs and take no `--apply`. Run `submit-recover` before changing storage settings. `uploads-cleanup` removes expired staging data, orphaned staging remnants and dead upload reservations, finishes eligible recorded deletions, recovers safe unfinished restore phases and recounts capacity. It reports unresolved work and directories without records — it does **not** blindly delete stored files just because a record cannot be found. Inspect its report even when the command succeeds. Ordinary upload traffic also performs staging cleanup, but a quiet site needs scheduled runs to remove expired temporary files promptly.
 
-If cleanup reports an unfinished restore with unpublished records (`records_pending`), review and explicitly abort it before retrying restore:
+If a restore answers `restore_abort_required`, or cleanup reports an unfinished restore with unpublished records (`records_pending`), review and explicitly abort it before retrying restore. This covers restores with and without files:
 
 ```bash
 php maintenance.php restore-abort --form=application

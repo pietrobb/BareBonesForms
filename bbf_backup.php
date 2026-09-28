@@ -306,7 +306,33 @@ function bbf_backup_target_empty(array $config, array $payload): bool {
             }
         }
     }
-    return bbf_backup_audit_capture($config, $formId) === [] && bbf_uploads_restore_target_empty($config, $formId);
+    return bbf_backup_audit_capture($config, $formId) === [] && bbf_uploads_restore_target_empty($config, $formId)
+        && !file_exists(bbf_auth_restore_marker($config, $formId));
+}
+
+/** Mark "records of $formId may exist unpublished" durably, before the first record is written. */
+function bbf_backup_restore_mark(array $config, string $formId, string $backend): void {
+    $marker = bbf_auth_restore_marker($config, $formId);
+    $dir = dirname($marker);
+    if (!is_dir($dir) && !@mkdir($dir, 0700)) throw new RuntimeException('Cannot create the restore marker directory.');
+    if (is_link($dir) || !bbf_backup_write_unpublished_json($marker,
+        ['form' => $formId, 'backend' => $backend, 'nonce' => bin2hex(random_bytes(8)), 'created' => time()])) {
+        throw new RuntimeException('Cannot write the restore marker.');
+    }
+}
+
+function bbf_backup_restore_marker_read(array $config, string $formId): ?array {
+    $marker = bbf_auth_restore_marker($config, $formId);
+    clearstatcache(true, $marker);
+    if (!is_file($marker)) return null;
+    $state = json_decode((string)@file_get_contents($marker), true);
+    return is_array($state) ? $state : ['backend' => null];
+}
+
+function bbf_backup_restore_unmark(array $config, string $formId): bool {
+    $marker = bbf_auth_restore_marker($config, $formId);
+    clearstatcache(true, $marker);
+    return @unlink($marker) || !file_exists($marker);
 }
 
 function bbf_backup_restore_plan(array $config, string $path): array {
@@ -610,12 +636,17 @@ function bbf_backup_restore(array $config, string $path, string $confirmation): 
     $created = [];
     $databaseRestored = false;
     $filesStage = 'none';
+    $marked = false;
     try {
         if (!flock($lock, LOCK_EX)) return ['ok' => false, 'reason' => 'lock'];
         // An earlier run of this form may have died; its state is ours to recover now that we hold its lock.
-        $recovered = bbf_uploads_restore_recover($config, $formId,
-            is_file(($config['forms_dir'] ?? __DIR__ . '/forms') . '/' . $formId . '.json'));
+        $published = is_file(($config['forms_dir'] ?? __DIR__ . '/forms') . '/' . $formId . '.json');
+        $recovered = bbf_uploads_restore_recover($config, $formId, $published);
         if ($recovered === 'records_pending') return ['ok' => false, 'reason' => 'restore_abort_required'];
+        if (bbf_backup_restore_marker_read($config, $formId) !== null) {
+            if (!$published) return ['ok' => false, 'reason' => 'restore_abort_required'];
+            bbf_backup_restore_unmark($config, $formId); // died after publishing: nothing is unreachable
+        }
         $plan = bbf_backup_restore_plan($config, $path);
         if (!is_string($plan['confirmation']) || !hash_equals($plan['confirmation'], $confirmation)) {
             return ['ok' => false, 'reason' => 'confirmation', 'plan' => $plan];
@@ -647,6 +678,8 @@ function bbf_backup_restore(array $config, string $path, string $confirmation): 
         $filesStage = 'files';
         bbf_uploads_restore_files($config, $formId, $payload['files'] ?? [], realpath($path) . '.files', $lockPath, ['backend' => $backend]);
         $filesStage = ($payload['files'] ?? []) === [] ? 'none' : 'records';
+        bbf_backup_restore_mark($config, $formId, $backend);
+        $marked = true;
         if ($backend === 'file') {
             $submissionDir = $submissions . '/' . $formId;
             if (!@mkdir($submissionDir, 0700)) throw new RuntimeException('Cannot restore submissions.');
@@ -714,16 +747,23 @@ function bbf_backup_restore(array $config, string $path, string $confirmation): 
             $created[] = $formPath;
         });
         bbf_uploads_restore_finish($config, $formId);
+        bbf_backup_restore_unmark($config, $formId);
         return ['ok' => true, 'form' => $formId, 'restored' => count($payload['records']),
             'files' => bbf_uploads_manifest_totals($payload['files'] ?? [])[1]];
     } catch (Throwable $error) {
         $databaseClean = !$databaseRestored || bbf_backup_restore_db_cleanup($config, $formId);
         bbf_backup_remove_created($created);
+        if ($marked) {
+            // Records that could not be removed keep the marker (and their files) for restore-abort.
+            clearstatcache();
+            if (file_exists("$submissions/$formId") || file_exists("$submissions/$formId.csv")) $databaseClean = false;
+        }
         // Records are gone (or never written): their files go too. Leftover database rows keep them for restore-abort.
         if ($filesStage === 'files' || ($filesStage === 'records' && $databaseClean)) {
             try { $removed = bbf_uploads_restore_remove($config, $formId); } catch (Throwable $removeError) { $removed = false; }
             if (!$removed) $databaseClean = false;
         }
+        if ($marked && $databaseClean && !bbf_backup_restore_unmark($config, $formId)) $databaseClean = false;
         error_log('BareBonesForms restore: ' . $error->getMessage());
         return ['ok' => false, 'reason' => $databaseClean ? 'storage' : 'rollback'];
     } finally {
@@ -741,6 +781,10 @@ function bbf_backup_restore_abort_plan(array $config, string $formId): array {
     if (bbf_auth_id($formId) === '') throw new InvalidArgumentException('Invalid form ID.');
     $root = bbf_uploads_existing_root($config);
     $state = $root !== null ? bbf_uploads_restore_state($root, $formId) : null;
+    // A restore without files has no uploads state; its marker alone says records may exist.
+    $marker = $state === null ? bbf_backup_restore_marker_read($config, $formId) : null;
+    if ($marker !== null) $state = ['phase' => 'records', 'backend' => $marker['backend'] ?? null,
+        'reservation' => $marker['nonce'] ?? null, 'created' => $marker['created'] ?? null, 'files' => []];
     $published = is_file(($config['forms_dir'] ?? __DIR__ . '/forms') . '/' . $formId . '.json');
     $backend = $state['backend'] ?? null;
     $base = ['version' => 1, 'dry_run' => true, 'form' => $formId, 'published' => $published,
@@ -781,6 +825,7 @@ function bbf_backup_restore_abort(array $config, string $formId, string $confirm
             if (file_exists($leftover)) return ['ok' => false, 'reason' => 'storage'];
         }
         if (!bbf_uploads_restore_remove($config, $formId)) return ['ok' => false, 'reason' => 'files'];
+        if (!bbf_backup_restore_unmark($config, $formId)) return ['ok' => false, 'reason' => 'storage'];
         return ['ok' => true, 'form' => $formId, 'files' => $plan['file_count']];
     } finally {
         flock($lock, LOCK_UN);

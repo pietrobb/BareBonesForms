@@ -1575,6 +1575,7 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
     <tr><td><strong>CSRF tokens</strong></td><td>Session-based HMAC for same-origin. Automatic via <code>bbf.js</code>.</td></tr>
     <tr><td><strong>Honeypot</strong></td><td>Hidden field catches bots. They walk right into it, the poor stupid creatures.</td></tr>
     <tr><td><strong>Rate limiting</strong></td><td>File-locked per-IP counter. Default: 10/minute.</td></tr>
+    <tr><td><strong>Request size</strong></td><td>JSON submissions over 1 MB or with more than 20,000 objects/arrays get 413 before they are parsed. Files use the separate upload endpoint.</td></tr>
     <tr><td><strong>Server-side validation</strong></td><td>All rules enforced on server. The client's opinion is noted and ignored.</td></tr>
     <tr><td><strong>Input sanitization</strong></td><td><code>htmlspecialchars()</code> in all email templates. No exceptions.</td></tr>
     <tr><td><strong>Email header injection</strong></td><td>To/Subject sanitized, emails validated.</td></tr>
@@ -1935,7 +1936,7 @@ php maintenance.php restore --bundle=/private/backups/application.json --apply -
 <div class="code-block"><span class="lang">bash</span><pre>php maintenance.php submit-recover
 php maintenance.php uploads-cleanup</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 <p>These commands <strong>perform recovery/cleanup immediately</strong>: no dry run and no <code>--apply</code>. Run <code>submit-recover</code> before changing storage settings. <code>uploads-cleanup</code> removes expired staging data, orphaned staging remnants and dead upload reservations, finishes eligible recorded deletions, recovers safe unfinished restore phases and recounts capacity. It reports unresolved work and directories without records; it does <strong>not</strong> blindly delete stored files because a record cannot be found. Inspect the report even on success. Upload traffic also performs staging cleanup, but quiet sites need scheduled runs to remove expired temporary files promptly.</p>
-<p>If cleanup reports an unfinished restore with unpublished records (<code>records_pending</code>), review and explicitly abort it before retrying restore:</p>
+<p>If a restore answers <code>restore_abort_required</code>, or cleanup reports an unfinished restore with unpublished records (<code>records_pending</code>), review and explicitly abort it before retrying restore. This covers restores with and without files:</p>
 <div class="code-block"><span class="lang">bash</span><pre>php maintenance.php restore-abort --form=application
 # Replace ABORT_CONFIRMATION with this dry run's exact confirmation.
 php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CONFIRMATION</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>

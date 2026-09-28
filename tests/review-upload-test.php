@@ -718,6 +718,49 @@ try {
     $wipe(); // the reachability probes above audited form upbk
     $final = $restoreApply((string)($restorePlan()['confirmation'] ?? ''));
     up_check(($final['ok'] ?? false) === true && count(glob("$data/upbk/*/f_*") ?: []) === 2 && up_exact($data), 'after restore-abort a full restore succeeds');
+
+    // A restore WITHOUT files has no uploads state: the general restore marker must still guard it.
+    up_form($root, 'upnf', [], [['name' => 'answer', 'type' => 'text', 'label' => 'Answer']]);
+    $nfId = up_submit($server, 'upnf', ['answer' => 'no files'], bin2hex(random_bytes(16)))['json']['submission_id'] ?? '';
+    $nfBundle = (string)(json_decode(up_maintenance($root, 'backup --form=upnf')[1], true)['path'] ?? '');
+    $nfWipe = static function () use ($root): void {
+        foreach (glob("$root/submissions/upnf/*") ?: [] as $f) unlink($f);
+        @rmdir("$root/submissions/upnf");
+        foreach (glob("$root/forms/.versions/upnf/*") ?: [] as $f) unlink($f);
+        @rmdir("$root/forms/.versions/upnf");
+        @unlink("$root/forms/upnf.json");
+        $audit = "$root/logs/access-audit.php";
+        $lines = file($audit, FILE_IGNORE_NEW_LINES);
+        $kept = array_filter($lines, static fn($line, $i) => $i === 0 || (json_decode($line, true)['form'] ?? null) !== 'upnf', ARRAY_FILTER_USE_BOTH);
+        file_put_contents($audit, implode("\n", $kept) . "\n");
+    };
+    $nfRestore = static function (bool $apply) use ($root, $nfBundle): array {
+        $plan = json_decode(up_maintenance($root, 'restore --bundle=' . escapeshellarg($nfBundle))[1], true) ?: [];
+        if (!$apply) return $plan;
+        [$code, $out] = up_maintenance($root, 'restore --bundle=' . escapeshellarg($nfBundle) . ' --apply --confirm=' . ($plan['confirmation'] ?? 'none'));
+        return (json_decode($out, true) ?: []) + ['exit' => $code, 'plan' => $plan];
+    };
+    $nfWipe();
+    up_fault($root, 'upload:restore_before_publish');
+    $nfRestore(true);
+    $nfMarker = "$root/submissions/.restore/upnf.json";
+    up_check($nfId !== '' && is_file($nfMarker) && count(up_records($root, 'upnf')) === 1 && !is_file("$root/forms/upnf.json")
+        && !is_file("$data/restore/upnf.json"), 'file-less restore dying before publish leaves records and its marker, no uploads state');
+    up_check(bbf_test_http($server, "http://127.0.0.1:{$server['port']}/submissions.php?form=upnf", null, $token)['code'] !== 200
+        && bbf_test_http($server, "http://127.0.0.1:{$server['port']}/viewer.php?action=detail&form=upnf&id=$nfId", null, $token)['code'] !== 200,
+        'file-less unpublished restore leftovers are unreachable through the API and the viewer');
+    $nfAgain = $nfRestore(true);
+    up_check(($nfAgain['plan']['empty'] ?? true) === false && ($nfAgain['reason'] ?? '') !== 'ok' && ($nfAgain['ok'] ?? false) === false,
+        'a new restore over file-less leftovers is refused');
+    $nfAbortPlan = json_decode(up_maintenance($root, 'restore-abort --form=upnf')[1], true);
+    [$code, $out] = up_maintenance($root, 'restore-abort --form=upnf --apply --confirm=' . ($nfAbortPlan['confirmation'] ?? ''));
+    up_check($code === 0 && is_string($nfAbortPlan['confirmation'] ?? null) && ($nfAbortPlan['backend'] ?? '') === 'file'
+        && up_records($root, 'upnf') === [] && !file_exists("$root/forms/.versions/upnf") && !is_file($nfMarker),
+        'restore-abort also cleans a file-less restore: records, versions and marker');
+    $nfWipe(); // the reachability probes above audited form upnf
+    $nfFinal = $nfRestore(true);
+    up_check(($nfFinal['ok'] ?? false) === true && count(up_records($root, 'upnf')) === 1 && is_file("$root/forms/upnf.json") && !is_file($nfMarker),
+        'after restore-abort the file-less restore succeeds and removes its marker');
     up_config($root, $data);
 
     // ── Diagnostics (§12) ───────────────────────────────────────

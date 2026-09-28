@@ -419,6 +419,20 @@ PHP);
         && !is_dir("$root/submissions/.delivery/submit-no-store-fail"),
         'store=false failure response is redacted and creates no durable submission or jobs');
 
+    $jsonUrl = 'http://127.0.0.1:' . $server['port'] . '/submit.php?form=submit-delivery';
+    $jsonHeaders = ['headers' => ['Content-Type' => 'application/json']];
+    $jsonOk = bbf_test_http($server, $jsonUrl, null, $jsonHeaders + ['raw' => json_encode(['answer' => str_repeat('x', 200000)])]);
+    submit_delivery_check($jsonOk['code'] === 200 && ($jsonOk['json']['status'] ?? '') === 'ok',
+        'a large but ordinary JSON submission is accepted');
+    $tooBig = bbf_test_http($server, $jsonUrl, null, $jsonHeaders + ['raw' => json_encode(['answer' => str_repeat('x', 1048600)])]);
+    $manyArrays = '[' . str_repeat('[1],', 20000) . '[1]]';
+    $bomb = bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . '/submit.php?form=random-bomb-id', null,
+        $jsonHeaders + ['raw' => $manyArrays]);
+    submit_delivery_check($tooBig['code'] === 413 && $bomb['code'] === 413 && strlen($manyArrays) < 100000,
+        'oversized JSON bodies and tiny-array memory bombs are refused before decoding');
+    submit_delivery_check(!is_file("$root/logs/incidents.log") || !str_contains((string)file_get_contents("$root/logs/incidents.log"), 'random-bomb-id'),
+        'a refused JSON body never creates an admin incident for an invented form id');
+
     $privateDataFound = false;
     $submissionFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(
         "$root/submissions", FilesystemIterator::SKIP_DOTS));

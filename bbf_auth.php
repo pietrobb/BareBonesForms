@@ -176,10 +176,15 @@ function bbf_auth_path_identity($dir, string $expected, ?bool $directory = false
 function bbf_auth_definition_identity(array $config, string $form): bool {
     return bbf_auth_id($form) !== '' && bbf_auth_path_identity($config['forms_dir'] ?? __DIR__ . '/forms', "$form.json", null);
 }
-/** Unpublished leftovers of a restore that died after placing files stay unreachable until restore-abort (upload spec §10). */
+/** Written by restore before its first record and removed after publish or a clean rollback; files or not. */
+function bbf_auth_restore_marker(array $config, string $form): string {
+    return rtrim((string)($config['submissions_dir'] ?? __DIR__ . '/submissions'), '/\\') . "/.restore/$form.json";
+}
+/** Unpublished leftovers of a restore that died after writing records stay unreachable until restore-abort (upload spec §10). */
 function bbf_auth_restore_pending(array $config, string $form): bool {
-    if (!is_array($config['uploads'] ?? null) || (string)($config['uploads']['dir'] ?? '') === '') return false;
     if (is_file(($config['forms_dir'] ?? __DIR__ . '/forms') . "/$form.json")) return false;
+    if (is_file(bbf_auth_restore_marker($config, $form))) return true;
+    if (!is_array($config['uploads'] ?? null) || (string)($config['uploads']['dir'] ?? '') === '') return false;
     require_once __DIR__ . '/bbf_uploads.php';
     $root = bbf_uploads_existing_root($config);
     return $root !== null && is_file("$root/restore/$form.json");

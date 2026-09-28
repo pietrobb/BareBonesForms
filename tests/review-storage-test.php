@@ -312,12 +312,15 @@ PHP;
                     $elapsed = microtime(true) - $started;
                     $lastError = error_get_last();
                     $attempts = $GLOBALS['publication_attempts']; $sleeps = $GLOBALS['publication_sleeps'];
-                    storage_check(count($warnings) === ($mode === 'transient' ? 1 : 11)
+                    // Growing backoff 5ms, 10ms, ... capped at 100ms, until ~1s of sleep is spent.
+                    $schedule = [];
+                    for ($a = 0, $s = 0; $s < 1000000; ++$a) { $schedule[] = min(100000, 5000 << min($a, 5)); $s += end($schedule); }
+                    $expectedSleeps = $mode === 'transient' ? [5000] : $schedule;
+                    storage_check(count($warnings) === count($expectedSleeps) + ($mode === 'transient' ? 0 : 1)
                         && str_contains($warnings[0], 'code: 5'), "$mode held handle $probe really blocks Windows rename (code 5)");
                     storage_check($ok === ($mode === 'transient') && file_get_contents($path) === ($ok ? $replacement : $original),
                         "$mode held handle $probe returns correct result and preserves/publishes exact bytes");
-                    storage_check(count($attempts) === ($ok ? 2 : 11) && count($sleeps) === count($attempts) - 1
-                        && array_sum($sleeps) === ($ok ? 10000 : 100000) && $writes === 1,
+                    storage_check(count($attempts) === count($expectedSleeps) + 1 && $sleeps === $expectedSleeps && $writes === 1,
                         "$mode held handle $probe bounded publication retries, write callback runs once");
                     storage_check(count(array_unique(array_column($attempts, 0))) === 1
                         && count(array_unique(array_column($attempts, 2))) === 1

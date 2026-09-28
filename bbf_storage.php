@@ -100,13 +100,15 @@ function bbf_storage_replace(string $path, callable $write, ?int $createMode = n
         $closed = fclose($fp);
         $fp = null;
         if (!$closed) return false;
-        // Windows readers without delete-sharing can briefly block publication. Retry only
-        // this rename (100ms sleep budget), with the same temp and caller's lock still held.
+        // Windows readers (and antivirus scans) without delete-sharing can briefly block publication.
+        // Retry only this rename with growing backoff (~1s sleep budget), same temp, caller's lock held.
         // Other platforms keep the single attempt; never unlink the destination or replay $write.
-        for ($attempt = 0; ; ++$attempt) {
+        for ($attempt = 0, $slept = 0; ; ++$attempt) {
             if (@rename($temp, $path)) return true;
-            if (PHP_OS_FAMILY !== 'Windows' || $attempt >= 10) return false;
-            usleep(10000);
+            if (PHP_OS_FAMILY !== 'Windows' || $slept >= 1000000) return false;
+            $pause = min(100000, 5000 << min($attempt, 5));
+            usleep($pause);
+            $slept += $pause;
         }
     } catch (Throwable $error) {
         error_log('BareBonesForms atomic write error: ' . $error->getMessage());
