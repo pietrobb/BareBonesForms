@@ -252,7 +252,8 @@ function bbf_read_db_connect(array $config): ?PDO {
         return new PDO("mysql:host={$db['host']};dbname={$db['database']};charset={$db['charset']}", $db['username'], $db['password'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
     }
     $path = $config['sqlite']['path'] ?? ($config['submissions_dir'] ?? __DIR__ . '/submissions') . '/bbf.sqlite';
-    if (!file_exists($path)) return null;
+    // A zero-byte file nobody has written yet (e.g. created by an older check.php) holds no submissions.
+    if (!is_file($path) || filesize($path) === 0) return null;
     return new (class_exists('Pdo\\Sqlite') ? 'Pdo\\Sqlite' : 'PDO')("sqlite:$path", null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 }
 
@@ -312,7 +313,8 @@ function bbf_read_db_where(PDO $pdo, string $formId, ?string $from, ?string $to,
  */
 function bbf_read_db(PDO $pdo, string $formId, ?string $from = null, ?string $to = null, ?string $q = null, ?string $id = null, ?int $limit = null, int $offset = 0, bool $strict = false): Generator {
     [$where, $params] = bbf_read_db_where($pdo, $formId, $from, $to, $id, $strict);
-    $sql = "SELECT * FROM bbf_submissions WHERE $where ORDER BY created_at DESC";
+    // id breaks created_at ties so LIMIT/OFFSET pages never repeat or skip rows submitted in the same second.
+    $sql = "SELECT * FROM bbf_submissions WHERE $where ORDER BY created_at DESC, id DESC";
     $sqlPage = bbf_read_db_sql_eligibility($pdo) && ($q === null || $q === '');
     if ($sqlPage && $limit !== null) { $sql .= ' LIMIT ? OFFSET ?'; $params[] = $limit; $params[] = $offset; }
     $mysql = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql';
@@ -360,9 +362,6 @@ function bbf_read_export(string $formId, array $config, int $limit, int $offset,
     if ($storage === 'file') $rows = bbf_read_files($formId, $dir, $from, $to, $q, $strict);
     elseif ($storage === 'csv') $rows = bbf_read_csv($formId, $dir, $from, $to, $q, null, $strict);
     else {
-        // A zero-byte SQLite file nobody has written yet (e.g. created by an older check.php) holds no submissions.
-        $sqlitePath = $config['sqlite']['path'] ?? $dir . '/bbf.sqlite';
-        if ($storage === 'sqlite' && is_file($sqlitePath) && filesize($sqlitePath) === 0) return;
         $pdo = bbf_read_db_connect($config);
         if (!$pdo) return;
         $rows = bbf_read_db($pdo, $formId, $from, $to, $q, null, null, 0, $strict);

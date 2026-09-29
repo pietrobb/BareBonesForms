@@ -331,6 +331,7 @@ try {
         'Versioned upgrade and rollback' => [__DIR__ . '/review-upgrade-test.php', [PHP_BINARY, __DIR__ . '/review-upgrade-test.php']],
         'Admin incident alerts (error_notify)' => [__DIR__ . '/review-alerts-test.php', [PHP_BINARY, __DIR__ . '/review-alerts-test.php']],
         'Access helpers: proxies, token config, throttle' => [__DIR__ . '/review-auth-unit-test.php', [PHP_BINARY, __DIR__ . '/review-auth-unit-test.php']],
+        'Server helpers: empty SQLite, mail sender, retry scan' => [__DIR__ . '/review-server-unit-test.php', [PHP_BINARY, __DIR__ . '/review-server-unit-test.php']],
     ];
 
     $suites = [];

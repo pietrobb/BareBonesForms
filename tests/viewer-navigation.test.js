@@ -16,11 +16,11 @@ const script = source.slice(source.indexOf('<script>') + 8, source.lastIndexOf('
     .replace(/<\?= json_encode\(\$viewerToken\) \?>/g, '"test-token"')
     .replace(/<\?= json_encode\(\$canDelete\) \?>/g, 'true')
     .replace(/<\?= json_encode\(\$siteName\) \?>/g, '"Test Viewer"')
-    .replace(/<\?= json_encode\(\$viewerLang\) \?>/g, '"en"')
+    .replace(/<\?= json_encode\(\$viewerLang[^?]*\?>/g, '"en"')
     .replace(/\}\)\(\);\s*$/, `globalThis.viewer = {
         state, api, showDashboard, selectForm, openDetail, loadPage, restoreRoute,
         buildLabelMap, getPreviewKeys, getCardSections, getTableColumns,
-        renderCards, renderCardsGrid, renderTable, valueText
+        renderCards, renderCardsGrid, renderTable, valueText, renderPagination
     }; })();`);
 
 function classList(...initial) {
@@ -613,4 +613,19 @@ test('table columns retain renamed and deleted historical fields from version sn
     const columns = v.getTableColumns(current, submissions);
     assert.deepEqual(Array.from(columns, column => column.key), ['current', 'historical', 'orphan']);
     assert.equal(columns.find(column => column.key === 'historical').label, 'Historical label');
+});
+
+test('pagination marks every hidden run of pages with an ellipsis', async () => {
+    const v = await createViewer();
+    const labels = (page, total = 200) => {
+        v.state.total = total; v.state.perPage = 20; v.state.page = page;
+        return [...v.renderPagination().matchAll(/data-page="\d+">(\d+)<|page-dots[^>]*>(.)</g)]
+            .map(m => m[1] ?? m[2]).join(' ');
+    };
+    assert.equal(labels(1), '1 2 … 10');
+    assert.equal(labels(4), '1 2 3 4 5 … 10');
+    assert.equal(labels(5), '1 … 4 5 6 … 10');
+    assert.equal(labels(7), '1 … 6 7 8 9 10');
+    assert.equal(labels(10), '1 … 9 10');
+    assert.equal(labels(3, 140), '1 2 3 4 5 6 7', 'seven pages or fewer are all shown');
 });

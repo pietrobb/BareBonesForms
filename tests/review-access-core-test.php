@@ -87,6 +87,11 @@ try {
     core_check($q['code'] === 303 && str_contains($q['headers'], "Location: viewer.php\r\n"), 'HTML query clean redirect without following it');
     core_check(!str_contains($q['body'] . $q['headers'], 'fixture-secret'), 'query exchange never echoes token'); $smuggled = core_http('viewer.php?token=fixture-secret-reader-76543210&lang=fixture-secret-reader-76543210'); core_check(!str_contains($smuggled['body'] . $smuggled['headers'], 'fixture-secret'), 'query exchange drops credentials in redundant parameters');
     $reader = core_login('reader');
+    foreach (['</script><script>alert(1)</script>' => 'en', 'pt-BR' => 'pt-BR', 'zh-TW' => 'zh-TW', "sk'" => 'en'] as $lang => $expected) {
+        $page = core_http('viewer.php?lang=' . rawurlencode($lang), ['cookie' => $reader['cookie']]);
+        core_check($page['code'] === 200 && str_contains($page['body'], 'const LANG = ' . json_encode($expected) . ';')
+            && !str_contains($page['body'], '<script>alert(1)'), 'viewer ?lang accepts only a language code: ' . json_encode($lang));
+    }
     core_check(!str_contains($reader['response']['body'], 'beta-private') && !str_contains($reader['response']['body'], 'fixture-secret'), 'sidebar/bootstrap exclude cross-form metadata and token');
     core_check(str_contains(strtolower($reader['response']['headers']), 'httponly') && str_contains(strtolower($reader['response']['headers']), 'samesite=strict') && str_contains($reader['response']['headers'], 'no-store') && str_contains($reader['response']['headers'], 'no-referrer'), 'session/privacy headers');
     foreach (['list_forms', 'dashboard'] as $action) {
@@ -632,7 +637,7 @@ PHP
         core_check($captured['userland_mail'] && array_diff(['mail', 'curl_exec', 'curl_multi_exec', 'fsockopen', 'pfsockopen',
             'stream_socket_client', 'socket_connect', 'exec', 'shell_exec', 'system', 'passthru', 'popen', 'proc_open'], $captured['disabled_functions']) === [],
             "forward $mode captures only through userland fixture; all native outbound policies retained");
-        core_check($captured['to'] === $forwardBody['to'] && $captured['additional_params'] === ''
+        core_check($captured['to'] === $forwardBody['to'] && $captured['additional_params'] === '-fsender@example.invalid'
             && str_contains($captured['additional_headers'], "From: Fixture sender <sender@example.invalid>\r\n")
             && str_contains($captured['additional_headers'], "Reply-To: sender@example.invalid\r\n")
             && str_contains($captured['additional_headers'], "Content-Type: text/html; charset=UTF-8\r\n"), "forward $mode real sendEmail recipient/header construction");

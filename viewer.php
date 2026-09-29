@@ -52,6 +52,7 @@ $accessForm = bbf_auth_id($mutation ? ($accessBody['form'] ?? null) : ($fileDown
 $permissions = in_array($action, ['submissions', 'detail', 'stats', 'export', 'print', 'delete', 'bulk_delete', 'forward', 'retry_delivery', 'file'], true) ? ['read'] : [];
 if (in_array($action, $reviewActions, true) || ($action === 'submissions'
     && (array_key_exists('review', $_GET) || array_key_exists('status', $_GET) || array_key_exists('tags', $_GET)))) $permissions = ['read', 'review'];
+if ($action === 'export' && (array_key_exists('status', $_GET) || array_key_exists('tags', $_GET))) $permissions = ['read', 'review'];
 if (in_array($action, ['export', 'print', 'forward'], true)) $permissions[] = 'export';
 if (in_array($action, ['delete', 'bulk_delete'], true)) $permissions[] = 'delete';
 $accessIds = $action === 'bulk_delete' ? ($accessBody['ids'] ?? [])
@@ -71,6 +72,7 @@ $canDelete = ($storage !== 'csv');
 $siteName = $config['viewer']['site_name'] ?? 'BareBonesForms';
 $logoUrl  = $config['viewer']['logo_url'] ?? '';
 $viewerLang = $_GET['lang'] ?? ($config['viewer']['lang'] ?? $config['lang'] ?? 'en');
+if (!is_string($viewerLang) || !preg_match('/\A[a-z]{2,3}(-[a-z0-9]{2,8})?\z/i', $viewerLang)) $viewerLang = 'en';
 
 // ─── Helpers ─────────────────────────────────────────────────────
 function viewerRequestBody(int $maxBytes = 65536): array {
@@ -268,6 +270,17 @@ function loadReviewSubsPage(string $formId, array $config, int $limit, int $offs
         $page = loadSubsPage($formId, $effective, $limit, $offset, $from, $to, $total, $q);
         return viewerReviewBatch($page, $effective, $formId, null, []);
     }
+    $total = 0; $page = [];
+    foreach (viewerReviewFilteredRows($formId, $effective, PHP_INT_MAX, $from, $to, $q, $status, $tags) as $row) {
+        if ($total >= $offset && count($page) < $limit) $page[] = $row;
+        $total++;
+    }
+    return $page;
+}
+
+/** Streams source rows matching the review predicates (each with its 'review'), newest first like bbf_read_export. */
+function viewerReviewFilteredRows(string $formId, array $effective, int $sourceLimit, ?string $from, ?string $to, ?string $q,
+    ?string $status, array $tags): Generator {
     $allRecords = null;
     if (in_array($effective['storage'], ['file', 'csv'], true)) {
         // The legacy JSON sidecar is parsed once per filtered request, never once per submission batch.
@@ -277,21 +290,14 @@ function loadReviewSubsPage(string $formId, array $config, int $limit, int $offs
         // Initialize and validate SQL review tables before opening an unbuffered submission cursor.
         bbf_review_records($effective, $formId, ['bbf_review_schema_probe']);
     }
-    $rows = bbf_read_export($formId, $effective, PHP_INT_MAX, 0, $from, $to, $q);
-    $total = 0; $page = []; $batch = [];
-    $consume = static function (array $chunk) use (&$total, &$page, $effective, $formId, $status, $tags, $limit, $offset, $allRecords): void {
-        foreach (viewerReviewBatch($chunk, $effective, $formId, $status, $tags, $allRecords) as $row) {
-            if ($total >= $offset && count($page) < $limit) $page[] = $row;
-            $total++;
-        }
-    };
-    foreach ($rows as $row) {
+    $batch = [];
+    foreach (bbf_read_export($formId, $effective, $sourceLimit, 0, $from, $to, $q) as $row) {
         $batch[] = $row;
         if (count($batch) < 100) continue;
-        $consume($batch); $batch = [];
+        yield from viewerReviewBatch($batch, $effective, $formId, $status, $tags, $allRecords);
+        $batch = [];
     }
-    if ($batch !== []) $consume($batch);
-    return $page;
+    if ($batch !== []) yield from viewerReviewBatch($batch, $effective, $formId, $status, $tags, $allRecords);
 }
 
 function loadPageFile(string $formId, string $dir, int $limit, int $offset, ?string $from, ?string $to, ?int &$total, ?string $q = null): array {
@@ -621,6 +627,7 @@ if ($action === 'forward') {
     $subId  = sanitizeId($body['id'] ?? '');
     $to     = $body['to'] ?? '';
     $note   = $body['note'] ?? '';
+    if (!is_string($to) || !is_string($note)) viewerRespond(400, ['error' => 'Invalid forward payload.']);
     $addresses = array_map('trim', explode(',', $to));
     $addresses = array_filter($addresses, fn($a) => filter_var($a, FILTER_VALIDATE_EMAIL));
     if (empty($addresses) || count($addresses) > 5) viewerRespond(400, ['error' => 'Invalid or too many recipients (max 5).']);
@@ -637,13 +644,14 @@ if ($action === 'forward') {
     $h = '<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;margin:0 auto;padding:20px">';
     $h .= '<h2 style="color:#1e293b;border-bottom:2px solid #2563eb;padding-bottom:8px">' . htmlspecialchars($formName) . '</h2>';
     $h .= '<p style="color:#64748b;font-size:14px"><strong>ID:</strong> ' . htmlspecialchars($sub['id']) . ' &middot; <strong>Submitted:</strong> ' . htmlspecialchars($submitted) . '</p>';
-    if ($note) $h .= '<div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:12px;margin:16px 0;font-style:italic;color:#92400e">' . nl2br(htmlspecialchars($note)) . '</div>';
+    if ($note !== '') $h .= '<div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:6px;padding:12px;margin:16px 0;font-style:italic;color:#92400e">' . nl2br(htmlspecialchars($note)) . '</div>';
     $h .= '<table style="border-collapse:collapse;width:100%;margin-top:16px">';
     foreach ($sub['data'] as $k => $v) {
         $label = $labelMap[$k] ?? $k;
         $val = htmlspecialchars(viewerValueText($v), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $h .= '<tr><td style="padding:10px 12px;border:1px solid #e2e8f0;font-weight:600;background:#f8fafc;color:#475569;width:35%;font-size:13px">' . htmlspecialchars($label) . '</td>';
-        $h .= '<td style="padding:10px 12px;border:1px solid #e2e8f0;font-size:14px;white-space:pre-wrap">' . ($val ?: '<span style="color:#94a3b8">-</span>') . '</td></tr>';
+        // Only an empty answer is a dash: "0" is a real value.
+        $h .= '<td style="padding:10px 12px;border:1px solid #e2e8f0;font-size:14px;white-space:pre-wrap">' . ($val !== '' ? $val : '<span style="color:#94a3b8">-</span>') . '</td></tr>';
     }
     $h .= '</table></body></html>';
     $subject = htmlspecialchars_decode($formName) . ' — ' . $sub['id'];
@@ -692,8 +700,15 @@ if ($action === 'bulk_delete') {
 if ($action === 'export') {
     $formId = sanitizeId($_GET['form'] ?? '');
     if (!$formId) viewerRespond(400, ['error' => 'Missing form ID.']);
-    $exportFrom = $_GET['from'] ?? null;
-    $exportTo   = $_GET['to'] ?? null;
+    // Same filters and validation as the list: an invalid date is a 400, not a silently empty export.
+    $rawCriteria = [];
+    foreach (['q', 'from', 'to', 'status', 'tags'] as $key) if (array_key_exists($key, $_GET)) $rawCriteria[$key] = $_GET[$key];
+    $criteria = viewerSubmissionCriteria($rawCriteria);
+    if ($criteria === null) viewerRespond(400, ['error' => 'Invalid export filters.']);
+    $exportFrom = $criteria['from'] ?? null;
+    $exportTo   = $criteria['to'] ?? null;
+    $exportStatus = $criteria['status'] ?? null;
+    $exportTags = $criteria['tags'] ?? [];
     $exportLimit = PHP_INT_MAX;
     $last = $_GET['last'] ?? '';
     if ($last !== '' && $exportFrom === null) {
@@ -704,7 +719,21 @@ if ($action === 'export') {
         elseif (preg_match('/^(\d+)$/', $last, $m))       $exportLimit = max(1, intval($m[1]));
     }
     $total = null;
-    $subs = bbf_read_export($formId, bbf_effective_storage_config($config, $formId), $exportLimit, 0, $exportFrom, $exportTo, trim($_GET['q'] ?? ''));
+    $effective = bbf_effective_storage_config($config, $formId);
+    $exportQ = trim($criteria['q'] ?? '');
+    // Review filters need the review permission (enforced at bbf_access_begin), exactly like the list.
+    if ($exportStatus !== null || $exportTags !== []) {
+        $subs = (static function () use ($formId, $effective, $exportFrom, $exportTo, $exportQ, $exportStatus, $exportTags, $exportLimit): Generator {
+            $emitted = 0;
+            foreach (viewerReviewFilteredRows($formId, $effective, PHP_INT_MAX, $exportFrom, $exportTo, $exportQ, $exportStatus, $exportTags) as $row) {
+                unset($row['review']);
+                yield $row;
+                if (++$emitted >= $exportLimit) return;
+            }
+        })();
+    } else {
+        $subs = bbf_read_export($formId, $effective, $exportLimit, 0, $exportFrom, $exportTo, $exportQ);
+    }
     $defFile = $formsDir . '/' . $formId . '.json';
     try {
         $def = bbf_export_definition($defFile);
@@ -719,7 +748,8 @@ if ($action === 'export') {
         bbf_access_finish($prepared['count']);
         header('Content-Type: text/csv; charset=utf-8');
         header("Content-Disposition: attachment; filename={$formId}_submissions.csv");
-        echo "\xEF\xBB\xBF"; // UTF-8 BOM: Excel otherwise opens the file as ANSI and breaks diacritics
+        // UTF-8 BOM: Excel otherwise opens the file as ANSI and breaks diacritics. Scripts can ask for bom=0.
+        if (($_GET['bom'] ?? '1') !== '0') echo "\xEF\xBB\xBF";
         // Completion records successful preparation, not client receipt.
         while (!feof($out)) { $chunk = fread($out, 8192); if ($chunk === false) { error_log('BareBonesForms: Failed to transfer prepared CSV export.'); break; } echo $chunk; }
     } finally {
@@ -1111,7 +1141,7 @@ const TOKEN = <?= json_encode($viewerToken) ?>;
 const CAN_DELETE = <?= json_encode($canDelete) ?>; const canOperate = (form, p) => CAN_DELETE === true || (!!CAN_DELETE && (p !== 'delete' || (CAN_DELETE.delete_forms?.[form] ?? CAN_DELETE.storage)) && (CAN_DELETE.admin || (CAN_DELETE.forms.includes(form) && CAN_DELETE.permissions.includes('read') && CAN_DELETE.permissions.includes(p))));
 const canReview = form => CAN_DELETE !== true && canOperate(form, 'review');
 const SITE_NAME = <?= json_encode($siteName) ?>;
-const LANG = <?= json_encode($viewerLang) ?>;
+const LANG = <?= json_encode($viewerLang, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
 
 const I18N = {
     en: {
@@ -1945,12 +1975,15 @@ function renderPagination() {
     if (pages <= 1) return '';
     let html = '';
     if (state.page > 1) html += `<button class="page-btn" data-page="${state.page - 1}">&laquo;</button>`;
+    // First, last and the current page with its neighbours; every hidden run of two or more pages becomes "…".
+    let previous = 0;
     for (let i = 1; i <= pages; i++) {
-        if (pages <= 7 || i <= 2 || i > pages - 1 || Math.abs(i - state.page) <= 1) {
-            html += `<button class="page-btn${i === state.page ? ' active' : ''}" data-page="${i}">${i}</button>`;
-        } else if ((i === 3 && state.page > 4) || (i === pages - 1 && state.page < pages - 3)) {
-            html += '<span class="page-dots">...</span>';
-        }
+        const shown = pages <= 7 || i === 1 || i === pages || Math.abs(i - state.page) <= 1
+            || (i === 2 && state.page <= 4) || (i === pages - 1 && state.page >= pages - 3);
+        if (!shown) continue;
+        if (i - previous > 1) html += '<span class="page-dots" aria-hidden="true">…</span>';
+        html += `<button class="page-btn${i === state.page ? ' active' : ''}" data-page="${i}">${i}</button>`;
+        previous = i;
     }
     if (state.page < pages) html += `<button class="page-btn" data-page="${state.page + 1}">&raquo;</button>`;
     return html;
@@ -2669,9 +2702,15 @@ panelMain.addEventListener('click', (e) => {
     // Export button
     if (e.target.closest('#btn-export')) {
         let url = `viewer.php?action=export&form=${encodeURIComponent(state.formId)}`;
-        if (state.dateFrom) url += `&from=${state.dateFrom}`;
-        if (state.dateTo) url += `&to=${state.dateTo}`;
-        if (state.search) url += `&q=${encodeURIComponent(state.search)}`; window.location.href = url;
+        if (state.dateFrom) url += `&from=${encodeURIComponent(state.dateFrom)}`;
+        if (state.dateTo) url += `&to=${encodeURIComponent(state.dateTo)}`;
+        if (state.search) url += `&q=${encodeURIComponent(state.search)}`;
+        // The export holds exactly what the filtered list shows, review filters included.
+        if (canReview(state.formId)) {
+            if (state.reviewStatus) url += `&status=${encodeURIComponent(state.reviewStatus)}`;
+            state.reviewTags.forEach(tag => { url += `&tags[]=${encodeURIComponent(tag)}`; });
+        }
+        window.location.href = url;
         return;
     }
 

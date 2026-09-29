@@ -163,8 +163,9 @@ function runBrowser(mutateCapture = false) {
         }
         const inline = script => '<script>' + script.replace(/<\/script/gi, '<\\/script') + '</script>';
         page = page.replace('<head>', '<head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; connect-src \'none\'; form-action \'none\'">')
-            .replace('<script src="bbf.js"></script>', inline('(' + responseStubs.toString() + ')();') + inline(bbf))
-            .replace('</body>', inline('(' + browserChecks.toString() + ')();') + '</body>');
+            // Function replacements: "$&" and friends inside bbf.js must be inserted literally.
+            .replace('<script src="bbf.js"></script>', () => inline('(' + responseStubs.toString() + ')();') + inline(bbf))
+            .replace('</body>', () => inline('(' + browserChecks.toString() + ')();') + '</body>');
         const file = path.join(temporary, 'sandbox.html');
         fs.writeFileSync(file, page);
         const args = ['--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -184,6 +185,11 @@ test('actual sandbox capture listener suppresses actual BBF normal submit throug
     const checks = runBrowser();
     assert.equal(checks.length, 51, JSON.stringify(checks));
     for (const check of checks) assert.ok(check.ok, check.name);
+});
+
+test('validation results escape field labels before innerHTML', () => {
+    assert.doesNotMatch(sandbox, /\$\{f\.label/, 'raw label interpolation');
+    assert.equal(sandbox.split('${escHtml(String(f.label || name))}').length - 1, 2);
 });
 
 test('sensitivity control: removing capture in the disposable page exposes BBF normal-submit fallback', () => {

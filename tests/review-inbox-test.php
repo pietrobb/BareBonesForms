@@ -324,6 +324,19 @@ try {
         inbox_check($http("viewer.php?action=submissions&form=alpha&$bad", ['cookie' => $reviewer['cookie']])['code'] === 400,
             'invalid HTTP review filter is rejected');
     }
+    $filteredExport = $http('viewer.php?action=export&form=alpha&status=done&tags%5B%5D=urgent&bom=0', ['cookie' => $reviewer['cookie']]);
+    inbox_check($filteredExport['code'] === 200 && !str_starts_with($filteredExport['body'], "\xEF\xBB\xBF")
+        && str_contains($filteredExport['body'], 'bbf_two') && str_contains($filteredExport['body'], 'bbf_four')
+        && !str_contains($filteredExport['body'], 'bbf_three') && !str_contains($filteredExport['body'], 'bbf_one')
+        && !str_contains($filteredExport['body'], 'private-note'),
+        'CSV export applies the list review filters, honours bom=0 and never leaks review notes');
+    $lastExport = $http('viewer.php?action=export&form=alpha&status=done&last=1', ['cookie' => $reviewer['cookie']]);
+    inbox_check($lastExport['code'] === 200 && str_starts_with($lastExport['body'], "\xEF\xBB\xBF")
+        && count(array_filter(explode("\n", trim($lastExport['body'])))) === 2, 'filtered export limits matched rows, BOM stays the default');
+    foreach (['from=2026-02-30', 'to=yesterday', 'status=closed', 'tags=urgent'] as $bad) {
+        inbox_check($http("viewer.php?action=export&form=alpha&$bad", ['cookie' => $reviewer['cookie']])['code'] === 400,
+            "invalid export filter $bad is rejected instead of exporting silently");
+    }
     $auditBeforeConflict = count(file("$root/logs/access-audit.php"));
     $winner = $mutate('review_update', $reviewer, ['form' => 'alpha', 'id' => 'bbf_two', 'revision' => 0,
         'patch' => ['notes' => 'stale']]);

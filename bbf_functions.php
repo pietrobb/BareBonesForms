@@ -233,6 +233,11 @@ function bbf_mail_standard_headers(string $fromEmail): array {
     ];
 }
 
+/** mail() envelope sender goes onto the sendmail command line: plain address characters only, no whitespace or quotes. */
+function bbf_mail_envelope_sender(string $from): bool {
+    return (bool)preg_match('/\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\z/', $from);
+}
+
 function sendEmail(string $to, string $subject, string $body, array $mailConfig, string $replyTo = ''): array {
     $to = str_replace(["\r", "\n", "\0"], '', $to);
     $subject = str_replace(["\r", "\n", "\0"], '', $subject);
@@ -259,7 +264,10 @@ function sendEmail(string $to, string $subject, string $body, array $mailConfig,
             ? '=?UTF-8?B?' . base64_encode($subject) . '?=' : $subject;
         $headerStr = '';
         foreach ($headers as $name => $value) $headerStr .= "$name: $value\r\n";
-        $sent = @mail($to, $mailSubject, $body, $headerStr);
+        // Envelope sender = From, so SPF/DMARC align with the site's domain (plain characters only: sendmail command line).
+        $from = (string)$mailConfig['from_email'];
+        $params = bbf_mail_envelope_sender($from) ? '-f' . $from : '';
+        $sent = @mail($to, $mailSubject, $body, $headerStr, $params);
         $result = $sent
             ? bbf_delivery_result(true, 'accepted', 'mail', 0, false, 'Accepted by the local mail transport; inbox delivery is not guaranteed')
             : bbf_delivery_result(false, 'failed', 'mail', 0, true, 'Local mail transport failed');
@@ -950,13 +958,17 @@ function bbf_delivery_run_job(string $path, string $jobKey, array $config, array
  * Cron worker: run every delivery job whose automatic retry is due (failed with a retryable
  * result, attempts left, next_retry reached). Ambiguous and terminal jobs stay manual.
  * Ledgers touched in the last $quietSeconds are skipped so a submit still in flight owns its jobs.
+ * Every failed attempt rewrites its ledger and retries are at most a day apart, so ledgers untouched for
+ * $horizonSeconds have no automatic retry left: they are skipped by mtime without being read (the viewer
+ * can still retry them manually).
  */
-function bbf_delivery_retry_due(array $config, int $quietSeconds = 120, ?int $now = null): array {
+function bbf_delivery_retry_due(array $config, int $quietSeconds = 120, ?int $now = null, int $horizonSeconds = 7 * 86400): array {
     $now ??= time();
     $report = ['ok' => true, 'checked' => 0, 'attempted' => 0, 'succeeded' => 0, 'failed' => 0];
     $root = rtrim((string)($config['submissions_dir'] ?? __DIR__ . '/submissions'), '/\\') . '/.delivery';
     foreach (glob($root . '/*/*.json') ?: [] as $path) {
-        if ((int)@filemtime($path) > $now - $quietSeconds) continue;
+        $mtime = (int)@filemtime($path);
+        if ($mtime > $now - $quietSeconds || $mtime < $now - $horizonSeconds) continue;
         $formId = basename(dirname($path));
         if (!preg_match('/\A[a-zA-Z0-9_-]+\z/', $formId)) continue;
         $read = bbf_outbox_read($path);

@@ -9,7 +9,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { spawn, spawnSync } = require('node:child_process');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'viewer.php'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', 'viewer.php'), 'utf8').replace(/\r\n/g, '\n');
 const editorSource = fs.readFileSync(path.join(__dirname, '..', 'editor.php'), 'utf8');
 
 function browserExecutable() {
@@ -133,7 +133,7 @@ test('viewer HTML sinks are inert in real Chromium and preserve copy/title/searc
             .replace(/<\?= json_encode\(\$viewerToken\) \?>/g, '"isolated-test"')
             .replace(/<\?= json_encode\(\$canDelete\) \?>/g, 'true')
             .replace(/<\?= json_encode\(\$siteName\) \?>/g, '"Isolated viewer"')
-            .replace(/<\?= json_encode\(\$viewerLang\) \?>/g, '"en"')
+            .replace(/<\?= json_encode\(\$viewerLang[^?]*\?>/g, '"en"')
             .replace('renderFormList(FORMS);\nrestoreRoute();', `window.viewerSecurity = {
                 state, renderDetailView, renderTable, renderMain, renderFormList,
                 renderDashboard, formatValue, printSubmission
@@ -149,6 +149,8 @@ test('viewer HTML sinks are inert in real Chromium and preserve copy/title/searc
             + '<script>(' + browserChecks.toString().replace(/<\/script/gi, '<\\/script') + ')();</script>');
         const args = ['--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
             '--disable-background-networking', '--disable-extensions',
+            // Let the async checks (print, fetch stubs) finish before the DOM is dumped.
+            '--virtual-time-budget=10000',
             '--user-data-dir=' + path.join(temporary, 'profile'), '--dump-dom', pathToFileURL(page).href];
         if (process.platform !== 'win32' && process.getuid?.() === 0) args.unshift('--no-sandbox');
         const result = spawnSync(browserExecutable(), args, { encoding: 'utf8', timeout: 45000,
@@ -171,7 +173,7 @@ test('forward email escapes multivalue answers using the actual PHP rendering bl
     const helper = source.match(/function viewerValueText\(mixed \$value\): string \{[\s\S]*?\r?\n\}/)?.[0];
     assert.ok(start > 0 && end > start && helper);
     const data = { answer: ['<img src=x onerror=alert(1)>', '"quoted" & text'], scalar: '<b>literal</b>',
-        items: [{ sku: '<row>' }] };
+        items: [{ sku: '<row>' }], zero: '0', blank: '' };
     const code = helper + "\n$sub = ['data' => json_decode(stream_get_contents(STDIN), true)]; $labelMap = []; $h = '';\n"
         + source.slice(start, end) + '\necho $h;';
     const result = spawnSync(process.env.PHP_BINARY || 'php', ['-r', code], {
@@ -185,6 +187,8 @@ test('forward email escapes multivalue answers using the actual PHP rendering bl
     assert.match(result.stdout, /&lt;b&gt;literal&lt;\/b&gt;/);
     assert.match(result.stdout, /&quot;sku&quot;: &quot;&lt;row&gt;&quot;/);
     assert.doesNotMatch(result.stdout, />Array(?:<|\s)|\[object Object\]/);
+    assert.match(result.stdout, />zero<\/td><td[^>]*>0<\/td>/, 'answer "0" is forwarded, not replaced by a dash');
+    assert.match(result.stdout, />blank<\/td><td[^>]*><span[^>]*>-<\/span><\/td>/, 'only an empty answer is a dash');
 });
 
 test('editor preview renders hostile errors as text inside an opaque-origin sandbox', () => {

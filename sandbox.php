@@ -444,9 +444,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             const name = f.name;
             const err = errors[name];
             if (err) {
-                vHtml += `<li class="v-fail"><span class="v-icon">✗</span> <strong>${f.label || name}:</strong> ${escHtml(err)}</li>`;
+                vHtml += `<li class="v-fail"><span class="v-icon">✗</span> <strong>${escHtml(String(f.label || name))}:</strong> ${escHtml(err)}</li>`;
             } else {
-                vHtml += `<li class="v-pass"><span class="v-icon">✓</span> ${f.label || name}</li>`;
+                vHtml += `<li class="v-pass"><span class="v-icon">✓</span> ${escHtml(String(f.label || name))}</li>`;
             }
         });
         vHtml += '</ul>';
