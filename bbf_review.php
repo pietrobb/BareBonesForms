@@ -273,7 +273,7 @@ function bbf_review_mysql_schema(PDO $pdo, string $table, array $types, array $c
 }
 
 function bbf_review_db(array $config): PDO {
-    $pdo = bbf_read_db_connect($config);
+    $pdo = bbf_read_db_connect($config, true);
     if (!$pdo) throw new RuntimeException('Review database is unavailable.');
     $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
     if ($driver === 'sqlite') {

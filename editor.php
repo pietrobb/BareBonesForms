@@ -262,7 +262,9 @@ if ($action === 'create') {
         ],
         'on_submit' => ['store' => true],
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    if (file_put_contents($file, $template) === false) editorRespond(500, ['error' => 'Failed to create file.']);
+    $created = bbf_create_file_exclusive($file, $template);
+    if ($created === 'exists') editorRespond(409, ['error' => "Form '$id' already exists."]);
+    if ($created !== 'ok') editorRespond(500, ['error' => 'Failed to create file.']);
     editorRespond(200, ['ok' => true, 'id' => $id]);
 }
 

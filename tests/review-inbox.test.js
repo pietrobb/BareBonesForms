@@ -9,7 +9,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'viewer.php'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', 'viewer.php'), 'utf8').replace(/\r\n/g, '\n');
 
 function browserExecutable() {
     const candidates = [process.env.CHROME_BIN, process.env.CHROMIUM_BIN,
@@ -229,7 +229,9 @@ test('viewer inbox workflow in real Chromium', () => {
         const values = { formsList: [{ id: 'alpha', name: 'Alpha', count: 1 }],
             viewerToken: 'isolated-csrf', canDelete: access, siteName: 'Inbox fixture', viewerLang: 'en' };
         for (const [name, value] of Object.entries(values)) {
-            const marker = '<?= json_encode($' + name + ') ?>';
+            const marker = name === 'viewerLang'
+                ? '<?= json_encode($viewerLang, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>'
+                : '<?= json_encode($' + name + ') ?>';
             assert.ok(script.includes(marker), 'bootstrap marker: ' + name);
             script = script.replaceAll(marker, JSON.stringify(value));
         }

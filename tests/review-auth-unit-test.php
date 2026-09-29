@@ -86,7 +86,22 @@ try {
     bbf_auth_throttle($c, true);
     $after = json_decode((string)file_get_contents("$logs/.auth_failures.json"), true);
     auth_check(count($after) === BBF_AUTH_MAX_CLIENTS && isset($after[hash('sha256', '198.51.100.99')]), 'the failure file is capped and keeps the newest client');
+
+    // ─── Audit log stays bounded ───────────────────────────────────
+    $ac = ['logs_dir' => $logs, 'audit_max_bytes' => 65536];
+    $audit = "$logs/access-audit.php";
+    $guard = "<?php http_response_code(404); exit; ?>\n";
+    $principal = ['id' => 'admin', 'admin' => true];
+    for ($i = 0; $i < 600; $i++) bbf_audit_write($ac, $principal, 'viewer_list', 'contact', [], 'allowed', 'completed', $i);
+    $size = filesize($audit); clearstatcache();
+    auth_check(filesize($audit) <= 65536 + 512, "the audit log stays under its limit ($size bytes after 600 entries)");
+    auth_check(is_file("$audit.1") && str_starts_with((string)file_get_contents("$audit.1"), $guard)
+        && str_starts_with((string)file_get_contents($audit), $guard), 'the previous generation is kept and both files keep the PHP guard');
+    $last = json_decode(trim(array_slice(explode("\n", trim((string)file_get_contents($audit))), -1)[0]), true);
+    auth_check(($last['result_count'] ?? null) === 599, 'the newest entry is in the current log');
+    auth_check(glob("$logs/*.tmp") === [], 'rotation leaves no temp files');
 } finally {
+    foreach (["$logs/access-audit.php", "$logs/access-audit.php.1"] as $f) @unlink($f);
     @unlink("$logs/.auth_failures.json");
     @rmdir($logs);
 }

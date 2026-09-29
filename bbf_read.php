@@ -246,14 +246,15 @@ function bbf_read_slice(iterable $rows, int $limit, int $offset): Generator {
     }
 }
 
-function bbf_read_db_connect(array $config): ?PDO {
+/** Readers get null for a missing or zero-byte SQLite file (no submissions yet); writers pass $create. */
+function bbf_read_db_connect(array $config, bool $create = false): ?PDO {
     if (($config['storage'] ?? '') === 'mysql') {
         $db = $config['mysql'];
         return new PDO("mysql:host={$db['host']};dbname={$db['database']};charset={$db['charset']}", $db['username'], $db['password'], [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
     }
     $path = $config['sqlite']['path'] ?? ($config['submissions_dir'] ?? __DIR__ . '/submissions') . '/bbf.sqlite';
     // A zero-byte file nobody has written yet (e.g. created by an older check.php) holds no submissions.
-    if (!is_file($path) || filesize($path) === 0) return null;
+    if (!$create && (!is_file($path) || filesize($path) === 0)) return null;
     return new (class_exists('Pdo\\Sqlite') ? 'Pdo\\Sqlite' : 'PDO')("sqlite:$path", null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 }
 

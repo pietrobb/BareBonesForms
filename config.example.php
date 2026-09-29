@@ -156,7 +156,9 @@ return [
     'access_tokens' => [],
 
     // Sign-in session limits in seconds (idle, absolute). Access is audited in logs_dir/access-audit.php,
-    // which must be writable — if it is not, access is blocked.
+    // which must be writable — if it is not, access is blocked. Past audit_max_bytes (default 20 MB) the
+    // log rotates to access-audit.php.1 (one previous generation is kept).
+    // 'audit_max_bytes' => 20 * 1048576,
     'auth_session_idle' => 1800,
     'auth_session_absolute' => 28800,
 

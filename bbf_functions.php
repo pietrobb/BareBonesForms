@@ -238,6 +238,30 @@ function bbf_mail_envelope_sender(string $from): bool {
     return (bool)preg_match('/\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\z/', $from);
 }
 
+/**
+ * Create $path with $content only if it does not exist yet, never exposing a partial file:
+ * the content is written to a temp file first and then hard-linked (atomic, fails if taken).
+ * Returns 'ok', 'exists' or 'error'.
+ */
+function bbf_create_file_exclusive(string $path, string $content): string {
+    if (file_exists($path)) return 'exists';
+    $tmp = dirname($path) . '/.' . basename($path) . '.' . bin2hex(random_bytes(6)) . '.tmp';
+    if (@file_put_contents($tmp, $content, LOCK_EX) !== strlen($content)) { @unlink($tmp); return 'error'; }
+    try {
+        if (@link($tmp, $path)) return 'ok';
+        if (file_exists($path)) return 'exists';
+        // No hard links on this filesystem: reserve the name exclusively, then atomically replace the empty placeholder.
+        $reserve = @fopen($path, 'x');
+        if ($reserve === false) return file_exists($path) ? 'exists' : 'error';
+        fclose($reserve);
+        if (@rename($tmp, $path)) return 'ok';
+        @unlink($path);
+        return 'error';
+    } finally {
+        if (is_file($tmp)) @unlink($tmp);
+    }
+}
+
 function sendEmail(string $to, string $subject, string $body, array $mailConfig, string $replyTo = ''): array {
     $to = str_replace(["\r", "\n", "\0"], '', $to);
     $subject = str_replace(["\r", "\n", "\0"], '', $subject);

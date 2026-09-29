@@ -118,12 +118,16 @@ header('Content-Type: application/json; charset=utf-8');
 
 // Start session only when needed (CSRF token or same-origin POST)
 function ensureSession(): void {
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-        if (empty($_SESSION['bbf_secret'])) {
-            $_SESSION['bbf_secret'] = bin2hex(random_bytes(32));
-        }
+    static $loaded = false;
+    if ($loaded || session_status() === PHP_SESSION_ACTIVE) return;
+    session_start();
+    if (empty($_SESSION['bbf_secret'])) {
+        $_SESSION['bbf_secret'] = bin2hex(random_bytes(32));
     }
+    // Only the secret is needed; release the session lock now so slow SMTP/webhooks in this
+    // request never block other tabs of the same visitor. $_SESSION stays readable.
+    session_write_close();
+    $loaded = true;
 }
 
 // ─── CORS ───────────────────────────────────────────────────────

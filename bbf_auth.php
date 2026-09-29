@@ -28,9 +28,23 @@ function bbf_auth_headers(): void {
     header("Content-Security-Policy: frame-ancestors 'self'");
 }
 
-function bbf_auth_fail(int $code = 403): void {
+function bbf_auth_fail(int $code = 403, string $detail = ''): void {
     http_response_code($code);
     $login = $GLOBALS['bbf_auth_login_page'] ?? null;
+    if ($code === 503) {
+        // The operator needs to know what to fix; the message names no filesystem path.
+        $message = 'Access audit unavailable.' . ($detail !== '' ? ' ' . $detail : '');
+        if (is_array($login)) {
+            header('Content-Type: text/html; charset=utf-8');
+            echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>BareBonesForms: unavailable</title></head>'
+                . '<body style="font-family:system-ui,sans-serif;max-width:560px;margin:12vh auto;padding:0 20px">'
+                . '<h1>Temporarily unavailable</h1><p>' . htmlspecialchars($message, ENT_QUOTES) . '</p></body></html>';
+        } else {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => $message]);
+        }
+        exit;
+    }
     if ($code === 403 && is_array($login)) {
         // Management pages get a usable sign-in form instead of a bare JSON error.
         header('Content-Type: text/html; charset=utf-8');
@@ -50,7 +64,7 @@ function bbf_auth_fail(int $code = 403): void {
         exit;
     }
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => $code === 503 ? 'Access audit unavailable.' : 'Access denied.']);
+    echo json_encode(['error' => 'Access denied.']);
     exit;
 }
 
@@ -388,9 +402,16 @@ function bbf_audit_write(array $config, ?array $principal, string $action, strin
     $dir = $config['logs_dir'] ?? __DIR__ . '/logs';
     $file = $dir . '/access-audit.php';
     $guard = "<?php http_response_code(404); exit; ?>\n";
-    if (!is_dir($dir) || is_link($dir) || is_link($file)) bbf_auth_fail(503);
+    if (!is_dir($dir)) {
+        error_log("BareBonesForms: logs directory missing: $dir");
+        bbf_auth_fail(503, 'The logs directory does not exist. Create it (writable by PHP) or set logs_dir in config.php; check.php shows the exact path.');
+    }
+    if (is_link($dir) || is_link($file)) bbf_auth_fail(503, 'The logs directory or access-audit.php is a symlink, which is refused.');
     $fp = @fopen($file, 'c+b');
-    if (!$fp) bbf_auth_fail(503);
+    if (!$fp) {
+        error_log("BareBonesForms: cannot open access audit log: $file");
+        bbf_auth_fail(503, 'access-audit.php in the logs directory is not writable by PHP; check.php shows the exact path.');
+    }
     $ok = false;
     try {
         if (!flock($fp, LOCK_EX)) bbf_auth_fail(503);
@@ -399,7 +420,19 @@ function bbf_audit_write(array $config, ?array $principal, string $action, strin
         if ($stat['size'] === 0) {
             if (fwrite($fp, $guard) !== strlen($guard)) bbf_auth_fail(503);
             @chmod($file, 0600);
-        } elseif (fread($fp, strlen($guard)) !== $guard) bbf_auth_fail(503);
+        } elseif (fread($fp, strlen($guard)) !== $guard) {
+            bbf_auth_fail(503);
+        } elseif ($stat['size'] > max(65536, (int)($config['audit_max_bytes'] ?? 20 * 1048576))) {
+            // Bounded growth: keep one previous generation (still guarded, so never web-readable).
+            rewind($fp);
+            $tmp = $file . '.1.' . bin2hex(random_bytes(4)) . '.tmp';
+            $out = @fopen($tmp, 'xb');
+            $copied = $out && stream_copy_to_stream($fp, $out) === $stat['size'] && fflush($out);
+            if ($out) fclose($out);
+            if (!$copied || !@rename($tmp, $file . '.1')) { @unlink($tmp); bbf_auth_fail(503); }
+            @chmod($file . '.1', 0600);
+            if (!ftruncate($fp, strlen($guard))) bbf_auth_fail(503);
+        }
         $entry = ['utc' => gmdate('Y-m-d\TH:i:s\Z'), 'principal_id' => $principal['id'] ?? 'anonymous',
             'action' => bbf_auth_id($action), 'form' => bbf_auth_id($form),
             'submission_ids' => array_values(array_filter(array_map('bbf_auth_id', array_slice($ids, 0, 100)))),

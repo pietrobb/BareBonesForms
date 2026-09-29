@@ -29,6 +29,8 @@ server_check(bbf_read_db_connect(['storage' => 'sqlite', 'sqlite' => ['path' => 
 server_check(iterator_to_array(bbf_read_export('contact', $sqliteConfig, PHP_INT_MAX, 0, null, null), false) === [],
     'export of a zero-byte SQLite database is empty, not an error');
 server_check(filesize($sqlite) === 0, 'readers never initialize the empty file');
+server_check(bbf_read_db_connect($sqliteConfig, true) instanceof PDO, 'writers (review, restore) still open the zero-byte file');
+$sqliteConfig = null;
 
 // ─── SQL pages have a total order ─────────────────────────────────
 $ordered = $root . '/ordered.sqlite';
@@ -67,6 +69,39 @@ server_check(str_contains($source, "@mail(\$to, \$mailSubject, \$body, \$headerS
 foreach (['sender@example.com' => true, 'a.b+c@sub.example.org' => true, 'x@y.z -X/tmp/log' => false, "a@b.c\n" => false, '"q"@b.c' => false] as $from => $ok) {
     server_check(bbf_mail_envelope_sender($from) === $ok,
         'envelope sender filter ' . ($ok ? 'accepts ' : 'rejects ') . json_encode($from));
+}
+
+// ─── Editor creates a form atomically and never overwrites ────────
+$formsDir = $root . '/forms'; mkdir($formsDir);
+$target = $formsDir . '/new.json';
+server_check(bbf_create_file_exclusive($target, '{"id":"new"}') === 'ok' && file_get_contents($target) === '{"id":"new"}',
+    'a new form file appears with its full content');
+server_check(bbf_create_file_exclusive($target, '{"id":"other"}') === 'exists' && file_get_contents($target) === '{"id":"new"}',
+    'an existing form is never overwritten');
+server_check(glob($formsDir . '/.*.tmp') === [], 'no temp files are left behind');
+server_check(bbf_create_file_exclusive($root . '/no-such-dir/x.json', '{}') === 'error', 'an unwritable directory is an error, not a partial file');
+$editorSource = file_get_contents(dirname(__DIR__) . '/editor.php');
+server_check(str_contains($editorSource, 'bbf_create_file_exclusive($file, $template)') && !str_contains($editorSource, 'file_put_contents($file, $template)'),
+    'editor create uses the atomic exclusive writer');
+
+// ─── Submit releases the session lock right after reading the secret ─
+$submitSource = file_get_contents(dirname(__DIR__) . '/submit.php');
+preg_match('/function ensureSession\(\): void \{.*?\n\}/s', $submitSource, $m);
+server_check(isset($m[0]), 'ensureSession() found in submit.php');
+if (isset($m[0])) {
+    // Fresh process: sessions cannot start once this test has printed output.
+    $child = 'ini_set("session.save_path", ' . var_export($root, true) . '); ini_set("session.use_cookies", "0"); ini_set("session.cache_limiter", "");'
+        . $m[0] . ' ensureSession(); $secret = $_SESSION["bbf_secret"] ?? ""; $file = ' . var_export($root, true) . ' . "/sess_" . session_id();'
+        . ' $lock = fopen($file, "r+"); $free = $lock && flock($lock, LOCK_EX | LOCK_NB); if ($lock) { flock($lock, LOCK_UN); fclose($lock); }'
+        . ' $closed = session_status() === PHP_SESSION_NONE; ensureSession();'
+        . ' echo json_encode(["free" => $free, "closed" => $closed, "len" => strlen($secret), "same" => ($_SESSION["bbf_secret"] ?? "") === $secret,'
+        . ' "stillClosed" => session_status() === PHP_SESSION_NONE, "persisted" => str_contains((string)file_get_contents($file), $secret)]);';
+    file_put_contents($root . '/session-child.php', "<?php\n" . $child);
+    $r = json_decode((string)shell_exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/session-child.php')), true) ?: [];
+    server_check(($r['free'] ?? false) && ($r['closed'] ?? false) && ($r['len'] ?? 0) === 64,
+        'after ensureSession() the session file is unlocked and the secret stays readable');
+    server_check(($r['same'] ?? false) && ($r['stillClosed'] ?? false), 'a second call is a no-op');
+    server_check($r['persisted'] ?? false, 'the secret was persisted for the next request');
 }
 
 // Cleanup.

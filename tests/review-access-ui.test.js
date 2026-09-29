@@ -14,7 +14,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'viewer.php'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', 'viewer.php'), 'utf8').replace(/\r\n/g, '\n');
 const forms = [
     { id: 'alpha', name: 'Alpha applications', count: 2 },
     { id: 'beta', name: 'Beta applications', count: 2 },
@@ -329,7 +329,9 @@ for (const fixture of profiles) {
             const values = { formsList: profile.forms, viewerToken: 'isolated-csrf-not-a-credential',
                 canDelete: profile.access, siteName: 'Isolated viewer', viewerLang: 'en' };
             for (const [name, value] of Object.entries(values)) {
-                const marker = '<?= json_encode($' + name + ') ?>';
+                const marker = name === 'viewerLang'
+                    ? '<?= json_encode($viewerLang, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>'
+                    : '<?= json_encode($' + name + ') ?>';
                 assert.ok(script.includes(marker), 'bootstrap marker: ' + name);
                 script = script.replaceAll(marker, JSON.stringify(value));
             }
