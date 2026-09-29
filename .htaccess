@@ -11,6 +11,7 @@
 # location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
 # location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak[-_]|~$|/#[^/]*#$)" { deny all; }
 # location ~ /\. { deny all; }
+# location ~ \.md$ { deny all; }
 # autoindex off;
 # Keep lang/*.js public: browser translations load these files directly.
 # ───────────────────────────────────────────────────────────────
@@ -26,6 +27,11 @@ Options -Indexes
 # Block editor backup and temp files (any file)
 # Catches: file.php~, file.bak, file.swp, file.save, file.orig, #file#
 <FilesMatch "\.(bak|swp|save|orig|old)$|\.bak[-_]|~$|^#.*#$">
+    Require all denied
+</FilesMatch>
+
+# Block README/CHANGELOG and other docs: they reveal the exact installed version
+<FilesMatch "\.md$">
     Require all denied
 </FilesMatch>
 

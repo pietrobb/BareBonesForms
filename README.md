@@ -869,7 +869,7 @@ Directory listing:    OFF globally (Options -Indexes)
 
 > **Apache only.** For Nginx, copy the equivalent rules from `.htaccess` into your `server {}` block and replace `BBF_BASE/` with the exact installation prefix. For `/bbf`, use patterns beginning `^/bbf/`; for a domain-root installation, remove `BBF_BASE/`. Do not block `lang/*.js`—only `lang/*.php` is private.
 >
-> Verify the active server configuration, not merely the file: request a disposable sentinel below `submissions/`, `logs/`, `templates/`, `actions/`, `backups/`, `tests/`, and `data/`, plus a form JSON and `lang/en.php`; every request must return 403 or 404. Confirm that `lang/en.js` still returns 200, then remove the sentinels. `check.php` reports direct `config.php` and directory-URL responses when `diagnostic_base_url` is configured, but directory denial can come from `autoindex off`; it does not replace these sentinel-file probes.
+> Verify the active server configuration, not merely the file: request a disposable sentinel below `submissions/`, `logs/`, `templates/`, `actions/`, `backups/`, `tests/`, and `data/`, plus a form JSON, `lang/en.php`, `README.md`, `CHANGELOG.md` (they reveal the installed version); every request must return 403 or 404. Confirm that `lang/en.js` still returns 200, then remove the sentinels. `check.php` reports direct `config.php` and directory-URL responses when `diagnostic_base_url` is configured, but directory denial can come from `autoindex off`; it does not replace these sentinel-file probes.
 
 ### Daily security self-check
 

@@ -1641,6 +1641,7 @@ location ~ ^/BBF_BASE/forms/.*\.json$ { deny all; }
 location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
 location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak[-_]|~$|/#[^/]*#$)" { deny all; }
 location ~ /\. { deny all; }
+location ~ \.md$ { deny all; }
 autoindex off;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p>Do not block <code>lang/*.js</code> &mdash; only <code>lang/*.php</code> is private. Then verify the <em>running</em> server, not just the file: place a throw-away file in <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>backups/</code>, <code>tests/</code> and <code>data/</code>, request each one plus a form JSON and <code>lang/en.php</code> &mdash; every request must return 403 or 404, while <code>lang/en.js</code> returns 200. Remove the files afterwards.</p>

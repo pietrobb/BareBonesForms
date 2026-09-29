@@ -21,7 +21,7 @@ function bbf_diagnostic_probe(array $config, string $path, ?string &$body = null
     $base = bbf_diagnostic_base_url($config);
     if ($base === null || (!in_array($path, ['config.php', 'submissions/', 'logs/',
         'templates/', 'actions/', 'forms/', 'tests/', 'templates/notify.html', 'actions/README.md',
-        'forms/form.schema.json'], true)
+        'forms/form.schema.json', 'README.md'], true)
         && !preg_match('#\A(?:submissions|logs|templates|actions|tests)/bbf-check-[0-9a-f]{32}\.txt\z#D', $path))) return null;
     // Prefer cURL: shared hosts commonly set allow_url_fopen=0, which silently disables streams.
     if (function_exists('curl_init')) {

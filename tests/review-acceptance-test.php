@@ -489,6 +489,9 @@ acceptance_check(str_contains($htaccess, 'BBF_BASE/') && str_contains($htaccess,
     && str_contains($htaccess, 'Keep lang/*.js public') && str_contains($readme, 'every request must return 403 or 404')
     && str_contains($readme, 'does not replace these sentinel-file probes'),
     'Nginx guidance protects config and backup variants while preserving language JavaScript and requiring sentinel probes');
+acceptance_check(preg_match('/<FilesMatch "\\\\\.md\$">\s*Require all denied\s*<\/FilesMatch>/', $htaccess) === 1
+    && str_contains($htaccess, '# location ~ \.md$ { deny all; }') && str_contains($readme, '`README.md`, `CHANGELOG.md`'),
+    'README.md/CHANGELOG.md are denied by Apache and Nginx rules and listed among the probes');
 acceptance_check(str_contains($readme, '"pricing_version": "order-v1"')
     && str_contains($readme, 'validates your existing forms against the new version')
     && str_contains($readme, 'staging folder** that is not web-accessible')

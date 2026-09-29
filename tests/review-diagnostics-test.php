@@ -127,7 +127,7 @@ PHP;
 <?php
 $path = $_SERVER['PATH_INFO'] ?? '';
 file_put_contents(__DIR__ . '/logs/probe-requests', $_SERVER['REQUEST_URI'] . "\n", FILE_APPEND);
-$leak = is_file(__DIR__ . '/probe/leak') && preg_match('#\A/[a-z]+/[^/]+\z#', $path);
+$leak = is_file(__DIR__ . '/probe/leak') && preg_match('#\A/(?:[a-z]+/[^/]+|README\.md)\z#', $path);
 $status = $leak ? 200 : (int)file_get_contents(__DIR__ . '/probe/status');
 http_response_code($status);
 if ($status === 302) header('Location: /trap.php');
@@ -235,6 +235,7 @@ PHP);
     $login = bbf_test_http($server, $base . '/check.php', ['token' => 'diagnostic-test-admin']);
     diagnostic_check($login['code'] === 303 && preg_match('/^Location: check\.php\r?$/mi', $login['headers']) === 1
         && preg_match('/^Set-Cookie: /mi', $login['headers']) === 1, 'sign-in form POST starts a session and redirects to a clean URL');
+    if (!is_file($root . '/README.md')) bbf_test_copy(dirname(__DIR__) . '/README.md', $root . '/README.md');
     foreach ([null, 403, 404, 200, 302, 500, 'tls-failure'] as $status) {
         $config['diagnostic_base_url'] = $status === null ? '' : ($status === 'tls-failure' ? str_replace('http:', 'https:', $base) : $base) . '/probe.php';
         if (is_int($status)) file_put_contents($root . '/probe/status', (string)$status);
@@ -242,7 +243,7 @@ PHP);
         bbf_test_verify_server($server);
         [$exit, $output] = diagnostic_cli($root, [], false, 'run-check.php');
         $rows = json_decode($output, true);
-        diagnostic_check($exit === 0 && is_array($rows) && count($rows) === 7, 'check runtime emits seven probe results for ' . var_export($status, true));
+        diagnostic_check($exit === 0 && is_array($rows) && count($rows) === 8, 'check runtime emits eight probe results (incl. README.md) for ' . var_export($status, true));
         foreach ($rows as $row) {
             diagnostic_check($row['pass'] === in_array($status, [403, 404], true), $row['name'] . ' correct classification ' . var_export($status, true));
             if ($status === null || $status === 'tls-failure') diagnostic_check(str_contains($row['detail'], 'Not verified'), 'failed/unconfigured probe is visibly unverified');
@@ -255,7 +256,7 @@ PHP);
     file_put_contents($root . '/probe/status', '403');
     file_put_contents($root . '/probe/leak', '1');
     file_put_contents($root . '/logs/probe-requests', '');
-    foreach (['templates/notify.html', 'actions/README.md', 'forms/form.schema.json'] as $leaked) {
+    foreach (['templates/notify.html', 'actions/README.md', 'forms/form.schema.json', 'README.md'] as $leaked) {
         if (!is_file($root . '/' . $leaked)) bbf_test_copy(dirname(__DIR__) . '/' . $leaked, $root . '/' . $leaked);
     }
     bbf_test_verify_server($server);
@@ -266,6 +267,10 @@ PHP);
             && str_contains($rows["$dir/ blocked via HTTP"]['detail'] ?? '', 'publicly readable'),
             "$dir/ fails when the directory URL is denied but a file inside is served");
     }
+    diagnostic_check(($rows['README.md blocked via HTTP']['pass'] ?? true) === false
+        && ($rows['README.md blocked via HTTP']['level'] ?? '') === 'error'
+        && str_contains($rows['README.md blocked via HTTP']['detail'] ?? '', 'reveal the installed version'),
+        'a publicly served README.md is reported as an error');
     $requests = (string)file_get_contents($root . '/logs/probe-requests');
     diagnostic_check(preg_match('#/probe\.php/submissions/bbf-check-[0-9a-f]{32}\.txt#', $requests) === 1,
         'submissions/ is probed with a real sentinel file, not only the directory URL');
@@ -278,6 +283,7 @@ PHP);
     bbf_test_verify_server($server);
     [$exit, $output] = diagnostic_cli($root, [], false, 'run-check.php');
     $rows = array_column(json_decode($output, true) ?: [], null, 'name');
+    diagnostic_check(($rows['README.md blocked via HTTP']['pass'] ?? false) === true, 'README.md fallback page is not reported as exposed');
     foreach (['submissions', 'logs', 'templates', 'actions', 'forms', 'tests'] as $dir) {
         diagnostic_check(($rows["$dir/ blocked via HTTP"]['pass'] ?? false) === true
             && str_contains($rows["$dir/ blocked via HTTP"]['detail'] ?? '', 'fallback'),

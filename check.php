@@ -265,6 +265,21 @@ foreach ($probeFiles as $probeDir => $probeFile) {
         $detail, $probeCode === null ? 'warn' : 'error');
 }
 
+// README.md/CHANGELOG.md reveal the exact installed version, so they must not be served either.
+if (!is_file(__DIR__ . '/README.md')) {
+    check('Security', 'README.md blocked via HTTP', true, 'Not present in the web root; nothing to protect.');
+} else {
+    $docCode = bbf_diagnostic_probe($config ?? [], 'README.md', $docBody);
+    $docFallback = $docCode === 200 && $docBody !== substr((string)file_get_contents(__DIR__ . '/README.md'), 0, 1048576);
+    if ($docCode === null) $probeUnverified++;
+    check('Security', 'README.md blocked via HTTP', in_array($docCode, [403, 404], true) || $docFallback,
+        $docCode === null ? $probeFailedDetail
+        : ($docFallback ? 'Not served: HTTP 200 returned a different page (catch-all fallback).'
+        : (in_array($docCode, [403, 404], true) ? 'Not served (HTTP ' . $docCode . ').'
+        : 'README.md/CHANGELOG.md are publicly readable (HTTP ' . $docCode . ') and reveal the installed version. Add the *.md rule from .htaccess (Nginx: see its comments).')),
+        $docCode === null ? 'warn' : 'error');
+}
+
 // Check for common leftover files that shouldn't be in production
 $dangerousFiles = ['phpinfo.php', 'info.php', 'test.php', 'pi.php'];
 foreach ($dangerousFiles as $df) {
