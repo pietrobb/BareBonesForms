@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}：このファイル形式は現在受け付けていません。別のファイルをアップロードしてください。',
     'uploadFieldTooLarge'   => '{label}：ファイルが{max}を超えています。',
     'uploadTotalTooLarge'   => 'ファイルの合計が{max}を超えています。',
+    'validationFailed'      => 'マークされた項目を修正してください。',
+    'csrfInvalid'           => 'セッションの有効期限が切れました。ページを再読み込みして、もう一度お試しください。',
+    'invalidUtf8'           => '送信されたテキストに無効な文字が含まれています。',
+    'draftExpired'          => '保存された入力内容の有効期限が切れました。',
+    'draftNotFound'         => '保存された入力内容が見つかりません。再開コードを確認してください。',
+    'draftTooLarge'         => 'フォームが大きすぎるため、下書きとして保存できません。',
+    'draftQuota'            => '現在、保存されている下書きが多すぎます。後でもう一度お試しください。',
 ];

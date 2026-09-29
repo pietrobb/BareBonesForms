@@ -209,7 +209,7 @@ PHP;
         versions_check($anonymous['code'] === 403, 'anonymous editor version state is denied');
         $login = bbf_test_http($server, $editorUrl, null,
             ['headers' => ['X-BBF-Token' => $config['api_token']]]);
-        preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $login['headers'], $cookie);
+        preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', $login['headers'], $cookie);
         preg_match('/const TOKEN = ("[^"]+");/', $login['body'], $csrfMatch);
         versions_check($login['code'] === 200 && isset($cookie[1], $csrfMatch[1]),
             'legacy admin establishes editor session and CSRF');

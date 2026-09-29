@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: este tipo de archivo ya no se acepta. Suba otro archivo.',
     'uploadFieldTooLarge'   => '{label}: el archivo supera {max}.',
     'uploadTotalTooLarge'   => 'Los archivos superan {max} en total.',
+    'validationFailed'      => 'Corrija los campos marcados.',
+    'csrfInvalid'           => 'Su sesión ha caducado. Recargue la página e inténtelo de nuevo.',
+    'invalidUtf8'           => 'El texto enviado contiene caracteres no válidos.',
+    'draftExpired'          => 'El progreso guardado ha caducado.',
+    'draftNotFound'         => 'No se encontró el progreso guardado. Compruebe el código de reanudación.',
+    'draftTooLarge'         => 'El formulario es demasiado grande para guardarlo como borrador.',
+    'draftQuota'            => 'Hay demasiados borradores guardados en este momento. Inténtelo más tarde.',
 ];

@@ -259,7 +259,7 @@ try {
     $login = static function (string $id) use ($http, $tokens): array {
         $token = array_values(array_filter($tokens, static fn($row) => $row['id'] === $id))[0]['token'];
         $response = $http('viewer.php', ['headers' => ['X-BBF-Token' => $token]]);
-        preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $response['headers'], $cookie);
+        preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', $response['headers'], $cookie);
         preg_match('/const TOKEN = ("[^"]+");/', $response['body'], $csrf);
         inbox_check($response['code'] === 200 && isset($cookie[1], $csrf[1]), "$id viewer session provides CSRF");
         return ['cookie' => $cookie[1], 'csrf' => json_decode($csrf[1], true), 'token' => $token];
@@ -337,6 +337,14 @@ try {
         inbox_check($http("viewer.php?action=export&form=alpha&$bad", ['cookie' => $reviewer['cookie']])['code'] === 400,
             "invalid export filter $bad is rejected instead of exporting silently");
     }
+    // An empty field of the filter form (a bookmarked or hand-built URL) means "no filter", as in the list.
+    $unfiltered = $http('viewer.php?action=export&form=alpha&bom=0', ['cookie' => $reviewer['cookie']]);
+    $emptyFields = $http('viewer.php?action=export&form=alpha&from=&to=&status=&bom=0', ['cookie' => $reviewer['cookie']]);
+    inbox_check($emptyFields['code'] === 200 && $emptyFields['body'] === $unfiltered['body'] && str_contains($emptyFields['body'], 'bbf_one'),
+        'export with empty from=, to=, status= exports everything instead of 400');
+    $emptyList = $http('viewer.php?action=submissions&form=alpha&from=&status=', ['cookie' => $reviewer['cookie']]);
+    inbox_check($emptyList['code'] === 200 && ($emptyList['json']['total'] ?? null) === ($http('viewer.php?action=submissions&form=alpha', ['cookie' => $reviewer['cookie']])['json']['total'] ?? -1),
+        'the list treats empty from= and status= the same way');
     $auditBeforeConflict = count(file("$root/logs/access-audit.php"));
     $winner = $mutate('review_update', $reviewer, ['form' => 'alpha', 'id' => 'bbf_two', 'revision' => 0,
         'patch' => ['notes' => 'stale']]);

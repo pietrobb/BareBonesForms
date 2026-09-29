@@ -71,6 +71,23 @@ test('redirect only follows http(s) or relative targets, never script URLs', asy
     }
 });
 
+test('2.1.3 "Back" from the redirect target (bfcache) re-enables the submit button', async () => {
+    const { context, form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/thanks' });
+    const btn = form.querySelector('.bbf-submit');
+    assert.equal(context.window.location.href, '/thanks');
+    assert.equal(btn.disabled, true, 'stays disabled while the browser navigates away');
+    const fire = persisted => [...(context.window.listeners.pageshow || [])].forEach(fn => fn({ persisted }));
+    fire(false);
+    assert.equal(btn.disabled, true, 'a normal load is not a bfcache restore');
+    fire(true);
+    assert.equal(btn.disabled, false);
+    assert.equal(btn.textContent, 'Submit');
+    assert.equal(form._bbfSubmitting, false);
+    assert.match(form.querySelector('.bbf-message').className, /bbf-success/);
+    fire(true);
+    assert.equal((context.window.listeners.pageshow || []).length, 1, 'the one-shot restore listener removed itself');
+});
+
 test('form id is URL-encoded in every submit.php request', async () => {
     const urls = [];
     const runtime = loadBBF({ fetch: async url => { urls.push(String(url)); return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ status: 'ok', submission_id: 'bbf_x' }) }; } });

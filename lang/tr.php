@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: bu dosya türü artık kabul edilmiyor. Lütfen başka bir dosya yükleyin.',
     'uploadFieldTooLarge'   => '{label}: dosya {max} boyutundan büyük.',
     'uploadTotalTooLarge'   => 'Dosyaların toplamı {max} boyutunu aşıyor.',
+    'validationFailed'      => 'Lütfen işaretli alanları düzeltin.',
+    'csrfInvalid'           => 'Oturumunuzun süresi doldu. Sayfayı yeniden yükleyip tekrar deneyin.',
+    'invalidUtf8'           => 'Gönderilen metin geçersiz karakterler içeriyor.',
+    'draftExpired'          => 'Kaydedilen ilerlemenin süresi doldu.',
+    'draftNotFound'         => 'Kaydedilen ilerleme bulunamadı. Devam kodunu kontrol edin.',
+    'draftTooLarge'         => 'Form, taslak olarak kaydedilemeyecek kadar büyük.',
+    'draftQuota'            => 'Şu anda çok fazla kayıtlı taslak var. Lütfen daha sonra tekrar deneyin.',
 ];

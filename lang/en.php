@@ -47,4 +47,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: this file type is no longer accepted. Please upload a different file.',
     'uploadFieldTooLarge'   => '{label}: the file is larger than {max}.',
     'uploadTotalTooLarge'   => 'The files together are larger than {max}.',
+    'validationFailed'      => 'Please correct the highlighted fields.',
+    'csrfInvalid'           => 'Your session has expired. Reload the page and try again.',
+    'invalidUtf8'           => 'The submitted text contains invalid characters.',
+    'draftExpired'          => 'The saved progress has expired.',
+    'draftNotFound'         => 'Saved progress was not found. Check the resume code.',
+    'draftTooLarge'         => 'The form is too large to be saved as a draft.',
+    'draftQuota'            => 'Too many saved drafts right now. Please try again later.',
 ];

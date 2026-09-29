@@ -46,4 +46,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: Dieser Dateityp wird nicht mehr akzeptiert. Bitte laden Sie eine andere Datei hoch.',
     'uploadFieldTooLarge'   => '{label}: Die Datei ist größer als {max}.',
     'uploadTotalTooLarge'   => 'Die Dateien sind zusammen größer als {max}.',
+    'validationFailed'      => 'Bitte korrigieren Sie die markierten Felder.',
+    'csrfInvalid'           => 'Ihre Sitzung ist abgelaufen. Laden Sie die Seite neu und versuchen Sie es erneut.',
+    'invalidUtf8'           => 'Der gesendete Text enthält ungültige Zeichen.',
+    'draftExpired'          => 'Der gespeicherte Fortschritt ist abgelaufen.',
+    'draftNotFound'         => 'Gespeicherter Fortschritt nicht gefunden. Prüfen Sie den Fortsetzungscode.',
+    'draftTooLarge'         => 'Das Formular ist zu groß, um als Entwurf gespeichert zu werden.',
+    'draftQuota'            => 'Derzeit sind zu viele Entwürfe gespeichert. Bitte versuchen Sie es später erneut.',
 ];

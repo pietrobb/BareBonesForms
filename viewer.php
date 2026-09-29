@@ -111,6 +111,8 @@ function checkViewerToken(): void {
 }
 
 function viewerSubmissionCriteria(array $value): ?array {
+    // An empty field of the filter form (from=, status=) means "no filter", as in the list.
+    foreach (['from', 'to', 'status'] as $key) if (($value[$key] ?? null) === '') unset($value[$key]);
     $reviewCriteria = array_diff_key($value, ['from' => true, 'to' => true]);
     $criteria = bbf_review_filter_criteria($reviewCriteria);
     if ($criteria === null) return null;

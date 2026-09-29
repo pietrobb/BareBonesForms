@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: acest tip de fișier nu mai este acceptat. Încărcați alt fișier.',
     'uploadFieldTooLarge'   => '{label}: fișierul depășește {max}.',
     'uploadTotalTooLarge'   => 'Fișierele depășesc împreună {max}.',
+    'validationFailed'      => 'Corectați câmpurile marcate.',
+    'csrfInvalid'           => 'Sesiunea a expirat. Reîncărcați pagina și încercați din nou.',
+    'invalidUtf8'           => 'Textul trimis conține caractere nevalide.',
+    'draftExpired'          => 'Progresul salvat a expirat.',
+    'draftNotFound'         => 'Progresul salvat nu a fost găsit. Verificați codul de reluare.',
+    'draftTooLarge'         => 'Formularul este prea mare pentru a fi salvat ca ciornă.',
+    'draftQuota'            => 'Prea multe ciorne salvate în acest moment. Încercați din nou mai târziu.',
 ];

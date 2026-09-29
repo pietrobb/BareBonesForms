@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}：已不再接受此檔案類型。請上傳其他檔案。',
     'uploadFieldTooLarge'   => '{label}：檔案超過 {max}。',
     'uploadTotalTooLarge'   => '檔案總大小超過 {max}。',
+    'validationFailed'      => '請更正標示的欄位。',
+    'csrfInvalid'           => '工作階段已過期。請重新載入頁面後再試一次。',
+    'invalidUtf8'           => '送出的文字包含無效字元。',
+    'draftExpired'          => '儲存的進度已過期。',
+    'draftNotFound'         => '找不到儲存的進度。請檢查繼續代碼。',
+    'draftTooLarge'         => '表單太大，無法儲存為草稿。',
+    'draftQuota'            => '目前儲存的草稿過多。請稍後再試。',
 ];

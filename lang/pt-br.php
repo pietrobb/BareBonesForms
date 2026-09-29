@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: este tipo de arquivo não é mais aceito. Envie outro arquivo.',
     'uploadFieldTooLarge'   => '{label}: o arquivo é maior que {max}.',
     'uploadTotalTooLarge'   => 'Os arquivos juntos ultrapassam {max}.',
+    'validationFailed'      => 'Corrija os campos destacados.',
+    'csrfInvalid'           => 'Sua sessão expirou. Recarregue a página e tente novamente.',
+    'invalidUtf8'           => 'O texto enviado contém caracteres inválidos.',
+    'draftExpired'          => 'O progresso salvo expirou.',
+    'draftNotFound'         => 'O progresso salvo não foi encontrado. Verifique o código de retomada.',
+    'draftTooLarge'         => 'O formulário é grande demais para ser salvo como rascunho.',
+    'draftQuota'            => 'Há rascunhos salvos demais no momento. Tente novamente mais tarde.',
 ];

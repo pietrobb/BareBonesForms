@@ -42,4 +42,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: šāda tipa faili vairs netiek pieņemti. Augšupielādējiet citu failu.',
     'uploadFieldTooLarge'   => '{label}: fails pārsniedz {max}.',
     'uploadTotalTooLarge'   => 'Failu kopējais izmērs pārsniedz {max}.',
+    'validationFailed'      => 'Lūdzu, izlabojiet atzīmētos laukus.',
+    'csrfInvalid'           => 'Jūsu sesija ir beigusies. Pārlādējiet lapu un mēģiniet vēlreiz.',
+    'invalidUtf8'           => 'Nosūtītais teksts satur nederīgas rakstzīmes.',
+    'draftExpired'          => 'Saglabātā progresa derīgums ir beidzies.',
+    'draftNotFound'         => 'Saglabātais progress netika atrasts. Pārbaudiet turpināšanas kodu.',
+    'draftTooLarge'         => 'Veidlapa ir pārāk liela, lai to saglabātu kā melnrakstu.',
+    'draftQuota'            => 'Pašlaik ir saglabāts pārāk daudz melnrakstu. Mēģiniet vēlāk.',
 ];

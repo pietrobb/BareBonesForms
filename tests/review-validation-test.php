@@ -422,6 +422,18 @@ check('\d and \w stay ASCII like the browser: Arabic digits do not pass ^\d{5}$'
     accepts(['type' => 'text', 'pattern' => '^[a-zščťžýáíé]{5}$'], 'ščťžý');
 });
 
+// ─── 2.1.3: review of 2.1.2 ────────────────────────────────────
+check('\s matches Unicode spaces like the browser (NBSP, U+2009, U+3000); \S excludes them', function (): void {
+    $nbsp = "\u{00A0}";
+    accepts(['type' => 'text', 'pattern' => '^\S+\s\S+$'], "Jana{$nbsp}Nová");
+    accepts(['type' => 'text', 'pattern' => '^\S+\s\S+$'], "Jana\u{2009}Nová");
+    accepts(['type' => 'text', 'pattern' => '^[\s\w]+$'], "ab{$nbsp}cd\u{3000}");
+    rejects(['type' => 'text', 'pattern' => '^\S+$'], "Jana{$nbsp}Nová", 'invalidFormat');
+    rejects(['type' => 'text', 'pattern' => '^\w+$'], "a{$nbsp}b", 'invalidFormat');
+    accepts(['type' => 'text', 'pattern' => '^a\\\\s$'], 'a\\s');
+    same('/(*UTF)^\\\\s[\\/]$/', bbfFieldPatternRegex('^\\\\s[/]$'));
+});
+
 restore_error_handler();
 printf("Typed validation regression tests: %d passed, %d failed.\n", $passed, $failed);
 exit($failed === 0 ? 0 : 1);

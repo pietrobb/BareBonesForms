@@ -211,7 +211,7 @@ if (stripos($contentType, 'application/json') !== false) {
 }
 if (!is_array($input)) $input = [];
 // Storage, e-mail and JSON all need UTF-8; broken bytes are the client's error (422), not a server crash.
-if (!bbfValidUtf8Deep($input)) respond(422, 'Submitted text is not valid UTF-8.');
+if (!bbfValidUtf8Deep($input)) respond(422, msg('invalidUtf8'));
 
 // ─── Submit transaction: step 0 and step A (no definition, no CSRF, no session) ─
 $rawInput = $input;
@@ -264,7 +264,7 @@ if (!$isSandbox && ($config['csrf'] ?? true) && !$isCorsRequest && !$_smokeAuth)
     $csrfToken = is_string($input['_bbf_csrf'] ?? null) ? $input['_bbf_csrf'] : '';
     if (empty($_SESSION['bbf_secret'])
         || !hash_equals(hash_hmac('sha256', $formId, $_SESSION['bbf_secret']), $csrfToken)) {
-        respond(403, 'Invalid or missing CSRF token.');
+        respond(403, msg('csrfInvalid'));
     }
 }
 unset($input['_bbf_csrf']);
@@ -291,7 +291,7 @@ if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_de
     bbf_draft_cleanup($config);
     $handle = is_string($input['_bbf_draft_handle'] ?? null) ? $input['_bbf_draft_handle'] : '';
     if ($draftAction === 'draft_save') {
-        $result = bbf_draft_save($config, $form, $flatFields, $input, $handle);
+        $result = bbf_draft_save($config, $form, $flatFields, $input, $handle, null, $ip);
     } elseif ($draftAction === 'draft_load') {
         $result = bbf_draft_load($config, $form, $handle);
     } else {
@@ -299,10 +299,10 @@ if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_de
     }
     if ($result['ok'] ?? false) respond($draftAction === 'draft_save' && $handle === '' ? 201 : 200, 'OK', $result);
     $reason = $result['reason'] ?? 'storage';
-    if ($reason === 'expired') respond(410, 'Draft has expired.', ['reason' => $reason]);
-    if ($reason === 'not_found') respond(404, 'Draft not found.', ['reason' => $reason]);
-    if ($reason === 'too_large') respond(413, 'Draft is too large to save.', ['reason' => $reason]);
-    if ($reason === 'quota') respond(429, 'Too many saved drafts right now. Please try again later.', ['reason' => $reason]);
+    if ($reason === 'expired') respond(410, msg('draftExpired'), ['reason' => $reason]);
+    if ($reason === 'not_found') respond(404, msg('draftNotFound'), ['reason' => $reason]);
+    if ($reason === 'too_large') respond(413, msg('draftTooLarge'), ['reason' => $reason]);
+    if ($reason === 'quota') respond(429, msg('draftQuota'), ['reason' => $reason] + (isset($result['retry_after']) ? ['retry_after' => $result['retry_after']] : []));
     respond(500, 'Draft storage failed.', ['reason' => $reason]);
 }
 
@@ -432,7 +432,7 @@ if ($isSandbox) {
 
 // ─── Production: reject invalid submissions ─────────────────────
 if (!empty($errors)) {
-    respond(422, 'Validation failed.', ['errors' => $errors]);
+    respond(422, msg('validationFailed'), ['errors' => $errors]);
 }
 
 // ─── Use the same normalized visible data validated above ────────
@@ -446,7 +446,7 @@ $fileFields = bbf_uploads_file_fields($flatFields);
 if ($fileFields) {
     $planned = bbf_uploads_plan($config, $formId, $submissionId, $fileFields, $data, false);
     if (!$planned['ok']) {
-        respond($planned['code'], $planned['code'] === 422 ? 'Validation failed.' : 'File uploads are unavailable.', ['errors' => $planned['errors']]);
+        respond($planned['code'], $planned['code'] === 422 ? msg('validationFailed') : 'File uploads are unavailable.', ['errors' => $planned['errors']]);
     }
     $uploadPlan = $planned['plan'];
     if ($uploadPlan !== null && ($form['on_submit']['store'] ?? true) === false) {
@@ -814,7 +814,7 @@ function bbf_submit_upload_csrf(array $config, string $formId): void {
     $token = $_SERVER['HTTP_X_BBF_CSRF'] ?? '';
     if (empty($_SESSION['bbf_secret']) || !is_string($token)
         || !hash_equals(hash_hmac('sha256', $formId, $_SESSION['bbf_secret']), $token)) {
-        respond(403, 'Invalid or missing CSRF token.');
+        respond(403, msg('csrfInvalid'));
     }
 }
 

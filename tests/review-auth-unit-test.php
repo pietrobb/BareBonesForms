@@ -79,12 +79,30 @@ try {
     auth_check(bbf_auth_throttle($c, true) === false, 'rotating addresses inside one IPv6 /64 counts as one client');
     $_SERVER['REMOTE_ADDR'] = '2001:db8:1:2::1';
     auth_check(bbf_auth_throttle($c, true) === true, 'a different /64 is a different client');
+    // ─── While blocked, tokens are checked one per interval (no instant 200/429 oracle) ───
+    $_SERVER['REMOTE_ADDR'] = '2001:db8:1:2::1';
+    auth_check(bbf_auth_throttle_wait($c) === 0.0, 'a client below the limit is checked without waiting');
+    $_SERVER['REMOTE_ADDR'] = '2001:db8:1:1::1';
+    $waits = [];
+    for ($i = 0; $i < 6; $i++) $waits[] = bbf_auth_throttle_wait($c);
+    $spacing = true;
+    for ($i = 0; $i < 5; $i++) $spacing = $spacing && abs($waits[$i] - BBF_AUTH_BLOCKED_INTERVAL * ($i + 1)) < 0.5;
+    auth_check($spacing, 'a blocked client gets one check per ' . BBF_AUTH_BLOCKED_INTERVAL . ' s: ' . json_encode(array_map(fn($w) => $w === null ? null : round($w, 1), $waits)));
+    auth_check($waits[5] === null, 'a blocked client whose queue exceeds ' . BBF_AUTH_BLOCKED_QUEUE . ' s is refused without a check');
+    $_SERVER['REMOTE_ADDR'] = '2001:db8:1:2::1';
+    auth_check(bbf_auth_throttle_wait($c) === 0.0, 'another client is not slowed by the blocked one');
+
+    // A 2.1.2 file (a bare failures map) is still read.
+    file_put_contents("$logs/.auth_failures.json", json_encode([hash('sha256', '198.51.100.5') => array_fill(0, 10, time() - 5)]));
+    $_SERVER['REMOTE_ADDR'] = '198.51.100.5';
+    auth_check(bbf_auth_throttle($c, true) === false && bbf_auth_throttle_wait($c) > 0, 'the 2.1.2 failure file format is still honoured');
+
     $state = [];
     for ($i = 0; $i < BBF_AUTH_MAX_CLIENTS + 50; $i++) $state[hash('sha256', "c$i")] = [time() - 5];
     file_put_contents("$logs/.auth_failures.json", json_encode($state));
     $_SERVER['REMOTE_ADDR'] = '198.51.100.99';
     bbf_auth_throttle($c, true);
-    $after = json_decode((string)file_get_contents("$logs/.auth_failures.json"), true);
+    $after = json_decode((string)file_get_contents("$logs/.auth_failures.json"), true)['failures'] ?? [];
     auth_check(count($after) === BBF_AUTH_MAX_CLIENTS && isset($after[hash('sha256', '198.51.100.99')]), 'the failure file is capped and keeps the newest client');
 
     // ─── Audit log stays bounded ───────────────────────────────────
@@ -95,13 +113,28 @@ try {
     for ($i = 0; $i < 600; $i++) bbf_audit_write($ac, $principal, 'viewer_list', 'contact', [], 'allowed', 'completed', $i);
     $size = filesize($audit); clearstatcache();
     auth_check(filesize($audit) <= 65536 + 512, "the audit log stays under its limit ($size bytes after 600 entries)");
-    auth_check(is_file("$audit.1") && str_starts_with((string)file_get_contents("$audit.1"), $guard)
-        && str_starts_with((string)file_get_contents($audit), $guard), 'the previous generation is kept and both files keep the PHP guard');
+    auth_check(is_file("$logs/access-audit.1.php") && !file_exists("$audit.1") && str_starts_with((string)file_get_contents("$logs/access-audit.1.php"), $guard)
+        && str_starts_with((string)file_get_contents($audit), $guard), 'the previous generation is access-audit.1.php (.php, guarded) and both files keep the PHP guard');
     $last = json_decode(trim(array_slice(explode("\n", trim((string)file_get_contents($audit))), -1)[0]), true);
     auth_check(($last['result_count'] ?? null) === 599, 'the newest entry is in the current log');
     auth_check(glob("$logs/*.tmp") === [], 'rotation leaves no temp files');
+    // A 2.1.2 install left access-audit.php.1 (protected only by .htaccess); the next write retires it.
+    @unlink("$logs/access-audit.1.php");
+    file_put_contents("$audit.1", $guard . "{\"legacy\":true}\n");
+    bbf_audit_write($ac, $principal, 'viewer_list', 'contact', [], 'allowed', 'completed', 1);
+    auth_check(!file_exists("$audit.1") && str_contains((string)@file_get_contents("$logs/access-audit.1.php"), 'legacy'), 'a 2.1.2 access-audit.php.1 is renamed to access-audit.1.php');
+    file_put_contents("$audit.1", $guard);
+    bbf_audit_write($ac, $principal, 'viewer_list', 'contact', [], 'allowed', 'completed', 1);
+    auth_check(!file_exists("$audit.1") && str_contains((string)file_get_contents("$logs/access-audit.1.php"), 'legacy'), 'when access-audit.1.php exists the old file is removed, never overwriting it');
+
+    // ─── Audit redaction ignores tokens too short to be credentials ───
+    $rc = $ac + ['api_token' => str_repeat('k', 24), 'access_tokens' => [$token('tiny', 'co')], 'smoke_token' => 'sm'];
+    bbf_audit_write($rc, $principal, 'viewer_list', 'contact', ['sm-1', 'kkkkkkkkkkkkkkkkkkkkkkkk'], 'allowed', 'completed', 1);
+    $last = json_decode(trim(array_slice(explode("\n", trim((string)file_get_contents($audit))), -1)[0]), true);
+    auth_check(($last['form'] ?? '') === 'contact', 'a 2-character access token does not mangle "contact" in the audit log');
+    auth_check(($last['submission_ids'] ?? []) === ['[redacted]-1', '[redacted]'], 'api_token and smoke_token (any length) are still redacted');
 } finally {
-    foreach (["$logs/access-audit.php", "$logs/access-audit.php.1"] as $f) @unlink($f);
+    foreach (["$logs/access-audit.php", "$logs/access-audit.php.1", "$logs/access-audit.1.php"] as $f) @unlink($f);
     @unlink("$logs/.auth_failures.json");
     @rmdir($logs);
 }

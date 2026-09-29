@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: ez a fájltípus már nem engedélyezett. Töltsön fel másik fájlt.',
     'uploadFieldTooLarge'   => '{label}: a fájl nagyobb, mint {max}.',
     'uploadTotalTooLarge'   => 'A fájlok együtt nagyobbak, mint {max}.',
+    'validationFailed'      => 'Javítsa a megjelölt mezőket.',
+    'csrfInvalid'           => 'A munkamenet lejárt. Töltse újra az oldalt, és próbálja újra.',
+    'invalidUtf8'           => 'A beküldött szöveg érvénytelen karaktereket tartalmaz.',
+    'draftExpired'          => 'A mentett előrehaladás lejárt.',
+    'draftNotFound'         => 'A mentett előrehaladás nem található. Ellenőrizze a folytatási kódot.',
+    'draftTooLarge'         => 'Az űrlap túl nagy ahhoz, hogy piszkozatként menthető legyen.',
+    'draftQuota'            => 'Jelenleg túl sok piszkozat van mentve. Próbálja újra később.',
 ];

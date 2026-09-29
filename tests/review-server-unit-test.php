@@ -59,17 +59,38 @@ foreach ($ledgers as $id => $mtime) {
 $report = bbf_delivery_retry_due(['submissions_dir' => $root . '/submissions', 'storage' => 'file'], 120, $now);
 server_check($report['ok'] === true && $report['checked'] === 1 && $report['attempted'] === 0,
     'retry scan reads only the quiet ledger inside the 7-day horizon (skips in-flight and week-old ledgers by mtime)');
+server_check($report['skipped_in_flight'] === 1 && $report['skipped_old'] === 1
+    && str_contains($report['note'] ?? '', '1 delivery record(s) untouched for more than 7 days were not checked'),
+    'the report counts skipped in-flight and week-old ledgers and says the old ones were not checked');
 $wide = bbf_delivery_retry_due(['submissions_dir' => $root . '/submissions', 'storage' => 'file'], 120, $now, 30 * 86400);
-server_check($wide['checked'] === 2, 'a wider horizon includes the older ledger');
+server_check($wide['checked'] === 2 && $wide['skipped_old'] === 0 && !isset($wide['note']), 'a wider horizon includes the older ledger');
 
 // ─── mail() envelope sender ───────────────────────────────────────
 $source = file_get_contents(dirname(__DIR__) . '/bbf_functions.php');
 server_check(str_contains($source, "@mail(\$to, \$mailSubject, \$body, \$headerStr, \$params)"),
     'mail() transport passes the envelope sender parameter');
 foreach (['sender@example.com' => true, 'a.b+c@sub.example.org' => true, 'x@y.z -X/tmp/log' => false, "a@b.c\n" => false, '"q"@b.c' => false] as $from => $ok) {
-    server_check(bbf_mail_envelope_sender($from) === $ok,
+    server_check(bbf_mail_envelope_sender($from, '/usr/sbin/sendmail -t -i') === $ok,
         'envelope sender filter ' . ($ok ? 'accepts ' : 'rejects ') . json_encode($from));
 }
+foreach (['/usr/sbin/sendmail -t -i -fbounce@host.example' => false, '/usr/sbin/sendmail -t -i -f bounce@host.example' => false,
+    '/usr/sbin/sendmail -t -i' => true, '' => true, '/opt/my-fancy-mailer -t' => true] as $path => $ok) {
+    server_check(bbf_mail_envelope_sender('sender@example.com', $path) === $ok,
+        ($ok ? 'adds -f with sendmail_path ' : 'leaves the host\'s own -f alone: ') . json_encode($path));
+}
+// The real ini value: a host sendmail_path with -f (php -d) turns the parameter off for both mail() paths.
+$probe = static function (string $sendmailPath): string {
+    $code = 'define("BBF_LOADED", true); require ' . var_export(dirname(__DIR__) . '/bbf_alerts.php', true)
+        . '; echo bbf_mail_envelope_sender("sender@example.com") ? "adds" : "leaves";';
+    $process = proc_open([PHP_BINARY, '-d', "sendmail_path=$sendmailPath", '-r', $code], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    $out = stream_get_contents($pipes[1]); fclose($pipes[1]); fclose($pipes[2]); proc_close($process);
+    return trim((string)$out);
+};
+server_check($probe('/usr/sbin/sendmail -t -i -fbounce@host.example') === 'leaves' && $probe('/usr/sbin/sendmail -t -i') === 'adds',
+    'the rule reads the host\'s sendmail_path setting');
+$alertsSource = (string)file_get_contents(dirname(__DIR__) . '/bbf_alerts.php');
+server_check(substr_count($alertsSource, 'bbf_mail_envelope_sender($from) ?') === 1 && substr_count($source, 'bbf_mail_envelope_sender($from) ?') === 1,
+    'submission mail and incident mail use the same envelope sender rule');
 
 // ─── Editor creates a form atomically and never overwrites ────────
 $formsDir = $root . '/forms'; mkdir($formsDir);
@@ -110,9 +131,16 @@ foreach (['https://example.test/thanks?n={{name}}' => 'https://example.test/than
     server_check(bbf_redirect_url($tpl, ['name' => 'Ann']) === $want, "redirect $tpl is kept");
 }
 foreach (['javascript:alert(1)', ' JaVaScRiPt:alert(1)', 'java' . "\t" . 'script:alert(1)', 'data:text/html,x', 'vbscript:x',
-    '{{name}}', '\\\\evil.test', '/\\evil.test', ''] as $tpl) {
+    '\\\\evil.test', '/\\evil.test', ''] as $tpl) {
     server_check(bbf_redirect_url($tpl, ['name' => 'javascript:alert(1)']) === null, 'redirect ' . json_encode($tpl) . ' is dropped');
 }
+// Field values are percent-encoded: a space no longer drops the redirect, and "&", "#", ":" or "//" cannot
+// add parameters, a fragment, a scheme or another host.
+server_check(bbf_redirect_url('/dakujeme?meno={{name}}', ['name' => 'Jana Nová']) === '/dakujeme?meno=Jana%20Nov%C3%A1', 'redirect value with a space is encoded, not dropped');
+server_check(bbf_redirect_url('/dakujeme?meno={{name}}', ['name' => 'A&admin=1#x']) === '/dakujeme?meno=A%26admin%3D1%23x', 'redirect value cannot add parameters or a fragment');
+server_check(bbf_redirect_url('{{name}}', ['name' => 'javascript:alert(1)']) === 'javascript%3Aalert%281%29', 'a whole-URL placeholder cannot supply a scheme');
+server_check(bbf_redirect_url('{{name}}', ['name' => '//evil.test/x']) === '%2F%2Fevil.test%2Fx', 'a whole-URL placeholder cannot supply another host');
+server_check(bbf_redirect_url('/t?n={{n}}', ['n' => 0]) === '/t?n=0', 'numeric zero is kept');
 
 // Cleanup.
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);

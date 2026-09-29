@@ -180,16 +180,17 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.2.zip
+php maintenance.php upgrade --package=../barebonesforms-v2.1.3.zip
 ```
 
-This is a dry run — nothing changes. It verifies every file of the package, runs the new version's smoke test against **your** forms and templates, checks the new PHP files for syntax errors, and prints:
+This is a dry run — nothing changes. Once 2.1.3 or newer is installed, every later upgrade is planned and applied by the upgrader inside the new package (the result says `"upgrader": "package X.Y.Z"`), so fixes to the upgrade itself already apply to it. It verifies every file of the package, runs the new version's smoke test against **your** forms and templates, checks the new PHP files for syntax errors, and prints:
 
 - the installed and the new version, how many files will be added or replaced, and which obsolete files will be removed;
 - `keep_yours`: sample forms and email templates you changed — they stay as they are (untouched ones are updated);
 - `overwrite_local_edits`: code files you edited by hand — they will be replaced (the backup keeps your copy);
 - `new_config_settings`: keys that appeared in `config.example.php`; all have safe defaults, add the ones you want;
 - `breaking`: every **Breaking** item from the CHANGELOG between your version and the new one;
+- `notices`: for example, your `.htaccess` has lines of your own, so it is kept and the release's new rules are written next to it as `.htaccess.dist` — copy them over (`check.php` and `selfcheck` list rule lines still missing);
 - `problems`: anything that blocks the upgrade — a damaged package, an older version, PHP too old, or a form that passes today and would fail with the new code.
 
 If it looks right, run the printed command with `--apply --confirm=<digest>`. The upgrade saves every file it overwrites or deletes to `logs_dir/upgrades/<date>-<from>-to-<to>-…/`, swaps files one by one (each file atomically), runs the smoke test again, and **rolls itself back** if anything fails. `config.php`, your own forms, templates, submissions, uploads and logs are never touched — the manifest lists only the files the release owns. Demo pages, docs and sample forms are updated where you have them, but never added to an installation that left them out, so a live site does not grow demo form endpoints.
@@ -199,7 +200,7 @@ To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup
 **Upgrading from a version before 2.1.0** (its `maintenance.php` does not know `upgrade` yet): unzip the new release next to the installation and let the new code do it — same checks, backup and rollback:
 
 ```bash
-unzip barebonesforms-v2.1.2.zip            # creates ./barebonesforms
+unzip barebonesforms-v2.1.3.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 
@@ -899,7 +900,7 @@ Run `check.php` after installation to verify your setup. It tests:
 - Sandbox mode state
 - Leftover diagnostic files (`phpinfo.php`, `test.php`, etc.)
 
-Access control: `api_token` is required everywhere, including localhost. `check.php`, `viewer.php` and `editor.php` show a sign-in form; scripts can send the `X-BBF-Token` header instead. Tokens shorter than 16 characters are never accepted, and after 10 wrong tokens from one address within 15 minutes further attempts get HTTP 429 until the window passes. Behind Cloudflare or a reverse proxy, list the proxy ranges in `trusted_proxies` so that this limit, the submission rate limit and stored IPs use the visitor's address.
+Access control: `api_token` is required everywhere, including localhost. `check.php`, `viewer.php` and `editor.php` show a sign-in form; scripts can send the `X-BBF-Token` header instead. Tokens shorter than 16 characters are never accepted. After 10 wrong tokens from one address within 15 minutes that address is slowed down: every further token, right or wrong, is checked only after a wait (one per 2 seconds; a request that would wait over 10 seconds gets 429 unchecked), wrong tokens get HTTP 429 and the right one still signs in. The sign-in uses its own `BBFADMIN` session cookie limited to the installation folder, and the sign-in form is CSRF-protected. Behind Cloudflare or a reverse proxy, list the proxy ranges in `trusted_proxies` so that this limit, the submission rate limit and stored IPs use the visitor's address.
 
 **Delete `check.php` after verification** — it exposes PHP version, extensions, directory paths, storage details, and form structure.
 
@@ -937,6 +938,8 @@ A failed email, webhook or action is retried automatically with a growing delay.
 ```bash
 php maintenance.php deliveries-retry   # failed deliveries whose retry is due
 ```
+
+Its report counts `skipped_old`: delivery records untouched for more than 7 days are not read, because they have no automatic retry left — a `note` says so; retry such a delivery by hand in the viewer.
 
 `selfcheck` also tells you once when a newer BareBonesForms release is out ([details](#upgrading); `'update_check' => false` turns it off).
 

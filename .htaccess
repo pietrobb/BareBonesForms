@@ -11,7 +11,7 @@
 # location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
 # location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak[-_]|~$|/#[^/]*#$)" { deny all; }
 # location ~ /\. { deny all; }
-# location ~ \.md$ { deny all; }
+# location ~ ^/BBF_BASE/.*\.md$ { deny all; }
 # autoindex off;
 # Keep lang/*.js public: browser translations load these files directly.
 # ───────────────────────────────────────────────────────────────

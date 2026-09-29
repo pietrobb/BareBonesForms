@@ -157,7 +157,7 @@ return [
 
     // Sign-in session limits in seconds (idle, absolute). Access is audited in logs_dir/access-audit.php,
     // which must be writable — if it is not, access is blocked. Past audit_max_bytes (default 20 MB) the
-    // log rotates to access-audit.php.1 (one previous generation is kept).
+    // log rotates to access-audit.1.php (one previous generation is kept).
     // 'audit_max_bytes' => 20 * 1048576,
     'auth_session_idle' => 1800,
     'auth_session_absolute' => 28800,
@@ -183,6 +183,8 @@ return [
     'drafts_dir'       => __DIR__ . '/submissions/drafts',
     // New drafts beyond this many stored drafts get 429; a single draft is capped at 256 KB (413).
     // 'drafts_max'    => 10000,
+    // One address may start at most this many new drafts per hour (429 beyond it; saving an existing draft is free). 0 = no limit.
+    // 'drafts_per_ip_hour' => 30,
     // Retention is OFF unless explicitly enabled. Run `php maintenance.php retention --form=FORM` first;
     // destructive runs require `--apply --confirm=EXACT_DIGEST`. Keep archives outside the web application and data paths.
     'retention' => [

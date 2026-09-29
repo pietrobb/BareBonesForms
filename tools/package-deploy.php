@@ -140,7 +140,7 @@ function bbf_deploy_manifest(string $root, string $version = 'dev'): array
     $kinds = array_fill_keys(['.gitignore', '.htaccess', 'logs/.gitkeep', 'submissions/.gitkeep'], 'seed')
         + array_fill_keys(array_map(static fn($name) => "templates/$name", $templates), 'seed')
         + array_fill_keys(array_map(static fn($name) => "forms/$name", array_diff($stockForms, ['form.schema.json'])), 'sample')
-        + array_fill_keys(array_merge(['README.md', 'LICENSE', 'docs.html', 'index.html', 'demo.css', 'actions/README.md',
+        + array_fill_keys(array_merge(['README.md', 'CHANGELOG.md', 'LICENSE', 'docs.html', 'index.html', 'demo.css', 'actions/README.md',
             'check.php', 'api-psc.php', 'data/city-to-psc.json', 'data/psc-to-city.json'],
             array_values(array_filter($topLevel, static fn($path) => (bool)preg_match('/^demo\d*\.html$/', $path)))), 'extra');
     // Checksums of earlier published releases (tools/release-history.php): any of them counts as unmodified.

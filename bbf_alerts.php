@@ -219,6 +219,14 @@ function bbf_alert_duration(int $seconds): string {
     return round($seconds / 60) . ' minute(s)';
 }
 
+/** mail() envelope sender goes onto the sendmail command line: plain address characters only, no whitespace or quotes
+ * (FILTER_VALIDATE_EMAIL admits both). Not when the host's sendmail_path already sets one: a second -f is rejected
+ * by some wrappers and overrides the host's sender in others. */
+function bbf_mail_envelope_sender(string $from, ?string $sendmailPath = null): bool {
+    $sendmailPath ??= (string)ini_get('sendmail_path');
+    return !preg_match('/(?:\A|\s)-f/', $sendmailPath) && (bool)preg_match('/\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\z/', $from);
+}
+
 /** Configured SMTP first (if any); PHP mail() as the fallback, so a broken SMTP can still report itself. */
 function bbf_alert_send(string $to, string $subject, string $body, array $config): bool {
     $mail = is_array($config['mail'] ?? null) ? $config['mail'] : [];
@@ -244,8 +252,7 @@ function bbf_alert_send(string $to, string $subject, string $body, array $config
         $body = quoted_printable_encode($body);
     }
     // Envelope sender = From, so SPF/DMARC align with the site's domain instead of the hosting account's.
-    // Plain characters only: FILTER_VALIDATE_EMAIL admits quotes and shell-special characters, and this goes to the sendmail command line.
-    $params = preg_match('/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$/', $from) ? '-f' . $from : '';
+    $params = bbf_mail_envelope_sender($from) ? '-f' . $from : '';
     return function_exists('mail') && @mail(implode(', ', $addresses), $encodedSubject, $body, $headers, $params);
 }
 
@@ -278,6 +285,17 @@ function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null, ?callab
     if (function_exists('bbf_auth_config_problems')) {
         foreach (bbf_auth_config_problems($config) as $problem) {
             if ($problem['level'] === 'error') $problems[] = ['-', 'Access configuration problem', 'Self-check: ' . $problem['message']];
+        }
+    }
+
+    // Security rules and docs: an upgrade by an older upgrader (or FTP) can leave the release's new rules out.
+    require_once __DIR__ . '/bbf_upgrade.php';
+    foreach (bbf_htaccess_missing_rules(__DIR__) as $missing) $problems[] = ['-', 'Security rules missing', "Self-check: $missing"];
+    if (function_exists('bbf_diagnostic_probe')) {
+        foreach (['README.md', 'CHANGELOG.md'] as $doc) {
+            if (!is_file(__DIR__ . "/$doc") || bbf_diagnostic_probe($config, $doc, $body) !== 200) continue;
+            if ($body !== substr((string)file_get_contents(__DIR__ . "/$doc"), 0, 1048576)) continue; // a catch-all page, not the file
+            $problems[] = ['-', 'Docs publicly readable', "Self-check: $doc is served over HTTP and reveals the installed version. Add the *.md rule from .htaccess (Nginx: see its comments) or delete the file."];
         }
     }
 

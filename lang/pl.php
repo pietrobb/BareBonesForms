@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: ten typ pliku nie jest już akceptowany. Prześlij inny plik.',
     'uploadFieldTooLarge'   => '{label}: plik jest większy niż {max}.',
     'uploadTotalTooLarge'   => 'Pliki łącznie przekraczają {max}.',
+    'validationFailed'      => 'Popraw zaznaczone pola.',
+    'csrfInvalid'           => 'Sesja wygasła. Odśwież stronę i spróbuj ponownie.',
+    'invalidUtf8'           => 'Wysłany tekst zawiera nieprawidłowe znaki.',
+    'draftExpired'          => 'Zapisany postęp wygasł.',
+    'draftNotFound'         => 'Nie znaleziono zapisanego postępu. Sprawdź kod wznowienia.',
+    'draftTooLarge'         => 'Formularz jest zbyt duży, aby zapisać go jako wersję roboczą.',
+    'draftQuota'            => 'Obecnie zapisano zbyt wiele wersji roboczych. Spróbuj ponownie później.',
 ];

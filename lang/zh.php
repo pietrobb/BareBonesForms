@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}：已不再接受此文件类型。请上传其他文件。',
     'uploadFieldTooLarge'   => '{label}：文件超过 {max}。',
     'uploadTotalTooLarge'   => '文件总大小超过 {max}。',
+    'validationFailed'      => '请更正标记的字段。',
+    'csrfInvalid'           => '会话已过期。请重新加载页面后重试。',
+    'invalidUtf8'           => '提交的文本包含无效字符。',
+    'draftExpired'          => '保存的进度已过期。',
+    'draftNotFound'         => '未找到保存的进度。请检查恢复代码。',
+    'draftTooLarge'         => '表单太大，无法保存为草稿。',
+    'draftQuota'            => '当前保存的草稿过多。请稍后再试。',
 ];

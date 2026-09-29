@@ -280,7 +280,7 @@ try {
 
     // ─── Code-only ZIP: .htaccess arrives as .htaccess.dist ──────────
     upgrade_copy("$tmp/codeonly", "$tmp/codeonly2");
-    file_put_contents("$tmp/codeonly2/.htaccess.dist", file_get_contents("$tmp/new/.htaccess") . "\n# 2.2.0 rule\n");
+    file_put_contents("$tmp/codeonly2/.htaccess.dist", file_get_contents("$tmp/new/.htaccess") . "\n# 2.2.0 rule\nHeader always set X-BBF-Rule-220 \"1\"\n");
     $coManifest2 = json_decode((string)file_get_contents("$tmp/codeonly2/.bbf-manifest.json"), true);
     $coManifest2['files']['.htaccess']['sha256'] = hash_file('sha256', "$tmp/codeonly2/.htaccess.dist");
     file_put_contents("$tmp/codeonly2/.bbf-manifest.json", json_encode($coManifest2, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -290,6 +290,50 @@ try {
     file_put_contents("$tmp/hta/.htaccess", "AddHandler application/x-httpd-php84 .php\n", FILE_APPEND);
     $distYours = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly2"], "$tmp/hta")['json'] ?? [];
     check_upgrade(in_array('.htaccess', $distYours['files']['keep_yours'] ?? [], true), 'an .htaccess with your own lines is kept');
+    check_upgrade(in_array('.htaccess.dist', $distYours['added'] ?? [], true) && str_contains(implode(' ', $distYours['notices'] ?? []), '.htaccess.dist'),
+        'the new rules are written next to your .htaccess as .htaccess.dist and the plan says so');
+    $htaOwn = file_get_contents("$tmp/hta/.htaccess");
+    $htaApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly2", '--apply', '--confirm=' . ($distYours['confirm'] ?? '')], "$tmp/hta");
+    check_upgrade($htaApply['code'] === 0 && file_get_contents("$tmp/hta/.htaccess") === $htaOwn
+        && @file_get_contents("$tmp/hta/.htaccess.dist") === file_get_contents("$tmp/codeonly2/.htaccess.dist")
+        && str_contains(implode(' ', $htaApply['json']['notices'] ?? []), '.htaccess.dist'), 'the upgrade keeps your .htaccess, writes .htaccess.dist and repeats the notice');
+    $missingScript = "$tmp/missing-rules.php";
+    file_put_contents($missingScript, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true) . '; echo json_encode(bbf_htaccess_missing_rules($argv[1]));');
+    $missing = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
+    check_upgrade(count($missing ?? []) === 1 && str_contains($missing[0], 'X-BBF-Rule-220') && !str_contains($missing[0], 'AddHandler'),
+        'check.php/selfcheck name the release rule still missing from your .htaccess, not your own lines');
+    file_put_contents("$tmp/hta/.htaccess", $htaOwn . "Header always set X-BBF-Rule-220 \"1\"\n");
+    check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [], 'once the rule is copied over nothing is reported');
+    unlink("$tmp/hta/.htaccess.dist");
+    file_put_contents("$tmp/hta/.htaccess", "Options -Indexes\n");
+    $noMd = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
+    check_upgrade(count($noMd ?? []) === 1 && str_contains($noMd[0], '\.md$'), 'without .htaccess.dist an .htaccess lacking the *.md rule is reported');
+    unlink("$tmp/hta/.htaccess");
+    check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [], 'without .htaccess (Nginx) nothing is reported here');
+
+    // ─── maintenance.php runs the upgrader of the package, not the installed one ─
+    upgrade_copy("$tmp/new", "$tmp/deleg");
+    $delegCode = file_get_contents("$tmp/deleg/bbf_upgrade.php");
+    file_put_contents("$tmp/deleg/bbf_upgrade.php", str_replace("'notices' => \$notices,", "'notices' => array_merge(\$notices, ['planned by the 2.2.0 upgrader']),", $delegCode, $replaced));
+    upgrade_remanifest("$tmp/deleg", '2.2.0', ['newfile.php']);
+    upgrade_copy("$tmp/site", "$tmp/dsite");
+    $delegDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/deleg"], "$tmp/dsite");
+    $delegPlan = $delegDry['json'] ?? [];
+    check_upgrade($replaced === 1 && $delegDry['code'] === 0 && ($delegPlan['upgrader'] ?? '') === 'package 2.2.0'
+        && in_array('planned by the 2.2.0 upgrader', $delegPlan['notices'] ?? [], true), 'the dry run is planned by the upgrader shipped in the package');
+    $delegApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/deleg", '--apply', '--confirm=' . ($delegPlan['confirm'] ?? '')], "$tmp/dsite");
+    check_upgrade($delegApply['code'] === 0 && ($delegApply['json']['upgrader'] ?? '') === 'package 2.2.0'
+        && trim(upgrade_run([PHP_BINARY, 'maintenance.php', 'version'], "$tmp/dsite")['out']) === 'BareBonesForms 2.2.0'
+        && hash_file('sha256', "$tmp/dsite/bbf_upgrade.php") === hash_file('sha256', "$tmp/deleg/bbf_upgrade.php"), 'and applied by it: the site is on 2.2.0 with the new upgrader');
+    $sameDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/site")['json'] ?? [];
+    check_upgrade(($sameDry['ok'] ?? false) && !isset($sameDry['upgrader']), 'an identical upgrader in the package runs in-process');
+
+    // ─── Release history covers every published release (CI gate) ───
+    $tagList = trim((string)shell_exec('git -C ' . escapeshellarg($repo) . ' tag --list "v2.*"'));
+    if ($tagList !== '') {
+        $historyCheck = upgrade_run([PHP_BINARY, "$repo/tools/release-history.php", '--check'], $repo);
+        check_upgrade($historyCheck['code'] === 0, 'tools/release-history.json records every published release: ' . trim($historyCheck['out'] . $historyCheck['err']));
+    }
 
     // ─── Dry run warns when the new code would ignore a token ────────
     upgrade_copy("$tmp/site", "$tmp/tokens");

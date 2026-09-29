@@ -81,6 +81,25 @@ drafts_check(!($big['ok'] ?? true) && ($big['reason'] ?? '') === 'too_large', 'a
 $submitSource = (string)file_get_contents(dirname(__DIR__) . '/submit.php');
 drafts_check(str_contains($submitSource, "'too_large') respond(413") && str_contains($submitSource, "'quota') respond(429"),
     'submit.php maps too_large to 413 and quota to 429');
+// One address cannot fill drafts_max for everyone: drafts_per_ip_hour new drafts per clock hour, updates are free.
+$ipConfig = ['submissions_dir' => $root . '/ip-submissions', 'drafts_dir' => $root . '/ip-drafts', 'drafts_per_ip_hour' => 2];
+$hourStart = 7200 * 1000;
+$ip1 = bbf_draft_save($ipConfig, $form, $fields, ['name' => 'a'], '', $hourStart + 10, '198.51.100.7');
+$ip2 = bbf_draft_save($ipConfig, $form, $fields, ['name' => 'b'], '', $hourStart + 20, '198.51.100.7');
+$ip3 = bbf_draft_save($ipConfig, $form, $fields, ['name' => 'c'], '', $hourStart + 30, '198.51.100.7');
+drafts_check(($ip1['ok'] ?? false) && ($ip2['ok'] ?? false) && ($ip3['reason'] ?? '') === 'quota' && ($ip3['retry_after'] ?? 0) === 3570,
+    'a third new draft from the same address within the hour is refused with quota and retry_after until the next hour');
+drafts_check((bbf_draft_save($ipConfig, $form, $fields, ['name' => 'other'], '', $hourStart + 40, '203.0.113.9')['ok'] ?? false),
+    'another address still starts drafts');
+drafts_check((bbf_draft_save($ipConfig, $form, $fields, ['name' => 'a2'], $ip1['handle'] ?? '', $hourStart + 50, '198.51.100.7')['ok'] ?? false),
+    'the limited address can still update its existing draft');
+drafts_check((bbf_draft_save($ipConfig, $form, $fields, ['name' => 'd'], '', $hourStart + 3600, '198.51.100.7')['ok'] ?? false),
+    'the next hour the address may start drafts again');
+drafts_check(!str_contains((string)file_get_contents($root . '/ip-drafts/.new-by-ip'), '198.51.100'), 'the per-address counter stores no plain address');
+drafts_check((bbf_draft_save(['drafts_per_ip_hour' => 0] + $ipConfig, $form, $fields, ['name' => 'e'], '', $hourStart + 3610, '198.51.100.7')['ok'] ?? false)
+    && (bbf_draft_save(['drafts_per_ip_hour' => 0] + $ipConfig, $form, $fields, ['name' => 'f'], '', $hourStart + 3620, '198.51.100.7')['ok'] ?? false),
+    'drafts_per_ip_hour 0 turns the per-address limit off');
+drafts_check(str_contains($submitSource, 'bbf_draft_save($config, $form, $flatFields, $input, $handle, null, $ip)'), 'submit.php passes the client address');
 foreach ([
     'symptoms' => 'explicitly sensitive health field',
     'password' => 'password field',
@@ -355,6 +374,11 @@ try {
         'HTTP draft API is unavailable unless explicitly enabled');
     drafts_check($post('consultation', 'draft_load', ['_bbf_draft_handle' => 'short'])['code'] === 404,
         'HTTP malformed bearer fails without path access');
+    $skMissing = $post('consultation', 'draft_load&lang=sk', ['_bbf_draft_handle' => 'short']);
+    drafts_check($skMissing['code'] === 404 && ($skMissing['json']['message'] ?? '') === 'Uložený postup sa nenašiel. Skontrolujte kód na pokračovanie.',
+        '2.1.3: draft errors use the form language sent by bbf.js');
+    drafts_check(($post('consultation', 'draft_load&lang=sk', ['_bbf_draft_handle' => 'short'], false)['json']['message'] ?? '') === 'Platnosť relácie vypršala. Znova načítajte stránku a skúste to znova.',
+        '2.1.3: the CSRF error uses the form language');
     $httpDelete = $post('consultation', 'draft_delete', ['_bbf_draft_handle' => $httpHandle]);
     drafts_check($httpDelete['code'] === 200 && $post('consultation', 'draft_load', ['_bbf_draft_handle' => $httpHandle])['code'] === 404,
         'HTTP delete revokes subsequent resume');

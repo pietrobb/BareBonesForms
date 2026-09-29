@@ -57,9 +57,7 @@ $filterForm = $isCli ? (array_values(array_filter(array_slice($argv ?? [], 1), s
 $isLive = $isCli ? in_array('--live', $argv ?? [], true) : !empty($_GET['live']);
 $action = $isLive ? 'smoke_live' : 'smoke_dry';
 // Audit labels are fixed, not credentials, addresses, URLs or caller-supplied IDs.
-$auditConfig = $config;
-$auditConfig['access_tokens'] = is_array($config['access_tokens'] ?? null) ? $config['access_tokens'] : [];
-$auditConfig['access_tokens'][] = ['token' => $smokeToken]; // Include separate smoke secret in shared redaction.
+$auditConfig = $config; // bbf_audit_secrets() redacts smoke_token too
 $principal = ['id' => $isCli ? 'smoke-cli' : 'smoke-http', 'admin' => false];
 if (!$isCli) {
     bbf_auth_headers();
@@ -185,20 +183,131 @@ function smokePost(string $url, array $data, string $token): array {
 
 // ─── Test data generator ────────────────────────────────────────
 /** First candidate that satisfies the field's pattern and length rules, checked like submit.php does. */
-function smokeTextValue(array $field): string {
+function smokeTextValue(array $field, array $preferred = []): string {
     $min = (int)($field['minlength'] ?? 0);
     $max = (int)($field['maxlength'] ?? 0);
-    $candidates = [];
+    $pattern = is_string($field['pattern'] ?? null) ? $field['pattern'] : '';
+    $candidates = $preferred;
     if (is_string($field['placeholder'] ?? null) && $field['placeholder'] !== '') $candidates[] = $field['placeholder'];
     array_push($candidates, 'Test Value', str_repeat('Test data. ', (int)ceil(max($min, 11) / 11)), 'REF-A1B2C3', 'test', 'ABC123');
     foreach (range(1, 20) as $length) $candidates[] = substr(str_repeat('1234567890', 2), 0, $length);
+    // A value built from the pattern itself, so a placeholder like "e.g. SK1234" is not needed to pass "^[A-Z]{2}\d{4}$".
+    if ($pattern !== '') foreach (['min', 'more'] as $reps) {
+        $sample = smokePatternSample($pattern, $reps);
+        if ($sample !== null) $candidates[] = $sample;
+    }
+    $regex = $pattern !== '' ? bbfFieldPatternRegex($pattern) : null;
     foreach ($candidates as $value) {
         $length = function_exists('mb_strlen') ? mb_strlen($value) : strlen($value);
         if ($length < $min || ($max > 0 && $length > $max)) continue;
-        if (!empty($field['pattern']) && @preg_match((string)bbfFieldPatternRegex((string)$field['pattern']), $value) !== 1) continue;
+        if ($pattern !== '' && ($regex === null || @preg_match($regex, $value) !== 1)) continue;
         return $value;
     }
-    return 'Test Value';
+    return $preferred[0] ?? 'Test Value';
+}
+
+/**
+ * One string matching a field pattern (JavaScript RegExp syntax), or null when the pattern uses something this
+ * small generator does not model. $reps: 'min' takes the fewest repetitions, 'more' a few more (for minlength).
+ * The caller always re-checks the result with the real regex.
+ */
+function smokePatternSample(string $pattern, string $reps = 'min'): ?string {
+    $i = 0;
+    $out = smokePatternAlternatives($pattern, $i, $reps);
+    return $out !== null && $i >= strlen($pattern) ? $out : null;
+}
+
+function smokePatternAlternatives(string $p, int &$i, string $reps): ?string {
+    // The first alternative the generator can produce is used; the rest are parsed only to reach the enclosing ")".
+    $result = smokePatternSequence($p, $i, $reps);
+    while ($i < strlen($p) && $p[$i] === '|') {
+        $i++;
+        $alternative = smokePatternSequence($p, $i, $reps);
+        $result ??= $alternative;
+    }
+    return $result;
+}
+
+function smokePatternSequence(string $p, int &$i, string $reps): ?string {
+    $out = '';
+    $ok = true;
+    while ($i < strlen($p) && $p[$i] !== '|' && $p[$i] !== ')') {
+        $atom = smokePatternAtom($p, $i, $reps);
+        if ($atom === null) { $ok = false; $atom = ''; }
+        [$minRep, $moreRep] = smokePatternQuantifier($p, $i);
+        $out .= str_repeat($atom, $reps === 'min' ? $minRep : $moreRep);
+    }
+    return $ok ? $out : null;
+}
+
+/** Repetition counts for the quantifier at $i (1/1 when there is none); a lazy "?" suffix is skipped. */
+function smokePatternQuantifier(string $p, int &$i): array {
+    $counts = [1, 1];
+    $c = $p[$i] ?? '';
+    if ($c === '?') $counts = [0, 1];
+    elseif ($c === '*') $counts = [0, 3];
+    elseif ($c === '+') $counts = [1, 3];
+    elseif ($c === '{' && preg_match('/\G\{(\d+)(,(\d*))?\}/', $p, $m, 0, $i)) {
+        $n = (int)$m[1];
+        $counts = [$n, isset($m[2]) ? ($m[3] !== '' ? max($n, min((int)$m[3], $n + 5)) : $n + 3) : $n];
+        $i += strlen($m[0]);
+        if (($p[$i] ?? '') === '?') $i++;
+        return $counts;
+    } else return $counts;
+    $i++;
+    if (($p[$i] ?? '') === '?') $i++;
+    return $counts;
+}
+
+/** A sample for one atom (group, class, escape, "." or literal), or null if it cannot be produced. */
+function smokePatternAtom(string $p, int &$i, string $reps): ?string {
+    $c = $p[$i];
+    if ($c === '^' || $c === '$') { $i++; return ''; }
+    if ($c === '.') { $i++; return 'a'; }
+    if ($c === '(') {
+        $i++;
+        $lookaround = false;
+        if (substr($p, $i, 2) === '?:') $i += 2;
+        elseif (preg_match('/\G\?<(?![=!])[A-Za-z_]\w*>/', $p, $m, 0, $i)) $i += strlen($m[0]);
+        elseif (preg_match('/\G\?<?[=!]/', $p, $m, 0, $i)) { $i += strlen($m[0]); $lookaround = true; }
+        $inner = smokePatternAlternatives($p, $i, $reps);
+        if (($p[$i] ?? '') !== ')') return null;
+        $i++;
+        return $lookaround ? '' : $inner;
+    }
+    if ($c === '[') {
+        if (!preg_match('/\G\[\^?\]?(?:\\\\.|[^\]\\\\])*\]/s', $p, $m, 0, $i)) return null;
+        $i += strlen($m[0]);
+        return smokePatternPick($m[0]);
+    }
+    if ($c === '\\') {
+        $n = $p[$i + 1] ?? '';
+        if ($n === '') return null;
+        if (preg_match('/\G\\\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|p\{[\w=]+\}|P\{[\w=]+\}|c[A-Za-z])/', $p, $m, 0, $i)) {
+            $i += strlen($m[0]);
+            return smokePatternPick($m[0]);
+        }
+        $i += 2;
+        $known = ['d' => '1', 'w' => 'a', 's' => ' ', 'D' => 'a', 'W' => '-', 'S' => 'a', 'b' => '', 'B' => '', 'n' => "\n", 't' => "\t", 'r' => "\r"];
+        if (isset($known[$n])) return $known[$n];
+        if (ctype_digit($n) || ctype_alpha($n)) return null;   // back-references and escapes this generator does not know
+        return $n;
+    }
+    // Literal character (one UTF-8 sequence).
+    preg_match('/\G./su', $p, $m, 0, $i);
+    $char = $m[0] ?? $c;
+    $i += strlen($char);
+    return $char;
+}
+
+/** First common character matched by a single-character regex fragment (class or escape). */
+function smokePatternPick(string $fragment): ?string {
+    $regex = bbfFieldPatternRegex('^' . $fragment . '$');
+    if ($regex === null) return null;
+    foreach (['a', 'A', '1', 'x', 'Z', '0', '9', '-', '_', '.', ' ', '@', '+', '/', ':', 'á', 'ž', 'é', 'ß', '*', '#', ','] as $char) {
+        if (@preg_match($regex, $char) === 1) return $char;
+    }
+    return null;
 }
 
 function generateSmokeData(array $form, string $emailOverride = ''): array {
@@ -213,8 +322,8 @@ function generateSmokeData(array $form, string $emailOverride = ''): array {
 
         switch ($type) {
             case 'text':     $data[$name] = smokeTextValue($field); break;
-            case 'email':    $data[$name] = $email; break;
-            case 'tel':      $data[$name] = '+421900123456'; break;
+            case 'email':    $data[$name] = empty($field['pattern']) ? $email : smokeTextValue($field, [$email]); break;
+            case 'tel':      $data[$name] = empty($field['pattern']) ? '+421900123456' : smokeTextValue($field, ['+421900123456']); break;
             case 'url':      $data[$name] = 'https://example.com'; break;
             case 'number':
                 $min = $field['min'] ?? 1;
@@ -225,6 +334,7 @@ function generateSmokeData(array $form, string $emailOverride = ''): array {
             case 'textarea':
                 $minLen = $field['minlength'] ?? 5;
                 $data[$name] = str_repeat('Smoke test data. ', (int)ceil(max($minLen, 10) / 18));
+                if (!empty($field['pattern'])) $data[$name] = smokeTextValue($field, [$data[$name]]);
                 break;
             case 'select':
             case 'radio':

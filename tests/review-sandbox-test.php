@@ -52,7 +52,7 @@ try {
         return bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . '/' . $path, null, $options);
     }
     function sb_cookie(array $r): string {
-        preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $r['headers'], $m);
+        preg_match('/Set-Cookie:\s*((?:PHPSESSID|BBFADMIN)=[^;\r\n]+)/i', $r['headers'], $m);
         if (!isset($m[1])) throw new RuntimeException('Missing session cookie');
         return $m[1];
     }
@@ -262,11 +262,16 @@ try {
     $public = sb_http('submit.php?action=csrf&form=alpha'); $cookie = sb_cookie($public);
     sb_check($public['code'] === 200 && !empty($public['json']['csrf_token']), 'public CSRF endpoint needs no admin');
     $before = sb_http('tests/session-probe.php?seed=1', ['cookie' => $cookie])['json'];
-    $s = sb_login($cookie); $c = $base; $c['api_token'] = ''; sb_config($c);
-    sb_check(sb_http('sandbox.php', ['cookie' => $s['cookie']])['code'] === 403, 'management removal denies reused public session');
-    $after = sb_http('tests/session-probe.php', ['cookie' => $s['cookie']])['json'];
+    $s = sb_login($cookie);
+    // The sign-in uses its own BBFADMIN cookie (limited to the install path); the public PHPSESSID is never touched.
+    sb_check(str_starts_with($s['cookie'], 'BBFADMIN=') && !preg_match('/Set-Cookie:\s*PHPSESSID=/i', $s['response']['headers'])
+        && preg_match('/Set-Cookie:\s*BBFADMIN=[^\r\n]*;\s*path=\/;/i', $s['response']['headers']) === 1, 'management session has its own cookie name and path');
+    $both = "$cookie; {$s['cookie']}";
+    $c = $base; $c['api_token'] = ''; sb_config($c);
+    sb_check(sb_http('sandbox.php', ['cookie' => $both])['code'] === 403, 'management removal denies reused public session');
+    $after = sb_http('tests/session-probe.php', ['cookie' => $both])['json'];
     sb_check($before === $after && $after['draft']['answer'] === 'keep-me' && !empty($after['secret']), 'non-management draft and respondent secret survive login/removal');
-    $post = sb_post($s, false, ['answer' => 'public answer', '_bbf_csrf' => $public['json']['csrf_token']]);
+    $post = sb_post(['cookie' => $both], false, ['answer' => 'public answer', '_bbf_csrf' => $public['json']['csrf_token']]);
     $r = sb_http('submit.php?form=alpha', $post);
     sb_check($r['code'] === 200 && ($r['json']['fixture_action'] ?? false) && !isset($r['json']['sandbox']), 'normal public submission still executes intended fixture action');
     $saved = glob("$root/submissions/alpha/*.json") ?: [];
@@ -283,7 +288,7 @@ try {
         $before = glob("$root/submissions/smoke/*.json") ?: [];
         $r = sb_http($path, $post);
         sb_check($r['code'] === ($accepted ? 200 : 403) && ($r['json']['status'] ?? '') === ($accepted ? 'ok' : 'error')
-            && !isset($r['json']['sandbox']) && ($accepted || ($r['json']['message'] ?? '') === 'Invalid or missing CSRF token.'), $name);
+            && !isset($r['json']['sandbox']) && ($accepted || ($r['json']['message'] ?? '') === 'Your session has expired. Reload the page and try again.'), $name);
         $after = glob("$root/submissions/smoke/*.json") ?: [];
         $added = array_values(array_diff($after, $before));
         sb_check($accepted ? count($added) === 1 && count($after) === count($before) + 1

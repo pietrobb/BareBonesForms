@@ -110,9 +110,14 @@ module.exports = { loadBBF, MiniElement }; function loadBBF(overrides = {}) {
         constructor(type, options = {}) { this.type = type; Object.assign(this, options); }
         preventDefault() { this.defaultPrevented = true; }
     }
+    const windowListeners = {};
     const context = vm.createContext({
         document,
-        window: {},
+        window: {
+            listeners: windowListeners,
+            addEventListener(type, fn) { (windowListeners[type] ||= []).push(fn); },
+            removeEventListener(type, fn) { windowListeners[type] = (windowListeners[type] || []).filter(f => f !== fn); },
+        },
         location: { href: 'https://example.test/demo.html', origin: 'https://example.test', search: '' },
         URL,
         URLSearchParams,
@@ -125,6 +130,7 @@ module.exports = { loadBBF, MiniElement }; function loadBBF(overrides = {}) {
         clearTimeout: overrides.clearTimeout || clearTimeout,
         console,
     });
+    if (overrides.prelude) vm.runInContext(overrides.prelude, context);
     const source = fs.readFileSync(path.join(__dirname, '..', 'bbf.js'), 'utf8');
     vm.runInContext(source, context, { filename: 'bbf.js' });
     return { BBF: context.window.BBF, document, context };
@@ -807,6 +813,81 @@ test('2.1.2 Other/Rating are translated, "Other" hides on reset, $& in a label s
     sel.value = 'a';
     BBF._resetCustomFields(form);
     assert.equal(otherText.style.display, 'none');
+});
+
+test('2.1.3 message parameters work without Object.hasOwn (Safari < 15.4)', () => {
+    const { BBF } = loadBBF({ prelude: 'delete Object.hasOwn;' });
+    BBF.registerLang('sk', { minlength: '{label} musí mať aspoň {min} znakov.' });
+    assert.equal(BBF._t('minlength', { label: 'Meno', min: 3 }, 'sk'), 'Meno musí mať aspoň 3 znakov.');
+    assert.equal(BBF._t('minlength', Object.assign(Object.create({ min: 9 }), { label: 'x' }), 'sk'), 'x musí mať aspoň {min} znakov.');
+});
+
+test('2.1.3 show_if on a file field re-evaluates when an upload finishes or is removed', () => {
+    const { BBF, context } = loadBBF();
+    const form = new MiniElement('form'); form.className = 'bbf-form';
+    const fileWrap = form.appendChild(new MiniElement('div'));
+    fileWrap.setAttribute('data-field', 'photo'); fileWrap._bbfFiles = [];
+    const dependent = form.appendChild(new MiniElement('div'));
+    dependent.setAttribute('data-field', 'caption');
+    const fields = [{ name: 'photo', type: 'file' }, { name: 'caption', required: true, show_if: { field: 'photo', op: 'not_empty' } }];
+    const cleanup = BBF._bindConditions(form, fields, false);
+    assert.equal(dependent.style.display, 'none');
+    fileWrap._bbfFiles = [{ state: 'uploading' }];
+    form.dispatchEvent(new context.Event('bbf:files-changed'));
+    assert.equal(dependent.style.display, 'none', 'an unfinished upload is not a value');
+    fileWrap._bbfFiles = [{ state: 'done', token: 't1' }];
+    form.dispatchEvent(new context.Event('bbf:files-changed'));
+    assert.equal(dependent.style.display, '', 'finished upload shows the dependent field');
+    fileWrap._bbfFiles = [];
+    form.dispatchEvent(new context.Event('bbf:files-changed'));
+    assert.equal(dependent.style.display, 'none', 'removing the file hides it again');
+    cleanup();
+    fileWrap._bbfFiles = [{ state: 'done', token: 't2' }];
+    form.dispatchEvent(new context.Event('bbf:files-changed'));
+    assert.equal(dependent.style.display, 'none', 'cleanup unbinds the listener');
+});
+
+test('2.1.3 empty any/all conditions evaluate the same in bbf.js and PHP', () => {
+    const { BBF } = loadBBF();
+    const form = new MiniElement('form');
+    const input = form.appendChild(new MiniElement('input'));
+    input.name = 'x'; input.setAttribute('name', 'x'); input.value = 'no';
+    const php = cond => {
+        const code = `define('BBF_LOADED', true); require $argv[1]; echo json_encode(evalCondition(json_decode(stream_get_contents(STDIN), true), ['x' => 'no']));`;
+        const r = spawnSync(process.env.PHP_BINARY || 'php', ['-r', code, path.join(__dirname, '..', 'bbf_functions.php')],
+            { input: JSON.stringify(cond), encoding: 'utf8', timeout: 10000, windowsHide: true });
+        assert.ifError(r.error); assert.equal(r.status, 0, r.stderr);
+        return JSON.parse(r.stdout);
+    };
+    for (const cond of [{ any: [] }, { all: [] }, { any: [], field: 'x', value: 'yes' }, { all: [], field: 'x', value: 'no' },
+        { any: [{ field: 'x', value: 'yes' }] }, { all: [{ field: 'x', value: 'no' }] }]) {
+        assert.equal(BBF._evalCondition(cond, form), php(cond), JSON.stringify(cond));
+    }
+});
+
+test('2.1.3 field patterns with \\s, \\S, \\d and \\w give the same result in the browser and in PHP', () => {
+    const patterns = ['^\\S+\\s\\S+$', '^[\\s\\w]+$', '^\\S+$', '^\\d{3}\\s?\\d{2}$', '^\\w+$', '^[^\\s]+$', '^a\\\\s$'];
+    const values = ['Jana Nová', 'Jana\u00a0Nová', 'Jana\u2009Nová', 'ab\u3000cd', 'Jana', '811\u00a001', '811 01', '٨١١٠١', 'a\\s', 'a\ufeffb'];
+    const cases = patterns.flatMap(p => values.map(v => ({ p, v })));
+    const code = `define('BBF_LOADED', true); require $argv[1]; $out = [];
+        foreach (json_decode(stream_get_contents(STDIN), true) as $c) $out[] = preg_match(bbfFieldPatternRegex($c['p']), $c['v']) === 1;
+        echo json_encode($out);`;
+    const r = spawnSync(process.env.PHP_BINARY || 'php', ['-r', code, path.join(__dirname, '..', 'bbf_functions.php')],
+        { input: JSON.stringify(cases), encoding: 'utf8', timeout: 10000, windowsHide: true });
+    assert.ifError(r.error); assert.equal(r.status, 0, r.stderr);
+    const php = JSON.parse(r.stdout);
+    cases.forEach((c, i) => assert.equal(php[i], new RegExp(c.p, 'u').test(c.v), `${c.p} on ${JSON.stringify(c.v)}`));
+});
+
+test('2.1.3 shipped browser scripts avoid APIs missing in Safari 14 / iOS 14', () => {
+    const shipped = ['bbf.js', 'bbf-context.js', 'bbf-analytics.js', 'gclid.js'];
+    for (const file of shipped) {
+        const src = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+        for (const [name, re] of [['Object.hasOwn', /Object\.hasOwn\s*\(/], ['Array/String .at()', /\.at\(\s*-?\d/],
+            ['structuredClone', /\bstructuredClone\s*\(/], ['findLast', /\.findLast(Index)?\s*\(/], ['class static block', /\bstatic\s*\{/]]) {
+            assert.doesNotMatch(src, re, `${file} uses ${name}`);
+        }
+    }
 });
 
 test('2.1.2 unparseable number, file fields in min_filled, and _payment errors are reported', () => {

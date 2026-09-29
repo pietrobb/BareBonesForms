@@ -42,4 +42,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: šio tipo failai nebepriimami. Įkelkite kitą failą.',
     'uploadFieldTooLarge'   => '{label}: failas didesnis nei {max}.',
     'uploadTotalTooLarge'   => 'Bendras failų dydis viršija {max}.',
+    'validationFailed'      => 'Pataisykite pažymėtus laukus.',
+    'csrfInvalid'           => 'Jūsų sesija baigėsi. Iš naujo įkelkite puslapį ir bandykite dar kartą.',
+    'invalidUtf8'           => 'Pateiktame tekste yra netinkamų simbolių.',
+    'draftExpired'          => 'Išsaugota pažanga nebegalioja.',
+    'draftNotFound'         => 'Išsaugota pažanga nerasta. Patikrinkite tęsimo kodą.',
+    'draftTooLarge'         => 'Forma per didelė, kad būtų išsaugota kaip juodraštis.',
+    'draftQuota'            => 'Šiuo metu išsaugota per daug juodraščių. Bandykite vėliau.',
 ];

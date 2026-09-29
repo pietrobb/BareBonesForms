@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: jenis file ini tidak lagi diterima. Silakan unggah file lain.',
     'uploadFieldTooLarge'   => '{label}: file lebih besar dari {max}.',
     'uploadTotalTooLarge'   => 'Total file melebihi {max}.',
+    'validationFailed'      => 'Perbaiki kolom yang ditandai.',
+    'csrfInvalid'           => 'Sesi Anda telah berakhir. Muat ulang halaman dan coba lagi.',
+    'invalidUtf8'           => 'Teks yang dikirim berisi karakter yang tidak valid.',
+    'draftExpired'          => 'Kemajuan yang disimpan telah kedaluwarsa.',
+    'draftNotFound'         => 'Kemajuan yang disimpan tidak ditemukan. Periksa kode lanjutan.',
+    'draftTooLarge'         => 'Formulir terlalu besar untuk disimpan sebagai draf.',
+    'draftQuota'            => 'Terlalu banyak draf yang disimpan saat ini. Coba lagi nanti.',
 ];

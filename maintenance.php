@@ -83,9 +83,10 @@ if (in_array($command, ['version', 'upgrade', 'upgrade-rollback'], true)) {
         if (!hash_equals($checksum, (string)hash_file('sha256', $path))) bbf_maintenance_fail("The package does not match --checksum; it is not the published release ZIP.", 1);
     }
     try {
+        $confirm = $options['apply'] ? $options['confirm'] : null;
         $result = $command === 'upgrade'
-            ? bbf_upgrade($config, $path, $options['apply'] ? $options['confirm'] : null)
-            : bbf_upgrade_rollback($path, $options['apply'] ? $options['confirm'] : null);
+            ? (bbf_upgrade_delegate($path, $confirm, __DIR__) ?? bbf_upgrade($config, $path, $confirm))
+            : bbf_upgrade_rollback($path, $confirm);
     } catch (Throwable $error) {
         bbf_maintenance_fail(ucfirst($command) . ' failed: ' . $error->getMessage(), 1);
     }

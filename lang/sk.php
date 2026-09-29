@@ -46,4 +46,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: tento typ súboru už nie je povolený. Nahrajte iný súbor.',
     'uploadFieldTooLarge'   => '{label}: súbor je väčší ako {max}.',
     'uploadTotalTooLarge'   => 'Súbory spolu presahujú {max}.',
+    'validationFailed'      => 'Opravte, prosím, označené polia.',
+    'csrfInvalid'           => 'Platnosť relácie vypršala. Znova načítajte stránku a skúste to znova.',
+    'invalidUtf8'           => 'Odoslaný text obsahuje neplatné znaky.',
+    'draftExpired'          => 'Platnosť uloženého postupu vypršala.',
+    'draftNotFound'         => 'Uložený postup sa nenašiel. Skontrolujte kód na pokračovanie.',
+    'draftTooLarge'         => 'Formulár je príliš veľký na uloženie ako koncept.',
+    'draftQuota'            => 'Práve je uložených príliš veľa konceptov. Skúste to neskôr.',
 ];

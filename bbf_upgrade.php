@@ -246,6 +246,18 @@ function bbf_upgrade_plan(array $stage, string $install): array {
         if (!in_array($file['kind'], ['code', 'extra'], true) || isset($new['files'][$path]) || !is_file("$install/$path")) continue;
         $files[in_array(hash_file('sha256', "$install/$path"), [$file['sha256'], ...($file['history'] ?? [])], true) ? 'remove' : 'keep_obsolete'][] = $path;
     }
+    // Your .htaccess (host lines such as AddHandler) is kept, but new security rules of the release must still
+    // reach you: they are written next to it as .htaccess.dist and the plan says so.
+    $notices = [];
+    $htaccess = $new['files']['.htaccess']['sha256'] ?? null;
+    if (in_array('.htaccess', $files['keep_yours'], true) && $htaccess !== ($old['files']['.htaccess']['sha256'] ?? null)) {
+        $dist = is_file("$install/.htaccess.dist") ? hash_file('sha256', "$install/.htaccess.dist") : null;
+        if ($dist !== $htaccess) {
+            if (!copy("{$stage['dir']}/.htaccess", "{$stage['dir']}/.htaccess.dist")) throw new RuntimeException('Cannot stage .htaccess.dist');
+            $files[$dist === null ? 'add' : 'replace'][] = '.htaccess.dist';
+        }
+        $notices[] = 'Your .htaccess has lines of your own, so it is kept. This release changed its security rules: compare .htaccess with .htaccess.dist and copy the new rules over (selfcheck reports rules still missing).';
+    }
 
     $lint = $problems === [] ? bbf_upgrade_lint($stage['dir'], array_merge($files['add'], $files['replace'])) : [];
     if ($lint) $problems[] = 'PHP syntax errors in the package: ' . implode('; ', $lint);
@@ -280,6 +292,7 @@ function bbf_upgrade_plan(array $stage, string $install): array {
             ? array_values(array_diff(bbf_upgrade_config_keys("{$stage['dir']}/config.example.php"), bbf_upgrade_config_keys("$install/config.example.php"))) : [],
         'breaking' => bbf_upgrade_breaking((string)@file_get_contents("{$stage['dir']}/CHANGELOG.md"), $from, $to),
         'access_warnings' => bbf_upgrade_access_warnings($stage['dir'], $install),
+        'notices' => $notices,
         'check' => $check,
         'problems' => $problems,
         'up_to_date' => $changes === 0 && $from === $to,
@@ -287,6 +300,42 @@ function bbf_upgrade_plan(array $stage, string $install): array {
     ];
     $plan['_files'] = $files;
     return $plan;
+}
+
+/**
+ * `maintenance.php upgrade` runs the upgrader shipped in the PACKAGE when it differs from the installed one, so a
+ * fix to the upgrade itself (new file kinds, .htaccess.dist, release history) applies to the very upgrade that
+ * ships it. Returns null when the package's upgrader is this one or PHP cannot start a child: then run in-process.
+ * Stable contract with later versions: bbf_upgrade(array $config, string $package, ?string $confirm, string $install).
+ */
+function bbf_upgrade_delegate(string $package, ?string $confirm, string $install): ?array {
+    if (defined('BBF_UPGRADE_DELEGATED') || !function_exists('proc_open') || PHP_BINARY === '') return null;
+    $package = realpath($package) ?: $package; // the child runs in the installation folder
+    $stage = bbf_upgrade_stage($package); // verifies every checksum before any package code runs
+    try {
+        $new = "{$stage['dir']}/bbf_upgrade.php";
+        if (!is_file($new) || hash_file('sha256', $new) === hash_file('sha256', __FILE__)) return null;
+        $script = 'define("BBF_LOADED", true); define("BBF_UPGRADE_DELEGATED", true); require $argv[1];'
+            . ' $c = (static fn() => require $argv[2])();'
+            . ' if (!is_array($c)) { fwrite(STDERR, "Cannot read config.php."); exit(1); }'
+            . ' try { echo json_encode(bbf_upgrade($c, $argv[3], $argv[4] === "" ? null : $argv[4], $argv[5]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); }'
+            . ' catch (Throwable $e) { fwrite(STDERR, $e->getMessage()); exit(1); }';
+        $process = @proc_open([PHP_BINARY, '-r', $script, $new, "$install/config.php", $package, $confirm ?? '', $install],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $install);
+        if (!is_resource($process)) return null;
+        fclose($pipes[0]);
+        $out = (string)stream_get_contents($pipes[1]);
+        $err = (string)stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        proc_close($process);
+        $result = json_decode($out, true);
+        if (!is_array($result)) throw new RuntimeException(trim($err) !== '' ? trim($err) : 'the upgrader of the package ' . $stage['manifest']['version'] . ' gave no result.');
+        $result['upgrader'] = 'package ' . $stage['manifest']['version'];
+        return $result;
+    } finally {
+        bbf_upgrade_rmtree($stage['dir']);
+    }
 }
 
 /** Dry run without $confirm; with the plan's digest it backs up, upgrades, verifies and rolls back on failure. */
@@ -351,6 +400,7 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
         'files' => $plan['files'],
         'new_config_settings' => $plan['new_config_settings'],
         'breaking' => $plan['breaking'],
+        'notices' => $plan['notices'],
         'check' => $after === null ? 'skipped: run php smoketest.php' : $after['summary'],
         'backup' => $backup,
         'undo' => "php maintenance.php upgrade-rollback --backup=$backup",
@@ -450,6 +500,26 @@ function bbf_upgrade_rollback(string $backup, ?string $confirm): array {
     if (!hash_equals($plan['confirm'], $confirm)) return ['ok' => false, 'error' => 'The backup changed since the dry run. Run the dry run again.'];
     $result = bbf_upgrade_restore($backup);
     return ['ok' => $result['ok'], 'rolled_back' => $plan['rollback'], 'errors' => $result['errors']];
+}
+
+/**
+ * Rules of this release your .htaccess lacks, for check.php and selfcheck. Compared line by line with .htaccess.dist
+ * when present (the upgrade writes it next to a .htaccess you edited), otherwise with the essential rules below.
+ * Without a .htaccess (Nginx and others) nothing is reported here; check.php probes the server instead.
+ */
+function bbf_htaccess_missing_rules(string $install): array {
+    $own = @file_get_contents("$install/.htaccess");
+    if (!is_string($own)) return [];
+    $norm = static fn(string $line): string => (string)preg_replace('/\s+/', ' ', trim($line));
+    $have = array_flip(array_map($norm, preg_split('/\R/', $own) ?: []));
+    $dist = @file_get_contents("$install/.htaccess.dist");
+    $wanted = is_string($dist)
+        ? array_filter(array_map($norm, preg_split('/\R/', $dist) ?: []), static fn(string $line): bool => $line !== '' && $line[0] !== '#')
+        : ['<FilesMatch "\.md$">']; // README.md/CHANGELOG.md reveal the installed version
+    $missing = array_values(array_filter(array_unique($wanted), static fn(string $line): bool => !isset($have[$line])));
+    if ($missing === []) return [];
+    return [count($missing) . ' rule line(s) of this release are missing from .htaccess' . (is_string($dist) ? ' (compare it with .htaccess.dist and copy them over)' : '')
+        . ': ' . implode(' | ', array_slice($missing, 0, 5)) . (count($missing) > 5 ? ' | ...' : '')];
 }
 
 /**

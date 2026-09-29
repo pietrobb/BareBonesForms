@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: questo tipo di file non è più accettato. Carica un file diverso.',
     'uploadFieldTooLarge'   => '{label}: il file supera {max}.',
     'uploadTotalTooLarge'   => 'I file superano {max} in totale.',
+    'validationFailed'      => 'Correggi i campi evidenziati.',
+    'csrfInvalid'           => 'La sessione è scaduta. Ricarica la pagina e riprova.',
+    'invalidUtf8'           => 'Il testo inviato contiene caratteri non validi.',
+    'draftExpired'          => 'I progressi salvati sono scaduti.',
+    'draftNotFound'         => 'Progressi salvati non trovati. Controlla il codice di ripresa.',
+    'draftTooLarge'         => 'Il modulo è troppo grande per essere salvato come bozza.',
+    'draftQuota'            => 'Troppe bozze salvate al momento. Riprova più tardi.',
 ];

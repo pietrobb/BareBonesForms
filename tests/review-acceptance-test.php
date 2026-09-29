@@ -490,8 +490,10 @@ acceptance_check(str_contains($htaccess, 'BBF_BASE/') && str_contains($htaccess,
     && str_contains($readme, 'does not replace these sentinel-file probes'),
     'Nginx guidance protects config and backup variants while preserving language JavaScript and requiring sentinel probes');
 acceptance_check(preg_match('/<FilesMatch "\\\\\.md\$">\s*Require all denied\s*<\/FilesMatch>/', $htaccess) === 1
-    && str_contains($htaccess, '# location ~ \.md$ { deny all; }') && str_contains($readme, '`README.md`, `CHANGELOG.md`'),
-    'README.md/CHANGELOG.md are denied by Apache and Nginx rules and listed among the probes');
+    && str_contains($htaccess, '# location ~ ^/BBF_BASE/.*\.md$ { deny all; }') && !str_contains($htaccess, '# location ~ \.md$')
+    && str_contains($docsHtml = acceptance_source($root, 'docs.html'), 'location ~ ^/BBF_BASE/.*\.md$ { deny all; }') && !str_contains($docsHtml, 'location ~ \.md$')
+    && str_contains($readme, '`README.md`, `CHANGELOG.md`'),
+    'README.md/CHANGELOG.md are denied by Apache and Nginx rules (Nginx only inside the installation, not the whole domain) and listed among the probes');
 $docsHtml = acceptance_source($root, 'docs.html'); $changelog = acceptance_source($root, 'CHANGELOG.md');
 preg_match('/^## \[(\d+\.\d+\.\d+)\]/m', $changelog, $latest);
 acceptance_check(($latest[1] ?? '') !== '' && str_contains($docsHtml, '<title>BareBonesForms v' . $latest[1] . ' ')
@@ -502,6 +504,14 @@ acceptance_check(!str_contains(acceptance_source($root, 'bbf_uploads.php'), 'BBF
     && !str_contains(acceptance_source($root, 'docs/FILE-UPLOAD-DESIGN.md'), 'landed for BareBonesForms 2.2'),
     'file uploads are attributed to 2.1.0, the release that shipped them');
 $releaseYml = acceptance_source($root, '.github/workflows/release.yml');
+$releaseTop = strstr($releaseYml, "\njobs:", true);
+acceptance_check(str_contains($releaseTop, "permissions: {}") && !str_contains($releaseTop, 'write')
+    && preg_match('/ci-gate:.*?permissions:\s*\n\s*actions: read\s*#[^\n]*\n\s*steps:/s', $releaseYml) === 1
+    && preg_match('/package:.*?needs: ci-gate.*?permissions:\s*\n\s*contents: write.*?id-token: write.*?attestations: write/s', $releaseYml) === 1,
+    'release.yml grants no workflow-wide token rights: the CI gate only reads Actions, only the package job can write');
+acceptance_check(str_contains($releaseYml, '$p !== "CHANGELOG.md"'), 'the upgrade ZIP keeps CHANGELOG.md, so the dry run still lists Breaking notes');
+acceptance_check(str_contains($workflow, 'run: php tools/release-history.php --check') && str_contains($workflow, 'fetch-depth: 0'),
+    'CI fails while a published release is missing from tools/release-history.json');
 acceptance_check(str_contains($releaseYml, '$p !== "check.php"') && str_contains($releaseYml, '.htaccess.dist')
     && str_contains($readme, 'code plus `check.php`') && str_contains($readme, '`.htaccess.dist`: compare it')
     && str_contains($docsHtml, 'code plus <code>check.php</code>') && str_contains($docsHtml, '<code>.htaccess.dist</code>: compare it'),

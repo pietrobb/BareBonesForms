@@ -526,10 +526,7 @@ function bbf_backup_audit_restore(array $config, array $payload, callable $publi
         'action' => 'backup_restore', 'form' => $payload['form'],
         'submission_ids' => $submissionIds, 'decision' => 'allowed',
         'result' => 'completed', 'result_count' => count($payload['records'])];
-    $secrets = [$config['api_token'] ?? ''];
-    foreach (is_array($config['access_tokens'] ?? null) ? $config['access_tokens'] : [] as $record) {
-        if (is_array($record)) $secrets[] = $record['token'] ?? '';
-    }
+    $secrets = bbf_audit_secrets($config);
     $lines = '';
     foreach ($entries as $entry) {
         if (!is_array($entry) || !bbf_review_timestamp($entry['utc'] ?? null)

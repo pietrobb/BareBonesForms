@@ -46,4 +46,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: De\'wI\' ghItlh Segh lajQo\'lu\' DaH. latlh yIlI\'.',
     'uploadFieldTooLarge'   => '{label}: De\'wI\' ghItlh tIn law\' {max} tIn puS.',
     'uploadTotalTooLarge'   => 'De\'wI\' ghItlhmey tIn law\' {max} tIn puS.',
+    'validationFailed'      => 'Qaghmey tIchoH.',
+    'csrfInvalid'           => 'poH natlh. nav yIchu\'qa\' \'ej yInIDqa\'.',
+    'invalidUtf8'           => 'ghItlhDaq Degh waS tu\'lu\'.',
+    'draftExpired'          => 'pol\'eghpu\'bogh ta\' poH natlh.',
+    'draftNotFound'         => 'pol\'eghpu\'bogh ta\' tu\'be\'lu\'. ngoq yInuD.',
+    'draftTooLarge'         => 'nav tIn law\' pol\'eghmeH.',
+    'draftQuota'            => 'DaH law\'qu\' pol\'eghbogh ta\'. tugh yInIDqa\'.',
 ];

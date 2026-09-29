@@ -237,7 +237,7 @@ try {
     $header = static fn(string $id) => ['headers' => ['X-BBF-Token' => $tokens[$id]['token']]];
     $login = static function (string $id) use ($http, $header): array {
         $r = $http('viewer.php', $header($id));
-        preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $r['headers'], $cookie);
+        preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', $r['headers'], $cookie);
         preg_match('/const TOKEN = ("[^"]+");/', $r['body'], $csrf);
         mysql_access_check($r['code'] === 200 && isset($cookie[1], $csrf[1]), "$id real viewer session + CSRF");
         return ['cookie' => $cookie[1], 'headers' => ['Content-Type' => 'application/json', 'X-BBF-CSRF' => json_decode($csrf[1], true)]];

@@ -135,7 +135,7 @@
             const msgs = (langCode && this.langs[String(langCode).toLowerCase()]) || this.lang;
             const msg = msgs[key] || this.lang[key] || key;
             // One pass with a function replacement: "$&" or "{label}" inside a label is inserted literally.
-            return params ? msg.replace(/\{(\w+)\}/g, (match, k) => Object.hasOwn(params, k) ? String(params[k]) : match) : msg;
+            return params ? msg.replace(/\{(\w+)\}/g, (match, k) => Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : match) : msg;
         },
 
         _instanceSequence: 0, _clientScripts: Object.create(null), _loadClientScript: function(url) { return this._clientScripts[url] || (this._clientScripts[url] = new Promise(resolve => { const script = document.createElement('script'); const timer = setTimeout(resolve, 5000); script.onload = script.onerror = () => { clearTimeout(timer); resolve(); }; script.src = url; document.head.appendChild(script); })); },
@@ -468,12 +468,12 @@
         // A conditionally hidden field counts as empty (same rule as bbfVisibleInput on the server).
         // With a `hidden` state from _conditionalHidden, that state decides; otherwise the DOM does.
         _evalCondition: function(cond, formEl, hidden) {
-            // all: every sub-condition must be true
-            if (cond.all) {
+            // all: every sub-condition must be true. An empty all/any list is ignored, like !empty() in PHP evalCondition.
+            if (Array.isArray(cond.all) && cond.all.length) {
                 return cond.all.every(c => this._evalCondition(c, formEl, hidden));
             }
             // any: at least one sub-condition must be true
-            if (cond.any) {
+            if (Array.isArray(cond.any) && cond.any.length) {
                 return cond.any.some(c => this._evalCondition(c, formEl, hidden));
             }
             // Simple condition: { field, value, op }
@@ -905,6 +905,8 @@
                 if (!rowLevel) valueRoot.dispatchEvent(new Event('bbf:visibility'));
             };
             if (rowLevel) valueRoot.addEventListener('bbf:visibility', handler);
+            // File fields have no named input: their value (upload tokens) changes when an upload finishes or is removed.
+            else valueRoot.addEventListener('bbf:files-changed', handler);
             const boundInputs = [];
             sources.forEach(srcName => {
                 const inputs = valueRoot.querySelectorAll(`[name="${srcName}"]`);
@@ -921,6 +923,7 @@
             if (!rowLevel) valueRoot.dispatchEvent(new Event('bbf:visibility'));
             return function() {
                 if (rowLevel) valueRoot.removeEventListener('bbf:visibility', handler);
+                else valueRoot.removeEventListener('bbf:files-changed', handler);
                 boundInputs.forEach(inp => {
                     inp.removeEventListener('change', handler);
                     inp.removeEventListener('input', handler);
@@ -934,14 +937,14 @@
             return 'bbf:draft:' + new URL(baseUrl, location.href).href + ':' + formId;
         },
 
-        _draftRequest: async function(baseUrl, formId, action, body, isSameOrigin) {
+        _draftRequest: async function(baseUrl, formId, action, body, isSameOrigin, langCode) {
             const options = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             };
             if (isSameOrigin) options.credentials = 'same-origin';
-            const response = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=${action}`, options);
+            const response = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=${action}${langCode ? '&lang=' + encodeURIComponent(langCode) : ''}`, options);
             const result = await response.json().catch(() => ({ status: 'error', message: this._t('errorDefault') }));
             if (!response.ok) {
                 const error = new Error(result.message || this._t('errorDefault'));
@@ -1048,7 +1051,7 @@
                 const body = this._draftCollect(formEl, fields, policy.fields);
                 body._bbf_csrf = csrfToken || ''; if (submittedHandle) body._bbf_draft_handle = submittedHandle;
                 try {
-                    const result = await this._draftRequest(baseUrl, formId, 'draft_save', body, isSameOrigin);
+                    const result = await this._draftRequest(baseUrl, formId, 'draft_save', body, isSameOrigin, langCode);
                     if (current !== request || code.value.trim() !== submittedHandle) return;
                     code.value = result.handle;
                     try { localStorage.setItem(storageKey, result.handle); } catch (error) { /* code remains visible */ }
@@ -1062,7 +1065,7 @@
             resume.addEventListener('click', async () => {
                 const current = ++request; const submittedHandle = code.value.trim(); busy(true); announce(this._t('draftLoading', {}, langCode));
                 try {
-                    const result = await this._draftRequest(baseUrl, formId, 'draft_load', { _bbf_csrf: csrfToken || '', _bbf_draft_handle: submittedHandle }, isSameOrigin);
+                    const result = await this._draftRequest(baseUrl, formId, 'draft_load', { _bbf_csrf: csrfToken || '', _bbf_draft_handle: submittedHandle }, isSameOrigin, langCode);
                     if (current !== request || code.value.trim() !== submittedHandle) return;
                     this._draftApply(formEl, fields, result.data, policy.fields);
                     try { localStorage.setItem(storageKey, submittedHandle); } catch (error) {}
@@ -1076,7 +1079,7 @@
             remove.addEventListener('click', async () => {
                 const current = ++request; const submittedHandle = code.value.trim(); busy(true); announce(this._t('draftDeleting', {}, langCode));
                 try {
-                    await this._draftRequest(baseUrl, formId, 'draft_delete', { _bbf_csrf: csrfToken || '', _bbf_draft_handle: submittedHandle }, isSameOrigin);
+                    await this._draftRequest(baseUrl, formId, 'draft_delete', { _bbf_csrf: csrfToken || '', _bbf_draft_handle: submittedHandle }, isSameOrigin, langCode);
                     if (current !== request || code.value.trim() !== submittedHandle) return;
                     code.value = ''; try { localStorage.removeItem(storageKey); } catch (error) {}
                     announce(this._t('draftDeleted', {}, langCode));
@@ -1404,6 +1407,19 @@
                             let protocol = '';
                             try { protocol = new URL(result.redirect, 'https://relative.invalid/').protocol; } catch (e) { /* invalid URL: show success instead */ }
                             if (protocol === 'https:' || protocol === 'http:') {
+                                // "Back" from the thank-you page restores this page from the back/forward cache with the
+                                // button still disabled: re-enable it and say the submission went through.
+                                const restore = event => {
+                                    if (!event.persisted) return;
+                                    window.removeEventListener('pageshow', restore);
+                                    el._bbfSubmitting = false;
+                                    btn.disabled = false;
+                                    btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
+                                    msg.className = 'bbf-message bbf-success';
+                                    msg.textContent = form.success_message || this._t('successDefault', {}, langCode);
+                                    msg.style.display = 'block';
+                                };
+                                window.addEventListener('pageshow', restore);
                                 window.location.href = result.redirect;
                                 return;
                             }

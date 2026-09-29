@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label} : ce type de fichier n\'est plus accepté. Veuillez téléverser un autre fichier.',
     'uploadFieldTooLarge'   => '{label} : le fichier dépasse {max}.',
     'uploadTotalTooLarge'   => 'Les fichiers dépassent {max} au total.',
+    'validationFailed'      => 'Veuillez corriger les champs signalés.',
+    'csrfInvalid'           => 'Votre session a expiré. Rechargez la page et réessayez.',
+    'invalidUtf8'           => 'Le texte envoyé contient des caractères non valides.',
+    'draftExpired'          => 'La progression enregistrée a expiré.',
+    'draftNotFound'         => 'Progression enregistrée introuvable. Vérifiez le code de reprise.',
+    'draftTooLarge'         => 'Le formulaire est trop volumineux pour être enregistré comme brouillon.',
+    'draftQuota'            => 'Trop de brouillons enregistrés pour le moment. Veuillez réessayer plus tard.',
 ];

@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: 이 파일 형식은 더 이상 허용되지 않습니다. 다른 파일을 업로드해 주세요.',
     'uploadFieldTooLarge'   => '{label}: 파일이 {max}보다 큽니다.',
     'uploadTotalTooLarge'   => '파일 합계가 {max}보다 큽니다.',
+    'validationFailed'      => '표시된 항목을 수정해 주세요.',
+    'csrfInvalid'           => '세션이 만료되었습니다. 페이지를 새로 고친 후 다시 시도해 주세요.',
+    'invalidUtf8'           => '전송된 텍스트에 잘못된 문자가 포함되어 있습니다.',
+    'draftExpired'          => '저장된 진행 상황이 만료되었습니다.',
+    'draftNotFound'         => '저장된 진행 상황을 찾을 수 없습니다. 재개 코드를 확인해 주세요.',
+    'draftTooLarge'         => '양식이 너무 커서 임시 저장할 수 없습니다.',
+    'draftQuota'            => '현재 저장된 임시 저장본이 너무 많습니다. 나중에 다시 시도해 주세요.',
 ];

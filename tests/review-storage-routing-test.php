@@ -20,7 +20,7 @@ function routing_http(string $path, array $options = []): array {
 }
 function routing_login(string $token = 'routing-fixture-all', string $page = 'viewer.php'): array {
     $r = routing_http($page, ['headers' => ['X-BBF-Token' => $token]]);
-    preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $r['headers'], $cookie);
+    preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', $r['headers'], $cookie);
     preg_match('/const TOKEN = ("[^"]+");/', $r['body'], $csrf);
     routing_check($r['code'] === 200 && isset($cookie[1], $csrf[1]), "session login $page $token");
     if (!isset($cookie[1], $csrf[1])) throw new RuntimeException('Cannot test mutations without real session/CSRF.');

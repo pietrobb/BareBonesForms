@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: tätä tiedostotyyppiä ei enää hyväksytä. Lataa toinen tiedosto.',
     'uploadFieldTooLarge'   => '{label}: tiedosto on suurempi kuin {max}.',
     'uploadTotalTooLarge'   => 'Tiedostot ovat yhteensä suurempia kuin {max}.',
+    'validationFailed'      => 'Korjaa merkityt kentät.',
+    'csrfInvalid'           => 'Istuntosi on vanhentunut. Lataa sivu uudelleen ja yritä uudelleen.',
+    'invalidUtf8'           => 'Lähetetty teksti sisältää virheellisiä merkkejä.',
+    'draftExpired'          => 'Tallennettu edistyminen on vanhentunut.',
+    'draftNotFound'         => 'Tallennettua edistymistä ei löytynyt. Tarkista jatkamiskoodi.',
+    'draftTooLarge'         => 'Lomake on liian suuri tallennettavaksi luonnoksena.',
+    'draftQuota'            => 'Tallennettuja luonnoksia on juuri nyt liikaa. Yritä myöhemmin uudelleen.',
 ];

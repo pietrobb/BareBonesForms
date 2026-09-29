@@ -58,7 +58,7 @@ try {
     function core_login(string $id, string $page = 'viewer.php'): array {
         $r = core_http($page, core_header($id));
         core_check($r['code'] === 200, "$id login $page");
-        preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $r['headers'], $cookie);
+        preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', $r['headers'], $cookie);
         preg_match('/const TOKEN = ("[^"]+");/', $r['body'], $csrf);
         core_check(isset($cookie[1], $csrf[1]), 'login provides session and CSRF, not credentials');
         return ['cookie' => $cookie[1], 'csrf' => json_decode($csrf[1], true), 'response' => $r];
@@ -235,9 +235,16 @@ try {
     core_config($baseConfig);
     for ($i = 0; $i < 10; $i++) $guess = core_http('viewer.php?token=guess-' . $i);
     core_check($guess['code'] === 403, 'wrong tokens below the limit are plain denials');
-    $blocked = core_http('viewer.php?token=guess-11');
+    // While blocked every token, right or wrong, waits for its turn (one check per 2 s), so 200 vs 429 is no fast oracle.
+    $timed = static function (string $path, array $options = []): array {
+        $start = microtime(true); $r = core_http($path, $options); $r['seconds'] = microtime(true) - $start; return $r;
+    };
+    $blocked = $timed('viewer.php?token=guess-11');
     core_check($blocked['code'] === 429 && str_contains($blocked['headers'], 'Retry-After: 900'), 'eleventh wrong token is throttled');
-    core_check(core_http('viewer.php', core_header('admin'))['code'] === 200, 'the right admin token still works while wrong tokens are throttled');
+    core_check($blocked['seconds'] >= 1.5, sprintf('a blocked wrong token is answered only after the wait (%.1f s)', $blocked['seconds']));
+    $right = $timed('viewer.php', core_header('admin'));
+    core_check($right['code'] === 200, 'the right admin token still works while wrong tokens are throttled');
+    core_check($right['seconds'] >= 1.5, sprintf('a blocked right token waits just as long, so the answer time reveals nothing (%.1f s)', $right['seconds']));
     core_check(core_http('submissions.php?form=alpha', core_header('reader'))['code'] === 200, 'API integrations with a valid token keep working too');
     core_check(core_http('viewer.php?token=guess-12')['code'] === 429, 'a success does not reset the wrong-token limit');
     core_config(['api_token' => 'short'] + $baseConfig);

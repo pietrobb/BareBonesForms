@@ -7,8 +7,11 @@
 defined('BBF_LOADED') || exit;
 const BBF_AUTH_MIN_TOKEN = 16;
 const BBF_AUTH_MAX_FAILURES = 10;   // wrong tokens per client address ...
-const BBF_AUTH_FAILURE_WINDOW = 900; // ... per 15 minutes, then wrong tokens get 429 (a correct token always works)
+const BBF_AUTH_FAILURE_WINDOW = 900; // ... per 15 minutes; then the client is blocked: wrong tokens get 429
+const BBF_AUTH_BLOCKED_INTERVAL = 2; // while blocked, one token per client is checked every 2 seconds (correct or not) ...
+const BBF_AUTH_BLOCKED_QUEUE = 10;   // ... and a request waits at most 10 seconds for its turn, else 429 without checking
 const BBF_AUTH_MAX_CLIENTS = 5000;   // cap on remembered client addresses in logs/.auth_failures.json
+const BBF_AUTH_SESSION_NAME = 'BBFADMIN'; // management sign-in cookie; public forms keep PHP's default session
 
 function bbf_auth_load_config(string $path): array {
     ini_set('display_errors', '0');
@@ -48,6 +51,11 @@ function bbf_auth_fail(int $code = 403, string $detail = ''): void {
     if ($code === 403 && is_array($login)) {
         // Management pages get a usable sign-in form instead of a bare JSON error.
         header('Content-Type: text/html; charset=utf-8');
+        $loginCsrf = '';
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            if (!is_string($_SESSION['bbf_login_csrf'] ?? null)) $_SESSION['bbf_login_csrf'] = bin2hex(random_bytes(32));
+            $loginCsrf = $_SESSION['bbf_login_csrf'];
+        }
         $hint = $login['configured']
             ? 'Enter the <code>api_token</code> from <code>config.php</code>.'
             : 'No valid access token is configured. Set a long random <code>api_token</code> (at least ' . BBF_AUTH_MIN_TOKEN . ' characters) in <code>config.php</code> '
@@ -57,8 +65,10 @@ function bbf_auth_fail(int $code = 403, string $detail = ''): void {
             . 'input,button{font:inherit;padding:8px 10px;width:100%;box-sizing:border-box;margin-top:8px}code{background:#f1f3f5;padding:1px 4px;border-radius:3px}</style></head><body>'
             . '<h1>Sign in</h1>'
             . (!empty($login['failed']) ? '<p role="alert" style="color:#c92a2a"><strong>Invalid token.</strong> It was not accepted for this page.</p>' : '')
+            . (!empty($login['expired']) ? '<p role="alert" style="color:#c92a2a"><strong>The sign-in form expired.</strong> Enter the token again.</p>' : '')
             . '<p>' . $hint . '</p>'
             . '<form method="post" action="' . htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? ''), ENT_QUOTES) . '">'
+            . '<input type="hidden" name="login_csrf" value="' . htmlspecialchars($loginCsrf, ENT_QUOTES) . '">'
             . '<label for="bbf-token">Access token</label><input id="bbf-token" name="token" type="password" autocomplete="current-password" required autofocus>'
             . '<button type="submit">Sign in</button></form></body></html>';
         exit;
@@ -133,45 +143,84 @@ function bbf_ip_in_list(string $ip, array $list): bool {
 }
 
 /**
- * Wrong-token counter per client address. $failed=false: may this client try (false once
- * BBF_AUTH_MAX_FAILURES failures fall inside the window)? $failed=true: record one failure.
+ * Runs $fn($state, $key, $now) under an exclusive lock on logs/.auth_failures.json. $state is
+ * ['failures' => [client => [unix times]], 'slots' => [client => next check time]] (a 2.1.2 file holds only the
+ * failures map). $fn returns [result, changed]; a changed state is written back. $fallback when there is no file.
  */
-function bbf_auth_throttle(array $config, bool $failed): bool {
+function bbf_auth_throttle_state(array $config, callable $fn, $fallback) {
     $dir = rtrim((string)($config['logs_dir'] ?? __DIR__ . '/logs'), '/\\');
-    if (!is_dir($dir)) return true;
+    if (!is_dir($dir)) return $fallback;
     $fp = @fopen($dir . '/.auth_failures.json', 'c+');
-    if (!$fp) return true; // an unwritable log folder must not lock the operator out
+    if (!$fp) return $fallback; // an unwritable log folder must not lock the operator out
     try {
         flock($fp, LOCK_EX);
-        $now = time();
-        $state = json_decode((string)stream_get_contents($fp), true);
-        $state = is_array($state) ? $state : [];
+        $now = microtime(true);
+        $raw = json_decode((string)stream_get_contents($fp), true);
+        $raw = is_array($raw) ? $raw : [];
+        $state = array_key_exists('failures', $raw) || array_key_exists('slots', $raw)
+            ? ['failures' => is_array($raw['failures'] ?? null) ? $raw['failures'] : [], 'slots' => is_array($raw['slots'] ?? null) ? $raw['slots'] : []]
+            : ['failures' => $raw, 'slots' => []];
+        foreach ($state['failures'] as $client => $times) {
+            $times = array_values(array_filter(is_array($times) ? $times : [], static fn($t) => is_int($t) && $t > $now - BBF_AUTH_FAILURE_WINDOW));
+            if ($times === []) unset($state['failures'][$client]); else $state['failures'][$client] = $times;
+        }
+        // A slot only matters while its client is blocked and the slot is still ahead.
+        foreach ($state['slots'] as $client => $slot)
+            if (!isset($state['failures'][$client]) || !is_numeric($slot) || $slot <= $now) unset($state['slots'][$client]);
         // One IPv6 host usually owns a whole /64, so rotating addresses inside it counts as one client.
         $ip = bbf_client_ip($config);
         $packed = @inet_pton($ip);
         $key = hash('sha256', $packed !== false && strlen($packed) === 16 ? substr($packed, 0, 8) : $ip);
-        foreach ($state as $client => $times) {
-            $state[$client] = array_values(array_filter(is_array($times) ? $times : [], static fn($t) => is_int($t) && $t > $now - BBF_AUTH_FAILURE_WINDOW));
-            if ($state[$client] === []) unset($state[$client]);
-        }
-        $allowed = count($state[$key] ?? []) < BBF_AUTH_MAX_FAILURES;
-        if ($failed) {
-            $state[$key] = array_slice([...($state[$key] ?? []), $now], -BBF_AUTH_MAX_FAILURES);
+        [$result, $changed] = $fn($state, $key, $now);
+        if ($changed) {
             // Bounded file: beyond BBF_AUTH_MAX_CLIENTS addresses the clients with the oldest last failure are forgotten.
-            if (count($state) > BBF_AUTH_MAX_CLIENTS) {
-                uasort($state, static fn(array $a, array $b): int => max($b) <=> max($a));
-                $state = array_slice($state, 0, BBF_AUTH_MAX_CLIENTS, true);
+            if (count($state['failures']) > BBF_AUTH_MAX_CLIENTS) {
+                uasort($state['failures'], static fn(array $a, array $b): int => max($b) <=> max($a));
+                $state['failures'] = array_slice($state['failures'], 0, BBF_AUTH_MAX_CLIENTS, true);
+                $state['slots'] = array_intersect_key($state['slots'], $state['failures']);
             }
             ftruncate($fp, 0);
             rewind($fp);
             fwrite($fp, json_encode($state));
             fflush($fp);
         }
-        return $allowed;
+        return $result;
     } finally {
         flock($fp, LOCK_UN);
         fclose($fp);
     }
+}
+
+/** Records one wrong token for this client. Returns false when the client was already blocked (answer 429). */
+function bbf_auth_throttle(array $config, bool $failed = true): bool {
+    return bbf_auth_throttle_state($config, static function (array &$state, string $key) use ($failed): array {
+        $allowed = count($state['failures'][$key] ?? []) < BBF_AUTH_MAX_FAILURES;
+        if ($failed) $state['failures'][$key] = array_slice([...($state['failures'][$key] ?? []), time()], -BBF_AUTH_MAX_FAILURES);
+        return [$allowed, $failed];
+    }, true);
+}
+
+/**
+ * Seconds this client must wait before its token is checked: 0 when not blocked. A blocked client gets one
+ * check per BBF_AUTH_BLOCKED_INTERVAL, whether the token is right or wrong, so a guesser learns nothing faster
+ * than that. null = its queue is longer than BBF_AUTH_BLOCKED_QUEUE; answer 429 without checking the token.
+ */
+function bbf_auth_throttle_wait(array $config): ?float {
+    return bbf_auth_throttle_state($config, static function (array &$state, string $key, float $now): array {
+        if (count($state['failures'][$key] ?? []) < BBF_AUTH_MAX_FAILURES) return [0.0, false];
+        $slot = max($now, (float)($state['slots'][$key] ?? 0)) + BBF_AUTH_BLOCKED_INTERVAL;
+        if ($slot - $now > BBF_AUTH_BLOCKED_QUEUE) return [null, false];
+        $state['slots'][$key] = $slot;
+        return [$slot - $now, true];
+    }, 0.0);
+}
+
+function bbf_auth_throttled(): void {
+    http_response_code(429);
+    header('Retry-After: ' . BBF_AUTH_FAILURE_WINDOW);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['error' => 'Too many failed sign-in attempts. Try again in 15 minutes.']);
+    exit;
 }
 
 function bbf_auth_id($value): string {
@@ -262,7 +311,10 @@ function bbf_auth_session(): void {
         ini_set('session.use_strict_mode', '1');
         ini_set('session.use_only_cookies', '1');
         ini_set('session.use_trans_sid', '0');
-        session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' =>
+        // Own cookie name and path: other PHP apps on the domain (PHPSESSID) neither see nor overwrite the sign-in.
+        session_name(BBF_AUTH_SESSION_NAME);
+        $path = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/'))), '/') . '/';
+        session_set_cookie_params(['lifetime' => 0, 'path' => $path, 'secure' =>
             (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
             'httponly' => true, 'samesite' => 'Strict']);
         if (!session_start()) bbf_auth_fail(503);
@@ -282,23 +334,26 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
     // HTML management pages accept the sign-in form POST so the token stays out of URLs and logs.
     $formLogin = $html && $session && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && array_key_exists('token', $_POST);
     if ($html) $GLOBALS['bbf_auth_login_page'] = ['configured' => $registry !== []];
+    // Login CSRF: the form carries a per-session value, so another site cannot sign the browser in with its token.
+    if ($formLogin && !(is_string($_POST['login_csrf'] ?? null) && is_string($_SESSION['bbf_login_csrf'] ?? null)
+            && hash_equals($_SESSION['bbf_login_csrf'], $_POST['login_csrf']))) {
+        $formLogin = false;
+        $GLOBALS['bbf_auth_login_page']['expired'] = true;
+    }
     $explicit = array_key_exists('HTTP_X_BBF_TOKEN', $_SERVER) || array_key_exists('token', $_GET) || $formLogin;
     $provided = $_SERVER['HTTP_X_BBF_TOKEN'] ?? ($_GET['token'] ?? ($formLogin ? $_POST['token'] : null));
     $principal = null; $now = time();
     if ($explicit) {
+        // A blocked client (too many wrong tokens) waits for its turn before ANY token is checked, right or wrong,
+        // so the 200/429 answer reveals a hit no faster than one guess per BBF_AUTH_BLOCKED_INTERVAL.
+        $wait = bbf_auth_throttle_wait($config);
+        if ($wait === null) bbf_auth_throttled();
+        if ($wait > 0) usleep((int)round($wait * 1000000));
         if (is_string($provided) && $provided !== '') {
             $fp = hash('sha256', $provided);
             foreach ($registry as $r) if (hash_equals($r['fingerprint'], $fp)) $principal = $r;
         }
-        // Only wrong tokens are capped per client address. A correct token is always accepted, so nobody can
-        // lock the admin out by sending bad tokens from a shared address (an <img> tag, a proxy, Cloudflare).
-        if (!$principal && !bbf_auth_throttle($config, true)) {
-            http_response_code(429);
-            header('Retry-After: ' . BBF_AUTH_FAILURE_WINDOW);
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['error' => 'Too many failed sign-in attempts. Try again in 15 minutes.']);
-            exit;
-        }
+        if (!$principal && !bbf_auth_throttle($config, true)) bbf_auth_throttled();
     } elseif ($session) {
         $s = $_SESSION['bbf_access'] ?? [];
         $idle = max(1, min(86400, (int)($config['auth_session_idle'] ?? 1800)));
@@ -393,6 +448,17 @@ function bbf_auth_csrf_valid(): bool {
     return is_string($provided) && bbf_auth_csrf() !== '' && hash_equals(bbf_auth_csrf(), $provided);
 }
 
+/** Configured tokens to redact from audit entries. Access tokens shorter than BBF_AUTH_MIN_TOKEN are never accepted,
+ * so they are no credential; redacting "co" would only mangle words like "contact". smoke_token counts at any length. */
+function bbf_audit_secrets(array $config): array {
+    $secrets = [$config['api_token'] ?? ''];
+    foreach (is_array($config['access_tokens'] ?? null) ? $config['access_tokens'] : [] as $r)
+        if (is_array($r)) $secrets[] = $r['token'] ?? '';
+    $secrets = array_filter($secrets, static fn($s): bool => is_string($s) && strlen($s) >= BBF_AUTH_MIN_TOKEN);
+    if (is_string($config['smoke_token'] ?? null) && $config['smoke_token'] !== '') $secrets[] = $config['smoke_token'];
+    return array_values($secrets);
+}
+
 /** Guarded PHP log, exclusive locked append + flush. No URLs, bodies or addresses.
  * Any preflight failure returns 503 BEFORE reading/exporting/mutating protected data.
  * A later IO failure cannot undo a mutation: its durable attempt remains evidence.
@@ -425,13 +491,19 @@ function bbf_audit_write(array $config, ?array $principal, string $action, strin
         } elseif ($stat['size'] > max(65536, (int)($config['audit_max_bytes'] ?? 20 * 1048576))) {
             // Bounded growth: keep one previous generation (still guarded, so never web-readable).
             rewind($fp);
-            $tmp = $file . '.1.' . bin2hex(random_bytes(4)) . '.tmp';
+            // access-audit.1.php keeps the .php extension, so the guard protects it even without .htaccess.
+            $previous = $dir . '/access-audit.1.php';
+            $tmp = $dir . '/access-audit.1.' . bin2hex(random_bytes(4)) . '.tmp';
             $out = @fopen($tmp, 'xb');
             $copied = $out && stream_copy_to_stream($fp, $out) === $stat['size'] && fflush($out);
             if ($out) fclose($out);
-            if (!$copied || !@rename($tmp, $file . '.1')) { @unlink($tmp); bbf_auth_fail(503); }
-            @chmod($file . '.1', 0600);
+            if (!$copied || !@rename($tmp, $previous)) { @unlink($tmp); bbf_auth_fail(503); }
+            @chmod($previous, 0600);
             if (!ftruncate($fp, strlen($guard))) bbf_auth_fail(503);
+        }
+        // 2.1.2 rotated to access-audit.php.1, which only .htaccess protects; move it to the guarded name once.
+        if (is_file($file . '.1') && !is_link($file . '.1')) {
+            if (is_file($dir . '/access-audit.1.php') || !@rename($file . '.1', $dir . '/access-audit.1.php')) @unlink($file . '.1');
         }
         $entry = ['utc' => gmdate('Y-m-d\TH:i:s\Z'), 'principal_id' => $principal['id'] ?? 'anonymous',
             'action' => bbf_auth_id($action), 'form' => bbf_auth_id($form),
@@ -439,10 +511,7 @@ function bbf_audit_write(array $config, ?array $principal, string $action, strin
             'decision' => $decision, 'result' => $result, 'result_count' => max(0, $count)];
         // Even a hostile ID chosen to equal a configured credential cannot log it.
         // Redact identifier values before encoding, never JSON keys or numeric counts.
-        $secrets = [$config['api_token'] ?? ''];
-        foreach (is_array($config['access_tokens'] ?? null) ? $config['access_tokens'] : [] as $r)
-            if (is_array($r)) $secrets[] = $r['token'] ?? '';
-        foreach ($secrets as $secret) if (is_string($secret) && $secret !== '') {
+        foreach (bbf_audit_secrets($config) as $secret) {
             foreach (['principal_id', 'action', 'form', 'decision', 'result'] as $key) $entry[$key] = str_replace($secret, '[redacted]', $entry[$key]);
             foreach ($entry['submission_ids'] as &$id) $id = str_replace($secret, '[redacted]', $id); unset($id);
         }

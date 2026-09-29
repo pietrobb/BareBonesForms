@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: seda failitüüpi enam ei aktsepteerita. Laadige üles muu fail.',
     'uploadFieldTooLarge'   => '{label}: fail on suurem kui {max}.',
     'uploadTotalTooLarge'   => 'Failid on kokku suuremad kui {max}.',
+    'validationFailed'      => 'Palun parandage märgitud väljad.',
+    'csrfInvalid'           => 'Seanss on aegunud. Laadige leht uuesti ja proovige uuesti.',
+    'invalidUtf8'           => 'Saadetud tekst sisaldab sobimatuid märke.',
+    'draftExpired'          => 'Salvestatud edenemine on aegunud.',
+    'draftNotFound'         => 'Salvestatud edenemist ei leitud. Kontrollige jätkamiskoodi.',
+    'draftTooLarge'         => 'Vorm on mustandina salvestamiseks liiga suur.',
+    'draftQuota'            => 'Praegu on salvestatud liiga palju mustandeid. Proovige hiljem uuesti.',
 ];

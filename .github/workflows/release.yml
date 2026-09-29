@@ -4,17 +4,16 @@ on:
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
-  id-token: write      # signed build provenance (gh attestation verify)
-  attestations: write
-  actions: read        # read the CI result of the tagged commit
+# No workflow-wide token rights: each job gets only what it needs.
+permissions: {}
 
 jobs:
-  package:
-    name: Build upload-ready ZIP
+  ci-gate:
+    name: Require a green CI run for the tagged commit
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      actions: read        # read the CI result of the tagged commit
     steps:
       - name: Require a green CI run for the tagged commit
         env:
@@ -33,6 +32,17 @@ jobs:
           done
           echo "No completed CI run for this commit after 50 minutes; no release is built."
           exit 1
+
+  package:
+    name: Build upload-ready ZIP
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write      # create the GitHub release
+      id-token: write      # signed build provenance (gh attestation verify)
+      attestations: write
+    steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -49,10 +59,11 @@ jobs:
           php tools/package-deploy.php --version "$version" --check --destination "$out"
           rm "$out/.bbf-package"
           (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}.zip" barebonesforms)
-          # Upgrade ZIP: code only (plus check.php). Uploading it over FTP never overwrites your templates, sample
-          # forms or .htaccess; the new .htaccess rules come as .htaccess.dist (maintenance.php upgrade uses it).
+          # Upgrade ZIP: code only, plus check.php and CHANGELOG.md (the dry run lists its Breaking notes). Uploading
+          # it over FTP never overwrites your templates, sample forms or .htaccess; the new .htaccess rules come as
+          # .htaccess.dist (maintenance.php upgrade uses it).
           cp "$out/.htaccess" "$out/.htaccess.dist"
-          php -r '$m = json_decode(file_get_contents($argv[1]), true); foreach ($m["files"] as $p => $f) if ($f["kind"] !== "code" && $p !== "check.php") unlink($argv[2] . "/" . $p);' \
+          php -r '$m = json_decode(file_get_contents($argv[1]), true); foreach ($m["files"] as $p => $f) if ($f["kind"] !== "code" && $p !== "check.php" && $p !== "CHANGELOG.md") unlink($argv[2] . "/" . $p);' \
             "$out/.bbf-manifest.json" "$out"
           (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" barebonesforms)
           # Checksums outside the ZIPs (the manifest inside only detects damage, not a substituted package).

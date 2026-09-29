@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: denne filtypen godtas ikke lenger. Last opp en annen fil.',
     'uploadFieldTooLarge'   => '{label}: filen er større enn {max}.',
     'uploadTotalTooLarge'   => 'Filene er til sammen større enn {max}.',
+    'validationFailed'      => 'Rett de markerte feltene.',
+    'csrfInvalid'           => 'Økten din er utløpt. Last inn siden på nytt og prøv igjen.',
+    'invalidUtf8'           => 'Den innsendte teksten inneholder ugyldige tegn.',
+    'draftExpired'          => 'Den lagrede fremdriften er utløpt.',
+    'draftNotFound'         => 'Fant ikke lagret fremdrift. Kontroller gjenopptakelseskoden.',
+    'draftTooLarge'         => 'Skjemaet er for stort til å lagres som utkast.',
+    'draftQuota'            => 'Det er for mange lagrede utkast akkurat nå. Prøv igjen senere.',
 ];

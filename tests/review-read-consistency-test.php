@@ -118,7 +118,7 @@ foreach (['file', 'sqlite', 'sqlite_streaming_control'] as $mode) { $storage = $
             }
         } else {
             $login = rc_http('viewer.php');
-            preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $login['headers'], $cookie);
+            preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', $login['headers'], $cookie);
             preg_match('/const TOKEN = ("[^"]+");/', $login['body'], $csrf);
             if (!isset($cookie[1], $csrf[1])) throw new RuntimeException('Session/CSRF login failed');
             $session = ['cookie' => $cookie[1], 'headers' => ['X-BBF-CSRF' => json_decode($csrf[1], true), 'Content-Type' => 'application/json']];

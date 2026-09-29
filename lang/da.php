@@ -44,4 +44,11 @@ return [
     'uploadTypeNoLonger'    => '{label}: denne filtype accepteres ikke længere. Upload en anden fil.',
     'uploadFieldTooLarge'   => '{label}: filen er større end {max}.',
     'uploadTotalTooLarge'   => 'Filerne er tilsammen større end {max}.',
+    'validationFailed'      => 'Ret de markerede felter.',
+    'csrfInvalid'           => 'Din session er udløbet. Genindlæs siden, og prøv igen.',
+    'invalidUtf8'           => 'Den indsendte tekst indeholder ugyldige tegn.',
+    'draftExpired'          => 'De gemte fremskridt er udløbet.',
+    'draftNotFound'         => 'De gemte fremskridt blev ikke fundet. Kontrollér genoptagelseskoden.',
+    'draftTooLarge'         => 'Formularen er for stor til at blive gemt som kladde.',
+    'draftQuota'            => 'Der er for mange gemte kladder lige nu. Prøv igen senere.',
 ];

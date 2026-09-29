@@ -142,7 +142,27 @@ function bbf_draft_count_bound_locked(array $config): int {
     return intdiv($bytes, $lineBytes);
 }
 
-function bbf_draft_save(array $config, array $form, array $flatFields, array $input, string $handle = '', ?int $now = null): array {
+/**
+ * One address may start at most drafts_per_ip_hour new drafts per clock hour (default 30, 0 = no limit), so a single
+ * visitor cannot fill drafts_max for every form. Counts live in one small file reset each hour (hashed addresses).
+ * Caller holds the cleanup-queue lock. Returns null when the counter cannot be written.
+ */
+function bbf_draft_ip_take_locked(array $config, string $ip, int $now): ?bool {
+    $limit = (int)($config['drafts_per_ip_hour'] ?? 30);
+    if ($limit <= 0) return true;
+    $path = bbf_draft_dir($config) . '/.new-by-ip';
+    $hour = intdiv($now, 3600);
+    $raw = @file_get_contents($path);
+    $state = is_string($raw) ? json_decode($raw, true) : null;
+    if (!is_array($state) || ($state['hour'] ?? null) !== $hour || !is_array($state['counts'] ?? null)) $state = ['hour' => $hour, 'counts' => []];
+    $key = substr(hash('sha256', $ip), 0, 24);
+    $count = (int)($state['counts'][$key] ?? 0);
+    if ($count >= $limit) return false;
+    $state['counts'][$key] = $count + 1;
+    return bbf_storage_replace($path, static fn($fp): bool => bbf_storage_write_all($fp, json_encode($state)), 0600) ? true : null;
+}
+
+function bbf_draft_save(array $config, array $form, array $flatFields, array $input, string $handle = '', ?int $now = null, ?string $ip = null): array {
     $policy = bbf_draft_policy($form);
     if ($policy === null) return ['ok' => false, 'reason' => 'disabled'];
     $now ??= time();
@@ -153,8 +173,8 @@ function bbf_draft_save(array $config, array $form, array $flatFields, array $in
     $path = bbf_draft_path($config, $handle);
     if (!$new && !is_file($path)) return ['ok' => false, 'reason' => 'not_found'];
     $result = ['ok' => false, 'reason' => 'storage'];
-    $locked = bbf_storage_locked(bbf_draft_queue_path($config), static function () use (&$result, $path, $new, $config, $form, $flatFields, $input, $handle, $now, $policy): bool {
-        return bbf_draft_locked($config, $path, static function () use (&$result, $path, $new, $config, $form, $flatFields, $input, $handle, $now, $policy): bool {
+    $locked = bbf_storage_locked(bbf_draft_queue_path($config), static function () use (&$result, $path, $new, $config, $form, $flatFields, $input, $handle, $now, $policy, $ip): bool {
+        return bbf_draft_locked($config, $path, static function () use (&$result, $path, $new, $config, $form, $flatFields, $input, $handle, $now, $policy, $ip): bool {
             $existing = bbf_draft_read_record($path);
             if (!$new && ($existing === null || !hash_equals((string)$form['id'], (string)$existing['form']))) {
                 $result = ['ok' => false, 'reason' => 'not_found'];
@@ -181,6 +201,14 @@ function bbf_draft_save(array $config, array $form, array $flatFields, array $in
             if ($new && bbf_draft_count_bound_locked($config) >= max(1, (int)($config['drafts_max'] ?? 10000))) {
                 $result = ['ok' => false, 'reason' => 'quota'];
                 return true;
+            }
+            if ($new && $ip !== null) {
+                $take = bbf_draft_ip_take_locked($config, $ip, $now);
+                if ($take === null) return false;
+                if (!$take) {
+                    $result = ['ok' => false, 'reason' => 'quota', 'retry_after' => 3600 - $now % 3600];
+                    return true;
+                }
             }
             if (($new && !bbf_draft_queue_append_locked($config, $path, $record['queue_epoch']))
                 || !bbf_storage_replace($path, static fn($fp): bool => bbf_storage_write_all($fp, $json), 0600)) return false;

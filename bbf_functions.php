@@ -233,11 +233,6 @@ function bbf_mail_standard_headers(string $fromEmail): array {
     ];
 }
 
-/** mail() envelope sender goes onto the sendmail command line: plain address characters only, no whitespace or quotes. */
-function bbf_mail_envelope_sender(string $from): bool {
-    return (bool)preg_match('/\A[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\z/', $from);
-}
-
 /**
  * Create $path with $content only if it does not exist yet, never exposing a partial file:
  * the content is written to a temp file first and then hard-linked (atomic, fails if taken).
@@ -375,9 +370,14 @@ function renderTemplate(string $templateFile, array $vars): string {
     return $template;
 }
 
-/** on_submit.redirect after interpolation: only http(s) or a relative URL, never javascript:/data: or control characters. */
+/** on_submit.redirect after interpolation: only http(s) or a relative URL, never javascript:/data: or control characters.
+ *  Field values are percent-encoded, so "Jana Nová" stays one query value and "&"/"#"/"/" cannot add parameters or change the target. */
 function bbf_redirect_url(string $template, array $data): ?string {
-    $url = trim(interpolate($template, $data));
+    $encoded = [];
+    foreach ($data as $key => $value) {
+        if (is_string($value) || is_numeric($value)) $encoded[$key] = rawurlencode((string)$value);
+    }
+    $url = trim(interpolate($template, $encoded));
     if ($url === '' || preg_match('/[\x00-\x20\x7f]/', $url)) return null;
     if (preg_match('/\A([a-z][a-z0-9+.-]*):/i', $url, $m)) return in_array(strtolower($m[1]), ['http', 'https'], true) ? $url : null;
     return str_starts_with($url, '\\') || str_starts_with($url, '/\\') ? null : $url;
@@ -996,11 +996,12 @@ function bbf_delivery_run_job(string $path, string $jobKey, array $config, array
  */
 function bbf_delivery_retry_due(array $config, int $quietSeconds = 120, ?int $now = null, int $horizonSeconds = 7 * 86400): array {
     $now ??= time();
-    $report = ['ok' => true, 'checked' => 0, 'attempted' => 0, 'succeeded' => 0, 'failed' => 0];
+    $report = ['ok' => true, 'checked' => 0, 'attempted' => 0, 'succeeded' => 0, 'failed' => 0, 'skipped_in_flight' => 0, 'skipped_old' => 0];
     $root = rtrim((string)($config['submissions_dir'] ?? __DIR__ . '/submissions'), '/\\') . '/.delivery';
     foreach (glob($root . '/*/*.json') ?: [] as $path) {
         $mtime = (int)@filemtime($path);
-        if ($mtime > $now - $quietSeconds || $mtime < $now - $horizonSeconds) continue;
+        if ($mtime > $now - $quietSeconds) { $report['skipped_in_flight']++; continue; }
+        if ($mtime < $now - $horizonSeconds) { $report['skipped_old']++; continue; }
         $formId = basename(dirname($path));
         if (!preg_match('/\A[a-zA-Z0-9_-]+\z/', $formId)) continue;
         $read = bbf_outbox_read($path);
@@ -1022,6 +1023,10 @@ function bbf_delivery_retry_due(array $config, int $quietSeconds = 120, ?int $no
             $report['attempted']++;
             $report[($run['ok'] ?? false) ? 'succeeded' : 'failed']++;
         }
+    }
+    if ($report['skipped_old'] > 0) {
+        $report['note'] = $report['skipped_old'] . ' delivery record(s) untouched for more than ' . intdiv($horizonSeconds, 86400)
+            . ' days were not checked: they have no automatic retry left. Retry a failed delivery by hand in the viewer.';
     }
     return $report;
 }
@@ -1805,11 +1810,37 @@ function bbfValidUtf8Deep(mixed $value): bool {
  */
 function bbfFieldPatternRegex(string $pattern): ?string {
     $body = preg_replace('~(?<!\\\\)((?:\\\\\\\\)*)/~', '$1\\/', $pattern);
-    foreach (['(*UTF)', ''] as $prefix) {
-        $regex = '/' . $prefix . $body . '/';
-        if (@preg_match($regex, '') !== false) return $regex;
+    $regex = '/(*UTF)' . bbfJsWhitespaceClasses($body) . '/';
+    if (@preg_match($regex, '') !== false) return $regex;
+    $regex = '/' . $body . '/';
+    return @preg_match($regex, '') !== false ? $regex : null;
+}
+
+/**
+ * JavaScript's \s also matches Unicode spaces (NBSP, U+2000–U+200A, U+3000, BOM …); PCRE's \s without
+ * Unicode properties matches only ASCII whitespace. Spell the JavaScript set out so "Jana Nová" typed with
+ * a no-break space passes on both sides. \S outside a character class becomes the complement; inside a
+ * class it is left as is (a class cannot contain a negated class).
+ */
+function bbfJsWhitespaceClasses(string $body): string {
+    $extra = '\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}';
+    $out = '';
+    $inClass = false;
+    $len = strlen($body);
+    for ($i = 0; $i < $len; $i++) {
+        $c = $body[$i];
+        if ($c === '\\' && $i + 1 < $len) {
+            $n = $body[++$i];
+            if ($n === 's') $out .= $inClass ? '\s' . $extra : '[\s' . $extra . ']';
+            elseif ($n === 'S' && !$inClass) $out .= '[^\s' . $extra . ']';
+            else $out .= '\\' . $n;
+            continue;
+        }
+        if ($c === '[') $inClass = true;
+        elseif ($c === ']') $inClass = false;
+        $out .= $c;
     }
-    return null;
+    return $out;
 }
 
 function bbfRepeatableRowInput(array $fields, array $input, array $row): array {

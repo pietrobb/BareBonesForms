@@ -71,7 +71,7 @@ foreach (['file', 'csv', 'sqlite'] as $storage) {
         }
         foreach (['reader', 'deleter'] as $id) {
             $login = $http('viewer.php', $header($id));
-            preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $login['headers'], $cookie);
+            preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', $login['headers'], $cookie);
             preg_match('/const TOKEN = ("[^"]+");/', $login['body'], $csrf);
             access_storage_check($login['code'] === 200 && isset($cookie[1], $csrf[1]), "$storage $id session login");
             $options = ['cookie' => $cookie[1], 'method' => 'POST', 'headers' => ['Content-Type' => 'application/json',

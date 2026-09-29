@@ -266,18 +266,23 @@ foreach ($probeFiles as $probeDir => $probeFile) {
 }
 
 // README.md/CHANGELOG.md reveal the exact installed version, so they must not be served either.
-if (!is_file(__DIR__ . '/README.md')) {
-    check('Security', 'README.md blocked via HTTP', true, 'Not present in the web root; nothing to protect.');
-} else {
-    $docCode = bbf_diagnostic_probe($config ?? [], 'README.md', $docBody);
-    $docFallback = $docCode === 200 && $docBody !== substr((string)file_get_contents(__DIR__ . '/README.md'), 0, 1048576);
+foreach (['README.md', 'CHANGELOG.md'] as $doc) {
+    if (!is_file(__DIR__ . '/' . $doc)) {
+        check('Security', "$doc blocked via HTTP", true, 'Not present in the web root; nothing to protect.');
+        continue;
+    }
+    $docCode = bbf_diagnostic_probe($config ?? [], $doc, $docBody);
+    $docFallback = $docCode === 200 && $docBody !== substr((string)file_get_contents(__DIR__ . '/' . $doc), 0, 1048576);
     if ($docCode === null) $probeUnverified++;
-    check('Security', 'README.md blocked via HTTP', in_array($docCode, [403, 404], true) || $docFallback,
+    check('Security', "$doc blocked via HTTP", in_array($docCode, [403, 404], true) || $docFallback,
         $docCode === null ? $probeFailedDetail
         : ($docFallback ? 'Not served: HTTP 200 returned a different page (catch-all fallback).'
         : (in_array($docCode, [403, 404], true) ? 'Not served (HTTP ' . $docCode . ').'
-        : 'README.md/CHANGELOG.md are publicly readable (HTTP ' . $docCode . ') and reveal the installed version. Add the *.md rule from .htaccess (Nginx: see its comments).')),
+        : "$doc is publicly readable (HTTP $docCode) and reveals the installed version. Add the *.md rule from .htaccess (Nginx: see its comments) or delete the file.")),
         $docCode === null ? 'warn' : 'error');
+}
+foreach (bbf_htaccess_missing_rules(__DIR__) as $missing) {
+    check('Security', '.htaccess has the rules of this release', false, $missing);
 }
 
 // Check for common leftover files that shouldn't be in production

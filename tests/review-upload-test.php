@@ -237,7 +237,7 @@ try {
     // ── Viewer download (§10): hidden-form POST, IDs and token in the body ──
     $viewer = fn(string $query, array $options = []) => bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . '/viewer.php' . $query, null, $options + ['timeout' => 60]);
     $page = $viewer('', ['headers' => ['X-BBF-Token' => hash('sha256', 'bbf-upload-test-token')]]);
-    preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', (string)($page['headers'] ?? ''), $cookieMatch);
+    preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', (string)($page['headers'] ?? ''), $cookieMatch);
     preg_match('/const TOKEN = ("[^"]+");/', (string)($page['body'] ?? ''), $csrfMatch);
     $cookie = $cookieMatch[1] ?? '';
     $csrf = json_decode($csrfMatch[1] ?? '""', true);
@@ -306,6 +306,7 @@ try {
     $expired = up_submit($server, 'up&lang=sk', ['answer' => 'x', 'cv' => [str_repeat('f', 32)]], null);
     up_check($expired['code'] === 422 && ($expired['json']['errors']['cv'] ?? '') === 'Nahratý súbor vypršal alebo už nie je dostupný. Nahrajte ho znova.',
         'submit file-field errors use the requested form language');
+    up_check(($expired['json']['message'] ?? '') === 'Opravte, prosím, označené polia.', '2.1.3: the 422 summary message uses the requested form language');
     foreach ([['valid .docx', 'a.docx', $docx], ['valid .odt', 'a.odt', $odt], ['ODF with compressed, non-first mimetype', 'b.odt', $odtOther], ['PNG', 'a.png', $png]] as [$label, $name, $content]) {
         $r = up_upload($server, 'up', 'cv', $name, $content);
         up_check($r['code'] === 200 && isset($r['json']['token']), "types: $label accepted");
