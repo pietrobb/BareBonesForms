@@ -108,6 +108,7 @@ try {
     file_put_contents($root . '/submit.php', '<?php http_response_code(500); exit("Real submit forbidden in diagnostics.");');
     mkdir($root . '/probe', 0700);
     mkdir($root . '/target', 0700);
+    if (!is_dir($root . '/config')) mkdir($root . '/config', 0700); // credentials of actions live here
     $probe = <<<'PHP'
 <?php
 $status = (int)file_get_contents($_SERVER['DOCUMENT_ROOT'] . '/probe/status');
@@ -127,7 +128,7 @@ PHP;
 <?php
 $path = $_SERVER['PATH_INFO'] ?? '';
 file_put_contents(__DIR__ . '/logs/probe-requests', $_SERVER['REQUEST_URI'] . "\n", FILE_APPEND);
-$leak = is_file(__DIR__ . '/probe/leak') && preg_match('#\A/(?:[a-z]+/[^/]+|README\.md|CHANGELOG\.md)\z#', $path);
+$leak = is_file(__DIR__ . '/probe/leak') && preg_match('#\A/(?:[a-z]+/[^/]+|README\.md|CHANGELOG\.md|bbf_auth\.php)\z#', $path);
 $status = $leak ? 200 : (int)file_get_contents(__DIR__ . '/probe/status');
 http_response_code($status);
 if ($status === 302) header('Location: /trap.php');
@@ -254,7 +255,7 @@ PHP);
         bbf_test_verify_server($server);
         [$exit, $output] = diagnostic_cli($root, [], false, 'run-check.php');
         $rows = json_decode($output, true);
-        diagnostic_check($exit === 0 && is_array($rows) && count($rows) === 9, 'check runtime emits nine probe results (incl. README.md and CHANGELOG.md) for ' . var_export($status, true));
+        diagnostic_check($exit === 0 && is_array($rows) && count($rows) === 11, 'check runtime emits eleven probe results (incl. README.md, CHANGELOG.md, bbf_*.php and config/) for ' . var_export($status, true));
         foreach ($rows as $row) {
             diagnostic_check($row['pass'] === in_array($status, [403, 404], true), $row['name'] . ' correct classification ' . var_export($status, true));
             if ($status === null || $status === 'tls-failure') diagnostic_check(str_contains($row['detail'], 'Not verified'), 'failed/unconfigured probe is visibly unverified');
@@ -288,7 +289,12 @@ PHP);
     $requests = (string)file_get_contents($root . '/logs/probe-requests');
     diagnostic_check(preg_match('#/probe\.php/submissions/bbf-check-[0-9a-f]{32}\.txt#', $requests) === 1,
         'submissions/ is probed with a real sentinel file, not only the directory URL');
-    diagnostic_check(glob($root . '/submissions/bbf-check-*') === [] && glob($root . '/logs/bbf-check-*') === [],
+    diagnostic_check(preg_match('#/probe\.php/config/bbf-check-[0-9a-f]{32}\.txt#', $requests) === 1
+        && ($rows['config/ blocked via HTTP']['pass'] ?? true) === false && ($rows['config/ blocked via HTTP']['level'] ?? '') === 'error',
+        'config/ is probed with a sentinel file and a served one is an error');
+    diagnostic_check(str_contains($requests, '/probe.php/bbf_auth.php') && ($rows['Libraries (bbf_*.php) blocked via HTTP']['pass'] ?? true) === false,
+        'a library served over HTTP is reported');
+    diagnostic_check(glob($root . '/submissions/bbf-check-*') === [] && glob($root . '/logs/bbf-check-*') === [] && glob($root . '/config/bbf-check-*') === [],
         'check.php removes its sentinel files');
     // Catch-all fallback (php -S, SPA try_files): HTTP 200, but not the requested file.
     file_put_contents($root . '/probe/fallback', '1');
@@ -314,6 +320,9 @@ PHP);
     $cfgRow = $rows['config.php blocked via HTTP'] ?? [];
     diagnostic_check(($cfgRow['level'] ?? '') === 'warn' && str_contains($cfgRow['detail'] ?? '', 'guard works'),
         'empty HTTP 200 for config.php is a warning (guard works), not an error');
+    $libRow = $rows['Libraries (bbf_*.php) blocked via HTTP'] ?? [];
+    diagnostic_check(($libRow['pass'] ?? true) === false && ($libRow['level'] ?? '') === 'warn' && str_contains($libRow['detail'] ?? '', 'nothing leaked'),
+        'an empty HTTP 200 for a library is a warning to add the bbf_*.php rule');
     unlink($root . '/probe/fallback');
     unlink($root . '/probe/empty');
     file_put_contents($root . '/probe/status', '403');

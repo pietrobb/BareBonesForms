@@ -186,6 +186,17 @@ check('Security', 'config.php blocked via HTTP', $probeBlocked,
     $probeDetail,
     $probeCode === null || $probeGuarded ? 'warn' : 'error'
 );
+// The bbf_*.php libraries print nothing when requested directly, but they are not entry points either.
+$libCode = bbf_diagnostic_probe($config ?? [], 'bbf_auth.php', $libBody);
+$libBlocked = in_array($libCode, [403, 404], true);
+$libEmpty = $libCode === 200 && trim((string)$libBody) === '';
+if ($libCode === null) $probeUnverified++;
+check('Security', 'Libraries (bbf_*.php) blocked via HTTP', $libBlocked,
+    $libCode === null ? $probeFailedDetail
+    : ($libBlocked ? 'Direct HTTP access to bbf_auth.php is denied.'
+    : ($libEmpty ? 'Served as an empty page (HTTP 200): nothing leaked, but add the bbf_*.php rule from .htaccess (Nginx: see its comments).'
+    : 'Not verified as blocked (HTTP ' . $libCode . '). Add the bbf_*.php rule from .htaccess (Nginx: see its comments).')),
+    $libCode === null || $libEmpty ? 'warn' : 'error');
 
 // Check that core files exist
 check('Security', 'submit.php exists', file_exists(__DIR__ . '/submit.php'));
@@ -225,7 +236,7 @@ check('Security', 'display_errors is OFF', $dispOff,
 // A denied directory URL proves nothing about the files inside (Nginx without rules, php -S),
 // so request a real file: a shipped one, or a disposable sentinel written only for this probe.
 $probeFiles = ['submissions' => null, 'logs' => null, 'templates' => 'templates/notify.html',
-    'actions' => 'actions/README.md', 'forms' => 'forms/form.schema.json', 'tests' => null];
+    'actions' => 'actions/README.md', 'forms' => 'forms/form.schema.json', 'tests' => null, 'config' => null];
 $canProbe = bbf_diagnostic_base_url($config ?? []) !== null;
 foreach ($probeFiles as $probeDir => $probeFile) {
     // A directory absent from the web root (e.g. tests/ in a release) has nothing to expose.
@@ -236,7 +247,7 @@ foreach ($probeFiles as $probeDir => $probeFile) {
     $sentinel = $expected = null;
     if ($probeFile !== null && !is_file(__DIR__ . '/' . $probeFile)) $probeFile = null;
     if ($probeFile !== null) $expected = (string)file_get_contents(__DIR__ . '/' . $probeFile);
-    if ($probeFile === null && $canProbe && in_array($probeDir, ['submissions', 'logs', 'templates', 'actions', 'tests'], true)) {
+    if ($probeFile === null && $canProbe && in_array($probeDir, ['submissions', 'logs', 'templates', 'actions', 'tests', 'config'], true)) {
         $realDir = realpath($dirs[$probeDir] ?? __DIR__ . '/' . $probeDir);
         // Only a directory at its default web path can be reached by URL.
         if ($realDir !== false && $realDir === realpath(__DIR__ . '/' . $probeDir) && is_writable($realDir)) {

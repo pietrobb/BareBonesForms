@@ -5,7 +5,7 @@
 # Replace BBF_BASE/ with the exact installation path relative to the domain root
 # (for /bbf use ^/bbf/; for a root install remove BBF_BASE/ and keep ^/).
 # location ~ ^/BBF_BASE/config { deny all; }
-# location = /BBF_BASE/bbf_functions.php { deny all; }
+# location ~ ^/BBF_BASE/bbf_[^/]*\.php$ { deny all; }
 # location ~ ^/BBF_BASE/(submissions|logs|templates|actions|backups|tests|data)/ { deny all; }
 # location ~ ^/BBF_BASE/forms/.*\.json$ { deny all; }
 # location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
@@ -19,8 +19,8 @@
 # Disable directory listing globally
 Options -Indexes
 
-# Block config files and internal function library
-<FilesMatch "^config|^bbf_functions\.php$">
+# Block config files and the internal libraries (bbf_*.php; entry points have other names)
+<FilesMatch "^config|^bbf_.*\.php$">
     Require all denied
 </FilesMatch>
 
@@ -41,6 +41,7 @@ RewriteEngine On
 RewriteRule (^|/)\. - [F,L]
 
 # Block sensitive directories
+RewriteRule ^config/ - [F,L]
 RewriteRule ^submissions/ - [F,L]
 RewriteRule ^logs/ - [F,L]
 RewriteRule ^templates/ - [F,L]

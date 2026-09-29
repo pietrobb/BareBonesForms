@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BareBonesForms v2.1.3 — Documentation</title>
+<title>BareBonesForms v2.1.4 — Documentation</title>
 <style>
 :root {
     --bg: #ffffff; --bg-sidebar: #f8f9fa; --bg-code: #f4f5f7; --bg-code-block: #1e1e2e;
@@ -97,7 +97,7 @@ details summary:hover { text-decoration: underline; }
 <body>
 
 <div class="header">
-    <h1>BareBonesForms <span>v2.1.3 Docs</span></h1>
+    <h1>BareBonesForms <span>v2.1.4 Docs</span></h1>
     <span class="ver">v2.1 &middot; PHP 8.1+ &middot; September 2026</span>
 </div>
 
@@ -257,7 +257,7 @@ details summary:hover { text-decoration: underline; }
 
 <h3>One command (SSH)</h3>
 <p>Every release from 2.1.0 on knows its version (<code>php maintenance.php version</code>, also shown in <code>check.php</code> and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:</p>
-<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php upgrade --package=../barebonesforms-v2.1.3.zip</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php upgrade --package=../barebonesforms-v2.1.4.zip</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 <p>This is a dry run &mdash; nothing changes. It verifies every file of the package, runs the new version's smoke test against <strong>your</strong> forms and templates, checks the new PHP files for syntax errors, and prints:</p>
 <ul>
     <li>the installed and the new version, how many files will be added or replaced, and which obsolete files will be removed;</li>
@@ -270,7 +270,7 @@ details summary:hover { text-decoration: underline; }
 <p>If it looks right, run the printed command with <code>--apply --confirm=&lt;digest&gt;</code>. The upgrade saves every file it overwrites or deletes to <code>logs_dir/upgrades/&lt;date&gt;-&lt;from&gt;-to-&lt;to&gt;-&hellip;/</code>, swaps files one by one (each file atomically), runs the smoke test again, and <strong>rolls itself back</strong> if anything fails. <code>config.php</code>, your own forms, templates, submissions, uploads and logs are never touched &mdash; the manifest lists only the files the release owns. Demo pages, docs and sample forms are updated where you have them, but never added to an installation that left them out, so a live site does not grow demo form endpoints.</p>
 <p>To undo a finished upgrade later: <code>php maintenance.php upgrade-rollback --backup=&lt;folder printed by the upgrade&gt;</code> (dry run first, then <code>--apply --confirm=&hellip;</code>).</p>
 <p><strong>Upgrading from a version before 2.1.0</strong> (its <code>maintenance.php</code> does not know <code>upgrade</code> yet): unzip the new release next to the installation and let the new code do it &mdash; same checks, backup and rollback:</p>
-<div class="code-block"><span class="lang">bash</span><pre>unzip barebonesforms-v2.1.3.zip            # creates ./barebonesforms
+<div class="code-block"><span class="lang">bash</span><pre>unzip barebonesforms-v2.1.4.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 <p>Without a manifest from the old version it cannot tell which sample forms and templates you edited, so it keeps every one that differs from the new release and removes nothing.</p>
 <p>Needs the PHP <code>zip</code> extension to read the ZIP; without it, unzip the package and pass the folder: <code>--package=../barebonesforms</code>. On hosts where PHP cannot start child processes, the smoke tests are skipped &mdash; run <code>php smoketest.php</code> yourself afterwards.</p>
@@ -1622,8 +1622,8 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
 <h3>What <code>.htaccess</code> blocks</h3>
 <p>The included <code>.htaccess</code> is comprehensive. Here is what it denies:</p>
 <ul>
-    <li><strong>Directories:</strong> <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>backups/</code>, <code>tests/</code>, <code>data/</code></li>
-    <li><strong>Files:</strong> <code>config*</code> (all variants), <code>bbf_functions.php</code>, <code>forms/*.json</code>, <code>lang/*.php</code></li>
+    <li><strong>Directories:</strong> <code>config/</code>, <code>submissions/</code>, <code>logs/</code>, <code>templates/</code>, <code>actions/</code>, <code>backups/</code>, <code>tests/</code>, <code>data/</code></li>
+    <li><strong>Files:</strong> <code>config*</code> (all variants), the internal libraries <code>bbf_*.php</code>, <code>forms/*.json</code>, <code>lang/*.php</code></li>
     <li><strong>Editor backups:</strong> <code>*.bak</code>, <code>*.bak_*</code>, <code>*.swp</code>, <code>*.save</code>, <code>*.orig</code>, <code>*.old</code>, <code>*~</code></li>
     <li><strong>Dotfiles:</strong> <code>.git/</code>, <code>.env</code>, <code>.htpasswd</code> &mdash; everything starting with a dot</li>
     <li><strong>Directory listing:</strong> OFF globally (<code>Options -Indexes</code>)</li>
@@ -1635,7 +1635,7 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
 <div class="code-block"><span class="lang">nginx</span><pre># Add to your server {} block. Replace BBF_BASE/ with the installation path:
 # for /bbf use ^/bbf/ ; for a domain-root install remove BBF_BASE/ and keep ^/
 location ~ ^/BBF_BASE/config { deny all; }
-location = /BBF_BASE/bbf_functions.php { deny all; }
+location ~ ^/BBF_BASE/bbf_[^/]*\.php$ { deny all; }
 location ~ ^/BBF_BASE/(submissions|logs|templates|actions|backups|tests|data)/ { deny all; }
 location ~ ^/BBF_BASE/forms/.*\.json$ { deny all; }
 location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }

@@ -59,6 +59,41 @@ test('every server language pack has every lang/en.php message with the same pla
     }
 });
 
+// Older packs whose browser and server wording still differ (both correct); new divergences are refused.
+const knownDivergent = new Set(['da emailMismatch', 'el dateMin', 'el dateMax', 'es dateMin', 'es dateMax', 'et dateMin', 'et dateMax',
+    'fi dateMax', 'hu dateMin', 'hu dateMax', 'ja emailMismatch', 'ja dateMin', 'ja dateMax', 'nb emailMismatch', 'nl emailMismatch',
+    'pt-br dateMin', 'pt-br dateMax', 'pt dateMin', 'pt dateMax', 'ru dateMin', 'ru dateMax', 'tlh tooLong', 'tr dateMin', 'tr dateMax',
+    'zh-tw dateMin', 'zh-tw dateMax', 'zh dateMin', 'zh dateMax']);
+
+test('a message the browser and the server both show reads the same in both packs', () => {
+    const mismatches = [];
+    for (const lang of langs) {
+        const client = jsPack(`${lang}.js`);
+        const server = phpPack(`${lang}.php`);
+        for (const [key, text] of Object.entries(server)) {
+            if (typeof client[key] === 'string' && client[key] !== text && !knownDivergent.has(`${lang} ${key}`)) {
+                mismatches.push(`${lang} ${key}: "${client[key]}" vs "${text}"`);
+            }
+        }
+    }
+    assert.deepEqual(mismatches, []);
+    assert.ok(![...knownDivergent].some(k => k.startsWith('lt ') || k.startsWith('sk ') || k.startsWith('cs ') || k.startsWith('en ')),
+        'lt, sk, cs and en packs are fully consistent');
+});
+
+test('the Lithuanian pack carries the wording used in production on airdomes.pro', () => {
+    const client = jsPack('lt.js');
+    const server = phpPack('lt.php');
+    for (const pack of [client, server]) {
+        assert.equal(pack.invalidEmail, '{label} turi būti teisingas el. pašto adresas.');
+        assert.equal(pack.numberMax, '{label} negali viršyti {max}.');
+        assert.equal(pack.invalidOption, '{label} turi neteisingą pasirinkimą.');
+    }
+    assert.equal(client.crossFieldDefault, 'Patikrinkite įvestus duomenis.');
+    assert.equal(client.formNotFound, 'Forma \u201E{id}\u201C nerasta ({status})', 'Lithuanian quotes „…“ stay paired');
+    for (const text of [...Object.values(client), ...Object.values(server)]) assert.ok(!/neteisiną/.test(text), `no typo in "${text}"`);
+});
+
 test('every message key used in code exists in the English sources', () => {
     const en = builtin();
     const js = read('bbf.js');

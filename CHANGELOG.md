@@ -3,6 +3,16 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.4] — 2026-09-29
+
+### Fixed
+- **Upgrade on Windows:** `maintenance.php upgrade --apply` failed with "Cannot replace …/maintenance.php" whenever the release changed `maintenance.php`, because Windows cannot rename a file over the script that is running; the upgrade and the rollback now write such a file in place and verify it by checksum. The automatic rollback no longer reports an error for a file the failed upgrade never changed. Since 2.1.3 the upgrade runs the upgrader shipped in the new package, so this already applies to the upgrade from 2.1.3 to 2.1.4. Linux hosting was not affected.
+
+- **Lithuanian:** the pack takes over the wording used in production on airdomes.pro ("teisingas el. pašto adresas", "negali viršyti {max}", "Patikrinkite įvestus duomenis."), so an upgrade no longer replaces a site's better strings with weaker ones; "negali viršyti {max} simbolių" no longer depends on the gender of the field name. A new test keeps every message the browser and the server both show identical in `lang/xx.js` and `lang/xx.php` (lt, sk, cs, en fully; older divergent wording in other packs is listed and frozen).
+
+### Security
+- **Server rules:** `.htaccess` and the Nginx rules deny every internal library `bbf_*.php` (before only `bbf_functions.php`) and the `config/` folder with action credentials (only `config*` files were denied). Nothing leaked before (the libraries print nothing and credential files are PHP), this is defence in depth. `check.php` probes `bbf_auth.php` and a sentinel file in `config/`; check.php and selfcheck report an `.htaccess` that lacks these rules. If you keep your own `.htaccess`, copy the two changed lines from `.htaccess.dist`; on Nginx replace the `bbf_functions.php` line with `location ~ ^/BBF_BASE/bbf_[^/]*\.php$ { deny all; }`.
+
 ## [2.1.3] — 2026-09-29
 
 Fixes from the review of 2.1.2.

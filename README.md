@@ -180,7 +180,7 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.3.zip
+php maintenance.php upgrade --package=../barebonesforms-v2.1.4.zip
 ```
 
 This is a dry run — nothing changes. Once 2.1.3 or newer is installed, every later upgrade is planned and applied by the upgrader inside the new package (the result says `"upgrader": "package X.Y.Z"`), so fixes to the upgrade itself already apply to it. It verifies every file of the package, runs the new version's smoke test against **your** forms and templates, checks the new PHP files for syntax errors, and prints:
@@ -200,7 +200,7 @@ To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup
 **Upgrading from a version before 2.1.0** (its `maintenance.php` does not know `upgrade` yet): unzip the new release next to the installation and let the new code do it — same checks, backup and rollback:
 
 ```bash
-unzip barebonesforms-v2.1.3.zip            # creates ./barebonesforms
+unzip barebonesforms-v2.1.4.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 
@@ -870,7 +870,7 @@ Directory listing:    OFF globally (Options -Indexes)
 
 > **Apache only.** For Nginx, copy the equivalent rules from `.htaccess` into your `server {}` block and replace `BBF_BASE/` with the exact installation prefix. For `/bbf`, use patterns beginning `^/bbf/`; for a domain-root installation, remove `BBF_BASE/`. Do not block `lang/*.js`—only `lang/*.php` is private.
 >
-> Verify the active server configuration, not merely the file: request a disposable sentinel below `submissions/`, `logs/`, `templates/`, `actions/`, `backups/`, `tests/`, and `data/`, plus a form JSON, `lang/en.php`, `README.md`, `CHANGELOG.md` (they reveal the installed version); every request must return 403 or 404. Confirm that `lang/en.js` still returns 200, then remove the sentinels. `check.php` reports direct `config.php` and directory-URL responses when `diagnostic_base_url` is configured, but directory denial can come from `autoindex off`; it does not replace these sentinel-file probes.
+> Verify the active server configuration, not merely the file: request a disposable sentinel below `config/`, `submissions/`, `logs/`, `templates/`, `actions/`, `backups/`, `tests/`, and `data/`, plus a form JSON, `lang/en.php`, a library such as `bbf_auth.php`, `README.md`, `CHANGELOG.md` (they reveal the installed version); every request must return 403 or 404. Confirm that `lang/en.js` still returns 200, then remove the sentinels. `check.php` reports direct `config.php` and directory-URL responses when `diagnostic_base_url` is configured, but directory denial can come from `autoindex off`; it does not replace these sentinel-file probes.
 
 ### Daily security self-check
 

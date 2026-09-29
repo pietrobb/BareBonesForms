@@ -104,6 +104,8 @@ try {
     // ─── A 2.2.0 package ─────────────────────────────────────────────
     upgrade_copy("$tmp/old", "$tmp/new");
     file_put_contents("$tmp/new/bbf.js", "\n/* 2.2.0 */\n", FILE_APPEND);
+    // maintenance.php is the script running the upgrade: Windows cannot rename over it (2.1.3 failed there).
+    file_put_contents("$tmp/new/maintenance.php", "\n// 2.2.0\n", FILE_APPEND);
     file_put_contents("$tmp/new/templates/notify.html", "\n<!-- 2.2.0 -->\n", FILE_APPEND);
     file_put_contents("$tmp/new/templates/confirm.html", "\n<!-- 2.2.0 -->\n", FILE_APPEND);
     file_put_contents("$tmp/new/newfile.php", "<?php\n// added in 2.2.0\n");
@@ -116,7 +118,7 @@ try {
     $dry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/site");
     $plan = $dry['json'] ?? [];
     check_upgrade($dry['code'] === 0 && ($plan['ok'] ?? false) && $plan['from'] === '2.1.0' && $plan['to'] === '2.2.0', 'dry run plans 2.1.0 -> 2.2.0');
-    check_upgrade(($plan['files']['add'] ?? 0) === 1 && ($plan['files']['replace'] ?? 0) === 4, 'adds the new file; replaces bbf.js, config example, CHANGELOG, untouched notify.html and nothing else');
+    check_upgrade(($plan['files']['add'] ?? 0) === 1 && ($plan['files']['replace'] ?? 0) === 5, 'adds the new file; replaces bbf.js, maintenance.php, config example, CHANGELOG, untouched notify.html and nothing else');
     check_upgrade(($plan['added'] ?? []) === ['newfile.php'] && in_array('bbf.js', $plan['replaced'] ?? [], true), 'dry run names the files it adds and replaces');
     check_upgrade(($plan['files']['remove'] ?? []) === ['demo10.html'], 'an unchanged file dropped from the release is removed');
     check_upgrade(($plan['files']['keep_yours'] ?? []) === ['templates/confirm.html'], 'your edited template is kept');
@@ -162,6 +164,7 @@ try {
     check_upgrade($apply['code'] === 0 && ($apply['json']['ok'] ?? false), 'upgrade applies' . ($apply['code'] === 0 ? '' : ': ' . $apply['out'] . $apply['err']));
     $after = upgrade_snapshot("$tmp/site");
     check_upgrade($after['bbf.js'] === hash_file('sha256', "$tmp/new/bbf.js") && isset($after['newfile.php']) && !isset($after['demo10.html']), 'code is replaced, added and removed');
+    check_upgrade($after['maintenance.php'] === hash_file('sha256', "$tmp/new/maintenance.php"), 'the running maintenance.php is replaced too');
     check_upgrade($after['templates/notify.html'] === hash_file('sha256', "$tmp/new/templates/notify.html"), 'an untouched template is updated');
     check_upgrade(file_get_contents("$tmp/site/templates/confirm.html") === '<p>My own confirmation email</p>', 'your template survives');
     foreach (['config.php', 'forms/mine.json', 'forms/kontakt.json', 'submissions/kontakt/record.json'] as $path) {
@@ -191,6 +194,22 @@ try {
     $retryOk = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup", '--apply', '--confirm=' . ($retryPlan['confirm'] ?? '')], "$tmp/retry");
     $retrySnap = upgrade_snapshot("$tmp/retry");
     check_upgrade($retryOk['code'] === 0 && $retrySnap === $before, 'the rollback can be repeated and then restores the exact pre-upgrade state');
+
+    // ─── A rollback does not rewrite files the failed upgrade never reached ─
+    upgrade_copy("$tmp/old", "$tmp/unreached");
+    $unreachedBackup = "$tmp/unreached-backup";
+    mkdir("$unreachedBackup/files", 0700, true);
+    copy("$tmp/unreached/bbf.js", "$unreachedBackup/files/bbf.js.bak");
+    file_put_contents("$unreachedBackup/upgrade.json", json_encode(['from' => '2.1.0', 'to' => '2.2.0', 'install' => "$tmp/unreached",
+        'started_at' => date('c'), 'written' => ['bbf.js'], 'removed' => [], 'saved' => ['bbf.js']], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    chmod("$tmp/unreached/bbf.js", 0444); // cannot be replaced (Windows: read-only; elsewhere the folder below)
+    chmod("$tmp/unreached", 0555);
+    $unreachedPlan = upgrade_run([PHP_BINARY, "$tmp/site/maintenance.php", 'upgrade-rollback', "--backup=$unreachedBackup"], "$tmp/unreached")['json'] ?? [];
+    $unreached = upgrade_run([PHP_BINARY, "$tmp/site/maintenance.php", 'upgrade-rollback', "--backup=$unreachedBackup", '--apply', '--confirm=' . ($unreachedPlan['confirm'] ?? '')], "$tmp/unreached");
+    chmod("$tmp/unreached", 0755);
+    chmod("$tmp/unreached/bbf.js", 0644);
+    check_upgrade($unreached['code'] === 0 && ($unreached['json']['errors'] ?? null) === [], 'an unchanged file is not reported as a rollback error'
+        . ($unreached['code'] === 0 ? '' : ': ' . $unreached['out'] . $unreached['err']));
 
     // ─── Manual rollback ─────────────────────────────────────────────
     $rollbackPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$backup"], "$tmp/site");
@@ -308,6 +327,10 @@ try {
     file_put_contents("$tmp/hta/.htaccess", "Options -Indexes\n");
     $noMd = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
     check_upgrade(count($noMd ?? []) === 1 && str_contains($noMd[0], '\.md$'), 'without .htaccess.dist an .htaccess lacking the *.md rule is reported');
+    check_upgrade(str_contains($noMd[0] ?? '', '^bbf_.*\.php$') && str_contains($noMd[0] ?? '', 'RewriteRule ^config/'),
+        'and so are the bbf_*.php and config/ rules');
+    file_put_contents("$tmp/hta/.htaccess", file_get_contents("$repo/.htaccess"));
+    check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [], 'the shipped .htaccess has every essential rule');
     unlink("$tmp/hta/.htaccess");
     check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [], 'without .htaccess (Nginx) nothing is reported here');
 

@@ -64,8 +64,12 @@ function bbf_upgrade_put(string $target, string $data): void {
         throw new RuntimeException("Cannot write $target");
     }
     @chmod($temp, is_file($target) ? fileperms($target) & 0777 : 0644);
-    if (!@rename($temp, $target)) {
-        @unlink($temp);
+    if (@rename($temp, $target)) return;
+    @unlink($temp);
+    // Windows cannot rename over a file another handle holds open, such as the maintenance.php running this
+    // upgrade; writing into it works there. Not atomic, so it is only the fallback, verified by checksum.
+    if (!is_file($target) || @file_put_contents($target, $data, LOCK_EX) !== strlen($data)
+        || hash_file('sha256', $target) !== hash('sha256', $data)) {
         throw new RuntimeException("Cannot replace $target");
     }
 }
@@ -453,6 +457,8 @@ function bbf_upgrade_restore(string $backup): array {
         try {
             $data = file_get_contents("$backup/files/$path.bak");
             if (!is_string($data)) throw new RuntimeException("backup copy of $path is missing");
+            // A file the failed upgrade never got to is already the saved version: nothing to restore.
+            if (is_file("$install/$path") && hash_file('sha256', "$install/$path") === hash('sha256', $data)) continue;
             bbf_upgrade_put("$install/$path", $data);
         } catch (Throwable $error) {
             $errors[] = $error->getMessage();
@@ -515,7 +521,8 @@ function bbf_htaccess_missing_rules(string $install): array {
     $dist = @file_get_contents("$install/.htaccess.dist");
     $wanted = is_string($dist)
         ? array_filter(array_map($norm, preg_split('/\R/', $dist) ?: []), static fn(string $line): bool => $line !== '' && $line[0] !== '#')
-        : ['<FilesMatch "\.md$">']; // README.md/CHANGELOG.md reveal the installed version
+        : ['<FilesMatch "\.md$">', // README.md/CHANGELOG.md reveal the installed version
+            '<FilesMatch "^config|^bbf_.*\.php$">', 'RewriteRule ^config/ - [F,L]']; // libraries and credentials (2.1.4)
     $missing = array_values(array_filter(array_unique($wanted), static fn(string $line): bool => !isset($have[$line])));
     if ($missing === []) return [];
     return [count($missing) . ' rule line(s) of this release are missing from .htaccess' . (is_string($dist) ? ' (compare it with .htaccess.dist and copy them over)' : '')

@@ -494,6 +494,35 @@ acceptance_check(preg_match('/<FilesMatch "\\\\\.md\$">\s*Require all denied\s*<
     && str_contains($docsHtml = acceptance_source($root, 'docs.html'), 'location ~ ^/BBF_BASE/.*\.md$ { deny all; }') && !str_contains($docsHtml, 'location ~ \.md$')
     && str_contains($readme, '`README.md`, `CHANGELOG.md`'),
     'README.md/CHANGELOG.md are denied by Apache and Nginx rules (Nginx only inside the installation, not the whole domain) and listed among the probes');
+// Evaluate the shipped rules themselves: Apache FilesMatch (on the file name) + RewriteRule [F] (on the path),
+// and the Nginx lines from the .htaccess comments and docs.html, for an installation under /bbf/.
+preg_match_all('/<FilesMatch "([^"]+)">\s*Require all denied/', $htaccess, $filesMatch);
+preg_match_all('/^RewriteRule (\S+) - \[F,L\]/m', $htaccess, $rewrite);
+$nginxRules = static function (string $text): array {
+    preg_match_all('/^(?:# )?location ~ "?(.+?)"? \{ deny all; \}/m', $text, $m);
+    return array_map(static fn(string $re): string => str_replace('BBF_BASE/', 'bbf/', $re), $m[1]);
+};
+$apacheDenies = static function (string $path) use ($filesMatch, $rewrite): bool {
+    foreach ($filesMatch[1] as $re) if (preg_match("%$re%", basename($path))) return true;
+    foreach ($rewrite[1] as $re) if (preg_match("%$re%", $path)) return true;
+    return false;
+};
+$nginxDenies = static function (array $rules, string $path): bool {
+    foreach ($rules as $re) if (preg_match("%$re%", "/bbf/$path")) return true;
+    return false;
+};
+$libraries = array_map('basename', glob("$root/bbf_*.php"));
+$entryPoints = array_values(array_filter(array_map('basename', glob("$root/*.php")), static fn(string $f): bool => !str_starts_with($f, 'bbf_') && !str_starts_with($f, 'config')));
+$mustDeny = array_merge($libraries, ['config.php', 'config/google-ads-credentials.php', 'config/']);
+$mustServe = array_merge($entryPoints, ['bbf.js', 'lang/en.js']);
+foreach (['.htaccess' => null, 'Nginx in .htaccess' => $nginxRules($htaccess), 'Nginx in docs.html' => $nginxRules(acceptance_source($root, 'docs.html'))] as $label => $rules) {
+    $denies = static fn(string $path): bool => $rules === null ? $apacheDenies($path) : $nginxDenies($rules, $path);
+    $leaks = array_values(array_filter($mustDeny, static fn(string $path): bool => !$denies($path)));
+    $blocked = array_values(array_filter($mustServe, $denies));
+    acceptance_check(count($libraries) > 10 && count($entryPoints) > 4 && $leaks === [] && $blocked === [],
+        "$label denies every bbf_*.php library and config/, but no entry point"
+        . ($leaks ? '; served: ' . implode(', ', $leaks) : '') . ($blocked ? '; blocked: ' . implode(', ', $blocked) : ''));
+}
 $docsHtml = acceptance_source($root, 'docs.html'); $changelog = acceptance_source($root, 'CHANGELOG.md');
 preg_match('/^## \[(\d+\.\d+\.\d+)\]/m', $changelog, $latest);
 acceptance_check(($latest[1] ?? '') !== '' && str_contains($docsHtml, '<title>BareBonesForms v' . $latest[1] . ' ')
