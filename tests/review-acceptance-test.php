@@ -492,6 +492,20 @@ acceptance_check(str_contains($htaccess, 'BBF_BASE/') && str_contains($htaccess,
 acceptance_check(preg_match('/<FilesMatch "\\\\\.md\$">\s*Require all denied\s*<\/FilesMatch>/', $htaccess) === 1
     && str_contains($htaccess, '# location ~ \.md$ { deny all; }') && str_contains($readme, '`README.md`, `CHANGELOG.md`'),
     'README.md/CHANGELOG.md are denied by Apache and Nginx rules and listed among the probes');
+$docsHtml = acceptance_source($root, 'docs.html'); $changelog = acceptance_source($root, 'CHANGELOG.md');
+preg_match('/^## \[(\d+\.\d+\.\d+)\]/m', $changelog, $latest);
+acceptance_check(($latest[1] ?? '') !== '' && str_contains($docsHtml, '<title>BareBonesForms v' . $latest[1] . ' ')
+    && str_contains($docsHtml, '<span>v' . $latest[1] . ' Docs</span>')
+    && str_contains($readme, 'barebonesforms-v' . $latest[1] . '.zip') && str_contains($docsHtml, 'barebonesforms-v' . $latest[1] . '.zip'),
+    'docs.html title and the upgrade examples name the newest CHANGELOG version');
+acceptance_check(!str_contains(acceptance_source($root, 'bbf_uploads.php'), 'BBF 2.2')
+    && !str_contains(acceptance_source($root, 'docs/FILE-UPLOAD-DESIGN.md'), 'landed for BareBonesForms 2.2'),
+    'file uploads are attributed to 2.1.0, the release that shipped them');
+$releaseYml = acceptance_source($root, '.github/workflows/release.yml');
+acceptance_check(str_contains($releaseYml, '$p !== "check.php"') && str_contains($releaseYml, '.htaccess.dist')
+    && str_contains($readme, 'code plus `check.php`') && str_contains($readme, '`.htaccess.dist`: compare it')
+    && str_contains($docsHtml, 'code plus <code>check.php</code>') && str_contains($docsHtml, '<code>.htaccess.dist</code>: compare it'),
+    'FTP upgrade instructions match the upgrade ZIP: check.php included, .htaccess shipped as .htaccess.dist');
 acceptance_check(str_contains($readme, '"pricing_version": "order-v1"')
     && str_contains($readme, 'validates your existing forms against the new version')
     && str_contains($readme, 'staging folder** that is not web-accessible')

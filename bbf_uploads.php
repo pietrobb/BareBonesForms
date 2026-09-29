@@ -1,6 +1,6 @@
 <?php
 /**
- * File uploads (docs/FILE-UPLOAD-DESIGN.md, BBF 2.2): staging, capacity ledger with
+ * File uploads (docs/FILE-UPLOAD-DESIGN.md, shipped in BBF 2.1.0): staging, capacity ledger with
  * write-ahead accounting, claim into a submit transaction, rollback, GC, downloads.
  * The uploads lock (<root>/.lock) is a leaf lock: never nested, never held across a
  * backend call, a network request, mail() or a child process.

@@ -180,7 +180,7 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.1.zip
+php maintenance.php upgrade --package=../barebonesforms-v2.1.2.zip
 ```
 
 This is a dry run — nothing changes. It verifies every file of the package, runs the new version's smoke test against **your** forms and templates, checks the new PHP files for syntax errors, and prints:
@@ -199,7 +199,7 @@ To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup
 **Upgrading from a version before 2.1.0** (its `maintenance.php` does not know `upgrade` yet): unzip the new release next to the installation and let the new code do it — same checks, backup and rollback:
 
 ```bash
-unzip barebonesforms-v2.1.1.zip            # creates ./barebonesforms
+unzip barebonesforms-v2.1.2.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 
@@ -211,7 +211,7 @@ Needs the PHP `zip` extension to read the ZIP; without it, unzip the package and
 
 ### FTP only
 
-Download **`barebonesforms-vX.Y.Z-upgrade.zip`** from the release, not the full ZIP. It contains only code — no `config.php`, sample forms, email templates, docs or demo pages — so uploading it over your installation cannot overwrite anything you edited. Files removed from a release stay behind; that is harmless. Then open `check.php` to confirm the new version.
+Download **`barebonesforms-vX.Y.Z-upgrade.zip`** from the release, not the full ZIP. It contains only code plus `check.php` — no `config.php`, `.htaccess`, sample forms, email templates, docs or demo pages — so uploading it over your installation cannot overwrite anything you edited. The release's `.htaccess` rules come as `.htaccess.dist`: compare it with your `.htaccess` and copy new rules over by hand. Files removed from a release stay behind; that is harmless. Then open `check.php` to confirm the new version and that protected files are still blocked, and delete `check.php` again. The version is also shown under the forms list in `viewer.php`.
 
 ### By hand
 

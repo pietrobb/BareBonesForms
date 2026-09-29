@@ -181,6 +181,8 @@ return [
     'store_user_agent' => true,   // set false to stop storing user-agent strings
     // Respondent drafts are enabled per form. This protected directory stores only allowlisted fields.
     'drafts_dir'       => __DIR__ . '/submissions/drafts',
+    // New drafts beyond this many stored drafts get 429; a single draft is capped at 256 KB (413).
+    // 'drafts_max'    => 10000,
     // Retention is OFF unless explicitly enabled. Run `php maintenance.php retention --form=FORM` first;
     // destructive runs require `--apply --confirm=EXACT_DIGEST`. Keep archives outside the web application and data paths.
     'retention' => [

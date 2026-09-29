@@ -3,6 +3,21 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.2] — 2026-09-29
+
+Fixes from the independent re-review of 2.1.1.
+
+### Fixed
+- **Sign-in:** the correct token is always accepted, even while its address is throttled after wrong attempts (a proxy or office could lock everyone out). A token shorter than 16 characters in `access_tokens` is now ignored on its own instead of disabling every token including `api_token`; `check.php`, `selfcheck` and the upgrade dry run name such tokens. An invalid `trusted_proxies` entry (e.g. `10.0.0.0/`) is ignored and reported instead of trusting everyone; `X-Forwarded-For` with a port or an `::ffff:` address is read correctly. The wrong-token counter file stays bounded.
+- **Upgrades:** a failed `upgrade-rollback` can be run again (the manifest of the older version is restored last). Files of earlier releases count as unmodified, so an upgrade from 2.1.0 no longer reports README and docs as "edited by you". The code-only `-upgrade.zip` now carries `check.php` and the new rules as `.htaccess.dist`. Releases are built only from a commit whose CI passed, with pinned GitHub Actions.
+- **Forms:** conditions inside repeatable rows react to changes of ordinary fields; `\d` in a `pattern` matches only ASCII digits in the browser and on the server; a `select` default that is not one of its options leaves the field empty; payment and unparseable-number errors are shown; file fields count for `min_filled`; "Other" text hides again on reset; `$&` in labels stays literal; `lang` codes such as `pt-BR` and `zh-TW` load their pack regardless of case.
+- **Accessibility:** a page change is announced to screen readers, removing a repeatable row does not leave focus on another Remove button, hint text in the dark theme has AA contrast; "Other", rating and page-status texts are translatable.
+- **Viewer and export:** the export holds exactly what the filtered list shows (search, dates, review status and tags; review filters need the review permission); an invalid date gives 400 instead of an empty file; `bom=0` omits the UTF-8 BOM for scripts. Rows with the same time keep a stable order across pages; long page lists show "…"; forwarding keeps an answer `0`; `?lang` and sandbox labels are escaped.
+- **Server:** `submissions.php` treats an empty SQLite file as "no submissions" instead of 500; `mail()` sets the envelope sender (`-f`) so bounces reach `mail_from`; `deliveries-retry` no longer reads the whole delivery history; the editor creates a form atomically and never overwrites an existing one; `logs/access-audit.php` rotates at `audit_max_bytes` (20 MB); a missing `logs/` is named in the 503; the session lock is released before submit processing; CORS responses send `Vary: Origin`; redirects after submit accept only http(s) or relative targets; the form id is URL-encoded in every request; failed confirmation and notification emails are separate incidents.
+- **Drafts:** at most `drafts_max` stored drafts (default 10 000, new ones get 429) and 256 KB per draft (413).
+- **Information leak:** `README.md` and `CHANGELOG.md` revealed the installed version. `.htaccess` now denies `*.md` and `check.php` reports a readable `README.md` as an error. On Nginx add `location ~ \.md$ { deny all; }` (see README).
+- Docs: `docs.html` showed version 2.0.4; the FTP upgrade steps describe what the upgrade ZIP really contains; file uploads are attributed to 2.1.0.
+
 ## [2.1.1] — 2026-09-29
 
 Fixes from an independent code review of 2.1.0.
