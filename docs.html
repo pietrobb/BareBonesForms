@@ -182,7 +182,7 @@ details summary:hover { text-decoration: underline; }
     <li><strong>Sandbox mode</strong> &mdash; test everything without consequences</li>
     <li><strong>Repeatable groups</strong> &mdash; attendees, line items, children; add and remove rows within bounds</li>
     <li><strong>Save &amp; resume drafts</strong> &mdash; opt-in per form, only the fields you allow</li>
-    <li><strong>File uploads (2.2)</strong> &mdash; opt-in private storage, progress, authenticated downloads and backup/retention support</li>
+    <li><strong>File uploads (2.1)</strong> &mdash; opt-in private storage, progress, authenticated downloads and backup/retention support</li>
     <li><strong>Lookup, autocomplete, dynamic options</strong> &mdash; fill fields from your own APIs</li>
     <li><strong>Viewer inbox</strong> &mdash; status, notes, tags, delivery log and one-click retry of failed emails and webhooks</li>
     <li><strong>Form versions</strong> &mdash; old submissions keep the form they were filled in with</li>
@@ -476,7 +476,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 <p>Form-level properties besides those in the example above: <code>drafts</code> (<a href="#drafts">Save &amp; Resume</a>), <code>templates</code>, <code>validations</code>, <code>label_position</code>, <code>animate_conditions</code>, <code>preview_fields</code> and <code>storage</code>.</p>
 
 <!-- ============================================================ -->
-<h2 id="file-uploads">File Uploads (2.2)</h2>
+<h2 id="file-uploads">File Uploads (2.1)</h2>
 
 <p>Uploads are <strong>off by default</strong>. They work with File, SQLite, MySQL and CSV storage, but the bytes always live in <code>uploads.dir</code>, not the database. Use the normal <code>bbf.js</code> embed; there is no extra library to install.</p>
 
@@ -558,7 +558,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 <p>Submission details in <code>viewer.php</code> show names, sizes and download buttons. Downloads require sign-in and <code>read</code> permission for that form, verify that the file belongs to the submission, and are access-audited. They are attachment downloads with <code>application/octet-stream</code>, <code>nosniff</code>, sandbox and no-store headers &mdash; not inline previews or public URLs.</p>
 <p>CSV exports show names and sizes. JSON exports retain descriptor arrays with <code>id</code>, <code>name</code>, <code>size</code>, <code>type</code> and <code>sha256</code>, not file bytes or paths. CSV storage additionally keeps descriptors in its reserved <code>__bbf:files</code> column. Email templates show escaped names/sizes, with no attachments or download links. Webhooks and custom actions receive descriptors, not file bytes.</p>
 <p>Custom actions may resolve a file with <code>bbf_upload_path($config, $formId, $submissionId, $fileId)</code>. Treat the path as read-only and handle <code>null</code> for a missing file; never move, modify or delete managed files from an action.</p>
-<p>Not supported in 2.2: bulk ZIP download, public/signed file links, email attachments, chunked/resumable uploads, S3 storage, or multi-server upload deployments. See <a href="#maintenance">Retention &amp; Backups</a> for complete backups, deletion and operational cleanup.</p>
+<p>Not supported in 2.1: bulk ZIP download, public/signed file links, email attachments, chunked/resumable uploads, S3 storage, or multi-server upload deployments. See <a href="#maintenance">Retention &amp; Backups</a> for complete backups, deletion and operational cleanup.</p>
 
 <!-- ============================================================ -->
 <h2 id="advanced-features">Advanced Features</h2>

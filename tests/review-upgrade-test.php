@@ -106,8 +106,8 @@ try {
     file_put_contents("$tmp/new/newfile.php", "<?php\n// added in 2.2.0\n");
     unlink("$tmp/new/demo10.html");
     file_put_contents("$tmp/new/config.example.php", preg_replace('/^return \[\r?\n/m', "return [\n    'brand_new_setting' => true,\n", file_get_contents("$tmp/new/config.example.php"), 1));
-    file_put_contents("$tmp/new/CHANGELOG.md", preg_replace('/^## \[Unreleased\]/m',
-        "## [2.2.0] - 2026-10-01\n\n### Breaking\n- **Renamed `old_key` to `new_key`.** Rename it in config.php.\n\n## [Unreleased-old]", file_get_contents("$tmp/new/CHANGELOG.md"), 1));
+    file_put_contents("$tmp/new/CHANGELOG.md", preg_replace('/^(?=## \[)/m',
+        "## [2.2.0] - 2026-10-01\n\n### Breaking\n- **Renamed `old_key` to `new_key`.** Rename it in config.php.\n\n", file_get_contents("$tmp/new/CHANGELOG.md"), 1));
     upgrade_remanifest("$tmp/new", '2.2.0', ['newfile.php']);
 
     $dry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/site");

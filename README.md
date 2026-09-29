@@ -109,7 +109,7 @@ That's it. Two lines. `bbf.js` auto-loads `bbf.css` from the same directory — 
 
 **Not for:** Drag-and-drop form builders, enterprise workflow suites, or dashboards with seventeen menu items.
 
-**File uploads (2.2):** Opt-in private storage, per-file progress, authenticated viewer downloads, and backup/retention support. See [File Uploads](#file-uploads).
+**File uploads (2.1):** Opt-in private storage, per-file progress, authenticated viewer downloads, and backup/retention support. See [File Uploads](#file-uploads).
 
 **Storage in one sentence:** file storage is the zero-setup default for small forms; use SQLite (also zero setup) once a form collects more than about a thousand submissions or you need reporting. See [Which backend should I use?](#which-backend-should-i-use)
 
@@ -391,7 +391,7 @@ When `reply_to` is set on `notify`, the admin clicks Reply and responds directly
 
 ## File Uploads
 
-Available in 2.2, **off by default**. File fields work with File, SQLite, MySQL and CSV storage; the bytes always live in `uploads.dir`, not in the database. Use the normal `bbf.js` embed — no extra upload library.
+Available in 2.1, **off by default**. File fields work with File, SQLite, MySQL and CSV storage; the bytes always live in `uploads.dir`, not in the database. Use the normal `bbf.js` embed — no extra upload library.
 
 ### Setup and form JSON
 
@@ -473,7 +473,7 @@ In `viewer.php`, submission details show names and sizes with download buttons. 
 
 CSV exports contain readable names and sizes; JSON exports retain descriptor arrays (`id`, `name`, `size`, `type`, `sha256`), **not file bytes or paths**. The CSV storage backend also preserves descriptors in its reserved `__bbf:files` column. Email templates show escaped names/sizes, with no attachments or download links. Webhooks/custom actions receive descriptors, not the files themselves. A custom action can resolve a file using `bbf_upload_path($config, $formId, $submissionId, $fileId)`; treat the result as read-only and handle `null` for a missing file. Never move, modify or delete managed files from an action.
 
-There is no bulk ZIP download, public/signed file link, email attachment, chunked/resumable upload, S3 storage or multi-server upload support in 2.2. See [Retention & Backups](#retention--backups) for deletion, complete backups and cleanup commands.
+There is no bulk ZIP download, public/signed file link, email attachment, chunked/resumable upload, S3 storage or multi-server upload support in 2.1. See [Retention & Backups](#retention--backups) for deletion, complete backups and cleanup commands.
 
 ---
 
