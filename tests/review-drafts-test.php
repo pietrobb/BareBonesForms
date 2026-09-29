@@ -66,6 +66,21 @@ $form = [
 ];
 
 drafts_check(validateFormDefinition($form) === [], 'valid opt-in policy accepts only ordinary allowlisted fields');
+
+// Draft quota: new drafts stop at drafts_max (429), updates of an existing draft still work; oversize drafts are 413.
+$quotaConfig = ['submissions_dir' => $root . '/quota-submissions', 'drafts_dir' => $root . '/quota-drafts', 'drafts_max' => 2];
+$q1 = bbf_draft_save($quotaConfig, $form, $fields, ['name' => 'one']);
+$q2 = bbf_draft_save($quotaConfig, $form, $fields, ['name' => 'two']);
+$q3 = bbf_draft_save($quotaConfig, $form, $fields, ['name' => 'three']);
+drafts_check(($q1['ok'] ?? false) && ($q2['ok'] ?? false) && !($q3['ok'] ?? true) && ($q3['reason'] ?? '') === 'quota',
+    'a third new draft is refused with reason quota when drafts_max is 2');
+$q1b = bbf_draft_save($quotaConfig, $form, $fields, ['name' => 'one again'], $q1['handle'] ?? '');
+drafts_check(($q1b['ok'] ?? false) && ($q1b['data']['name'] ?? '') === 'one again', 'updating an existing draft is not blocked by the quota');
+$big = bbf_draft_save(['drafts_max' => 100] + $quotaConfig, $form, $fields, ['name' => str_repeat('x', BBF_DRAFT_MAX_BYTES + 1)]);
+drafts_check(!($big['ok'] ?? true) && ($big['reason'] ?? '') === 'too_large', 'a draft larger than BBF_DRAFT_MAX_BYTES is refused with reason too_large');
+$submitSource = (string)file_get_contents(dirname(__DIR__) . '/submit.php');
+drafts_check(str_contains($submitSource, "'too_large') respond(413") && str_contains($submitSource, "'quota') respond(429"),
+    'submit.php maps too_large to 413 and quota to 429');
 foreach ([
     'symptoms' => 'explicitly sensitive health field',
     'password' => 'password field',

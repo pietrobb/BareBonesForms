@@ -59,6 +59,30 @@ test('successful HTTP submit emits once before custom success callback and redir
     assert.equal(context.window.location.href, '/thanks');
 });
 
+test('redirect only follows http(s) or relative targets, never script URLs', async () => {
+    for (const bad of ['javascript:alert(1)', ' JaVaScRiPt:alert(1)', 'java\tscript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'vbscript:x']) {
+        const { context, form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: bad });
+        assert.notEqual(context.window.location.href, bad, 'blocked: ' + JSON.stringify(bad));
+        assert.match(form.querySelector('.bbf-message')?.className || 'bbf-success', /bbf-success/);
+    }
+    for (const good of ['https://example.test/thanks?x=1', '/thanks', 'thanks.html']) {
+        const { context } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: good });
+        assert.equal(context.window.location.href, good);
+    }
+});
+
+test('form id is URL-encoded in every submit.php request', async () => {
+    const urls = [];
+    const runtime = loadBBF({ fetch: async url => { urls.push(String(url)); return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ status: 'ok', submission_id: 'bbf_x' }) }; } });
+    runtime.context.window.location = runtime.context.location;
+    const form = runtime.BBF._buildForm({ fields: [{ name: 'answer', type: 'text' }] }, 'a&b=c', 'https://example.test/', {}, null, null, true);
+    form.reset = () => {};
+    await form.listeners.submit[0]({ preventDefault() {} });
+    assert.ok(urls.length > 0 && urls.every(u => !u.includes('form=a&b') && u.includes('form=a%26b%3Dc')), urls.join(' '));
+    const source = fs.readFileSync(path.join(__dirname, '..', 'bbf.js'), 'utf8');
+    assert.doesNotMatch(source, /\?form=\$\{formId\}/, 'no unencoded form id left in bbf.js URLs');
+});
+
 test('onSuccess false does not suppress the stored-submission hook', async () => {
     const { events } = await submit({ status: 'ok', submission_id: 'bbf_fixture' }, true, { onSuccess: () => false });
     assert.equal(events.length, 1); const enabled = await submit({ status: 'ok', submission_id: 'bbf_enabled' }, true, { onSuccess: () => false, analytics: { umami: true } }); const disabled = await submit({ status: 'ok', submission_id: 'bbf_disabled' }, true, { onSuccess: () => false, analytics: { umami: false } }); const sent = []; const emit = tracker((name, data) => sent.push(data.form)); emit(enabled.events[0].detail, enabled.events[0].bbfAnalytics.umami); emit(disabled.events[0].detail, disabled.events[0].bbfAnalytics.umami); assert.deepEqual(sent, ['quote-en']);

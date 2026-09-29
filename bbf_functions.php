@@ -375,6 +375,14 @@ function renderTemplate(string $templateFile, array $vars): string {
     return $template;
 }
 
+/** on_submit.redirect after interpolation: only http(s) or a relative URL, never javascript:/data: or control characters. */
+function bbf_redirect_url(string $template, array $data): ?string {
+    $url = trim(interpolate($template, $data));
+    if ($url === '' || preg_match('/[\x00-\x20\x7f]/', $url)) return null;
+    if (preg_match('/\A([a-z][a-z0-9+.-]*):/i', $url, $m)) return in_array(strtolower($m[1]), ['http', 'https'], true) ? $url : null;
+    return str_starts_with($url, '\\') || str_starts_with($url, '/\\') ? null : $url;
+}
+
 function interpolate(string $text, array $data): string {
     foreach ($data as $key => $value) {
         if (is_string($value) || is_numeric($value)) {

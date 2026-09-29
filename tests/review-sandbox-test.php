@@ -251,6 +251,13 @@ try {
     $audit = file_get_contents("$root/logs/access-audit.php");
     sb_check(str_contains($audit, 'sandbox_submit') && str_contains($audit, '"decision":"denied"') && str_contains($audit, '"result":"completed"')
         && !str_contains($audit, $base['api_token']) && !str_contains($audit, 'fixture answer'), 'sandbox audit records outcomes without credentials or submitted values');
+    // Public definition GETs write logs/.security_check, so this runs after the last sb_untouched().
+    foreach (['https://embed.example.invalid' => true, 'https://other.example.invalid' => false] as $origin => $allowed) {
+        $cors = sb_http('submit.php?form=alpha&action=definition', ['headers' => ['Origin' => $origin]]);
+        sb_check(preg_match('/^Vary:.*\bOrigin\b/mi', $cors['headers']) === 1
+            && (preg_match('/^Access-Control-Allow-Origin: ' . preg_quote($origin, '/') . '\r?$/mi', $cors['headers']) === 1) === $allowed,
+            'CORS response sends Vary: Origin for ' . ($allowed ? 'an allowed' : 'a foreign') . ' origin');
+    }
     // Normal public CSRF/storage/action behavior survives management login and removal.
     $public = sb_http('submit.php?action=csrf&form=alpha'); $cookie = sb_cookie($public);
     sb_check($public['code'] === 200 && !empty($public['json']['csrf_token']), 'public CSRF endpoint needs no admin');

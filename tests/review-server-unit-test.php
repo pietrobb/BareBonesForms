@@ -104,6 +104,16 @@ if (isset($m[0])) {
     server_check($r['persisted'] ?? false, 'the secret was persisted for the next request');
 }
 
+// ─── on_submit.redirect scheme ──────────────────────────────────
+foreach (['https://example.test/thanks?n={{name}}' => 'https://example.test/thanks?n=Ann', 'HTTP://example.test/' => 'HTTP://example.test/',
+    '/thanks' => '/thanks', 'thanks.html' => 'thanks.html'] as $tpl => $want) {
+    server_check(bbf_redirect_url($tpl, ['name' => 'Ann']) === $want, "redirect $tpl is kept");
+}
+foreach (['javascript:alert(1)', ' JaVaScRiPt:alert(1)', 'java' . "\t" . 'script:alert(1)', 'data:text/html,x', 'vbscript:x',
+    '{{name}}', '\\\\evil.test', '/\\evil.test', ''] as $tpl) {
+    server_check(bbf_redirect_url($tpl, ['name' => 'javascript:alert(1)']) === null, 'redirect ' . json_encode($tpl) . ' is dropped');
+}
+
 // Cleanup.
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
 foreach ($it as $file) $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());

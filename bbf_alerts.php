@@ -331,7 +331,9 @@ function bbf_alert_form_seen(array $config, string $formId): void {
 
 function bbf_alert_job_label(array $job): string {
     $type = (string)($job['type'] ?? '');
-    if ($type === 'email' || $type === 'smtp') return 'email';
+    // Confirmation and owner notification fail together when SMTP is down: name them apart, not as two identical lines.
+    if ($type === 'email' || $type === 'smtp') return match ((string)($job['key'] ?? '')) {
+        'confirm' => 'confirmation email', 'notify' => 'notification email', default => 'email' };
     if ($type === 'action') return 'action ' . substr((string)preg_replace('/[^a-zA-Z0-9_.:-]/', '', (string)($job['target'] ?? '')), 0, 60);
     return $type === 'webhook' ? 'webhook' : 'delivery';
 }

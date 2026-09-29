@@ -133,6 +133,8 @@ function ensureSession(): void {
 // ─── CORS ───────────────────────────────────────────────────────
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 if (!empty($config['allowed_origins'])) {
+    // The response differs per Origin, so shared caches must not reuse it across origins.
+    header('Vary: Origin');
     if (in_array($origin, $config['allowed_origins'], true)) {
         header("Access-Control-Allow-Origin: $origin");
         header('Access-Control-Allow-Credentials: true');
@@ -299,6 +301,8 @@ if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_de
     $reason = $result['reason'] ?? 'storage';
     if ($reason === 'expired') respond(410, 'Draft has expired.', ['reason' => $reason]);
     if ($reason === 'not_found') respond(404, 'Draft not found.', ['reason' => $reason]);
+    if ($reason === 'too_large') respond(413, 'Draft is too large to save.', ['reason' => $reason]);
+    if ($reason === 'quota') respond(429, 'Too many saved drafts right now. Please try again later.', ['reason' => $reason]);
     respond(500, 'Draft storage failed.', ['reason' => $reason]);
 }
 
@@ -393,7 +397,7 @@ if ($isSandbox) {
     }
 
     if (!empty($onSubmit['redirect'])) {
-        $preview['redirect'] = interpolate($onSubmit['redirect'], $data);
+        $preview['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data);
     }
 
     if (!empty($onSubmit['payment'])) {
@@ -554,7 +558,7 @@ if (!$isPayment) {
             'note' => 'No submission or retry record was stored; delivery cannot be administered from the viewer.',
         ];
         $extra = ['delivery' => $deliveryStatus];
-        if (!empty($onSubmit['redirect'])) $extra['redirect'] = interpolate($onSubmit['redirect'], $data);
+        if (!empty($onSubmit['redirect'])) $extra['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data);
         respond(202, 'OK', $extra);
     }
 }
@@ -587,7 +591,7 @@ if (!$storeEnabled) {
             $txState['checkout'] = $checkoutParams;
         } else {
             $txState['response'] = ['submission_id' => $submissionId];
-            if (!empty($onSubmit['redirect'])) $txState['response']['redirect'] = interpolate($onSubmit['redirect'], $data);
+            if (!empty($onSubmit['redirect'])) $txState['response']['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data);
         }
         for ($attempt = 0; $tx === null; $attempt++) {
             bbf_tx_deadline_start($config);
@@ -697,7 +701,7 @@ if (!$storeEnabled) {
 $extra = $storeEnabled ? array_merge(['submission_id' => $submissionId], $actionResponse) : $actionResponse;
 // Form-level redirect (action redirect takes precedence if set)
 if (empty($extra['redirect']) && !empty($onSubmit['redirect'])) {
-    $extra['redirect'] = interpolate($onSubmit['redirect'], $data);
+    $extra['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data);
 }
 // Always assign the trusted projection last so actions cannot expose or replace delivery state.
 $extra['delivery'] = $deliveryStatus;

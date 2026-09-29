@@ -123,6 +123,25 @@ function bbf_draft_queue_append_locked(array $config, string $path, int $epoch):
     return $ok && $closed;
 }
 
+const BBF_DRAFT_MAX_BYTES = 262144;
+
+/**
+ * Upper bound of stored drafts without listing the directory: every new draft appends one queue line
+ * and cleanup re-queues only live ones, so the unprocessed queue + work lines bound the live count.
+ * Caller holds the cleanup-queue lock.
+ */
+function bbf_draft_count_bound_locked(array $config): int {
+    $dir = bbf_draft_dir($config);
+    $lineBytes = strlen((string)bbf_draft_queue_epoch($config)) + 66;
+    $bytes = (int)@filesize(bbf_draft_queue_path($config));
+    if (is_file($dir . '/.cleanup-work')) {
+        $cursorRaw = @file_get_contents($dir . '/.cleanup-cursor');
+        $cursor = is_string($cursorRaw) && preg_match('/\A[0-9]+\z/D', $cursorRaw) ? (int)$cursorRaw : 0;
+        $bytes += max(0, (int)@filesize($dir . '/.cleanup-work') - $cursor);
+    }
+    return intdiv($bytes, $lineBytes);
+}
+
 function bbf_draft_save(array $config, array $form, array $flatFields, array $input, string $handle = '', ?int $now = null): array {
     $policy = bbf_draft_policy($form);
     if ($policy === null) return ['ok' => false, 'reason' => 'disabled'];
@@ -155,6 +174,14 @@ function bbf_draft_save(array $config, array $form, array $flatFields, array $in
                 'data' => bbf_draft_filter($form, $flatFields, $input),
             ];
             $json = bbf_storage_json($record, true);
+            if (strlen($json) > BBF_DRAFT_MAX_BYTES) {
+                $result = ['ok' => false, 'reason' => 'too_large'];
+                return true;
+            }
+            if ($new && bbf_draft_count_bound_locked($config) >= max(1, (int)($config['drafts_max'] ?? 10000))) {
+                $result = ['ok' => false, 'reason' => 'quota'];
+                return true;
+            }
             if (($new && !bbf_draft_queue_append_locked($config, $path, $record['queue_epoch']))
                 || !bbf_storage_replace($path, static fn($fp): bool => bbf_storage_write_all($fp, $json), 0600)) return false;
             $result = ['ok' => true, 'handle' => $handle, 'expires_at' => gmdate('c', $record['expires_at']), 'data' => $record['data']];

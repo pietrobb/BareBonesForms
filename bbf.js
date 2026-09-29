@@ -197,7 +197,7 @@
 
                 // Load form definition (always via submit.php — it strips
                 // server-side config and works with .htaccess protection)
-                const formUrl = `${baseUrl}submit.php?form=${formId}&action=definition`;
+                const formUrl = `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=definition`;
                 const resp = await fetch(formUrl);
                 if (!resp.ok) {
                     // 404 means the form is missing; anything else is a server problem worth showing verbatim
@@ -218,7 +218,7 @@
                 if (isSameOrigin) {
                     try {
                         const csrfResp = await fetch(
-                            `${baseUrl}submit.php?form=${formId}&action=csrf`,
+                            `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`,
                             { credentials: 'same-origin' }
                         );
                         if (csrfResp.ok) {
@@ -1351,7 +1351,7 @@
                     while (true) {
                         const fetchOpts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
                         if (isSameOrigin) fetchOpts.credentials = 'same-origin';
-                        resp = await fetch(`${baseUrl}submit.php?form=${formId}${sandboxParam}`, fetchOpts);
+                        resp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}${sandboxParam}`, fetchOpts);
                         const contentType = resp.headers.get('content-type') || '';
                         if (contentType.includes('application/json')) {
                             result = await resp.json();
@@ -1369,7 +1369,7 @@
                         if (resp.status === 403 && !csrfRefreshed && isSameOrigin && '_bbf_csrf' in body) {
                             csrfRefreshed = true;
                             try {
-                                const csrfResp = await fetch(`${baseUrl}submit.php?form=${formId}&action=csrf`, { credentials: 'same-origin' });
+                                const csrfResp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`, { credentials: 'same-origin' });
                                 const token = csrfResp.ok ? (await csrfResp.json()).csrf_token : null;
                                 if (token) {
                                     body._bbf_csrf = token;
@@ -1399,9 +1399,14 @@
                             btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
                             return;
                         }
-                        if (result.redirect) {
-                            window.location.href = result.redirect;
-                            return;
+                        // Only http(s) targets: a redirect is never allowed to run script (javascript:, data:).
+                        if (typeof result.redirect === 'string' && result.redirect) {
+                            let protocol = '';
+                            try { protocol = new URL(result.redirect, 'https://relative.invalid/').protocol; } catch (e) { /* invalid URL: show success instead */ }
+                            if (protocol === 'https:' || protocol === 'http:') {
+                                window.location.href = result.redirect;
+                                return;
+                            }
                         }
                         msg.className = 'bbf-message bbf-success';
                         msg.textContent = form.success_message || this._t('successDefault', {}, langCode);

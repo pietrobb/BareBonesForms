@@ -115,8 +115,20 @@ $before = count(alert_incidents($logs));
 bbf_delivery_run_job($outbox, 'notify', $recordConfig);
 $incidents = alert_incidents($logs);
 $last = end($incidents);
-check_alert(count($incidents) === $before + 1 && $last['form'] === 'kontakt' && $last['type'] === 'Delivery failed: email'
+check_alert(count($incidents) === $before + 1 && $last['form'] === 'kontakt' && $last['type'] === 'Delivery failed: notification email'
     && str_contains($last['detail'], 'bbf_1') && str_contains($last['detail'], "'auth_password' (code 535)"), 'failed automatic delivery records an incident');
+// SMTP down: confirmation + notification of one submission are two distinguishable incidents, never two identical lines.
+$outbox2 = $root . '/submissions/.delivery/kontakt/bbf_2.json';
+$jobs2 = [];
+foreach (['confirm', 'notify'] as $key) $jobs2[] = ['key' => $key, 'type' => 'email', 'payload' => $payload, 'payload_hash' => bbf_delivery_payload_hash($payload),
+    'idempotency_key' => "kontakt:bbf_2:$key", 'target' => 's***@example.com', 'idempotent' => false];
+check_alert(bbf_outbox_init($outbox2, 'kontakt:bbf_2', $jobs2, 3)['ok'] ?? false, 'fixture outbox with two emails created');
+$before = count(alert_incidents($logs));
+bbf_delivery_run_job($outbox2, 'confirm', $recordConfig);
+bbf_delivery_run_job($outbox2, 'notify', $recordConfig);
+$pair = array_slice(alert_incidents($logs), $before);
+check_alert(count($pair) === 2 && $pair[0]['type'] === 'Delivery failed: confirmation email' && $pair[1]['type'] === 'Delivery failed: notification email'
+    && $pair[0]['detail'] !== $pair[1]['detail'], 'two failed emails of one submission are distinct incident lines');
 unset($GLOBALS['_bbf_delivery_effect']);
 
 // ─── SMTP probe ──────────────────────────────────────────────────
@@ -152,6 +164,7 @@ check_alert($types === ['-|SMTP check failed', 'broken|Invalid form definition',
 check_alert(count(alert_incidents($logs)) === $before + 3, 'every self-check problem is recorded as an incident');
 check_alert(str_contains($report['notify'], 'only logged'), 'self-check warns when error_notify is empty');
 touch($outbox, time() - 8 * 86400);
+touch($outbox2, time() - 8 * 86400);
 $quiet = bbf_alert_selfcheck($recordConfig);
 check_alert(!in_array('Deliveries waiting for action', array_column($quiet['problems'], 'type'), true), 'deliveries older than 7 days stop nagging');
 
