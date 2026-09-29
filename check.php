@@ -10,6 +10,7 @@ $config = null;
 $results = [];
 define('BBF_LOADED', true);
 require_once __DIR__ . '/bbf_diagnostics.php';
+require_once __DIR__ . '/bbf_upgrade.php';
 // ─── Access control ─────────────────────────────────────────────
 // Environment details and active checks require administrator access everywhere.
 // Host, SERVER_NAME and loopback proxy addresses are not authentication.
@@ -568,7 +569,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 <?php endforeach; ?>
 
 <div class="footer">
-    Checked <?= $totalCount ?> items at <?= date('Y-m-d H:i:s') ?> &middot; PHP <?= PHP_VERSION ?><br>
+    BareBonesForms <?= htmlspecialchars(bbf_version()) ?> &middot; Checked <?= $totalCount ?> items at <?= date('Y-m-d H:i:s') ?> &middot; PHP <?= PHP_VERSION ?><br>
     <strong>Delete this file (check.php) after verification.</strong>
 </div>
 

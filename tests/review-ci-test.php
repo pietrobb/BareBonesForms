@@ -328,6 +328,7 @@ try {
         'Repeatable group client behavior' => [__DIR__ . '/review-repeatable.test.js', ['node', '--test', __DIR__ . '/review-repeatable.test.js']],
         'Finding-to-test acceptance inventory' => [__DIR__ . '/review-acceptance-test.php', [PHP_BINARY, __DIR__ . '/review-acceptance-test.php']],
         'Deployment parity' => [__DIR__ . '/review-deploy-parity-test.php', [PHP_BINARY, __DIR__ . '/review-deploy-parity-test.php']],
+        'Versioned upgrade and rollback' => [__DIR__ . '/review-upgrade-test.php', [PHP_BINARY, __DIR__ . '/review-upgrade-test.php']],
     ];
 
     $suites = [];

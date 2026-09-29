@@ -17,7 +17,7 @@ if (!file_exists(__DIR__ . '/config.php')) {
     die('Missing config.php. Copy config.example.php to config.php and edit it.');
 }
 require_once __DIR__ . '/bbf_auth.php'; $config = bbf_auth_load_config(__DIR__ . '/config.php');
-require_once __DIR__ . '/bbf_functions.php'; require_once __DIR__ . '/bbf_export.php'; require_once __DIR__ . '/bbf_read.php'; require_once __DIR__ . '/bbf_review.php'; require_once __DIR__ . '/bbf_versions.php'; require_once __DIR__ . '/bbf_submit_tx.php';
+require_once __DIR__ . '/bbf_functions.php'; require_once __DIR__ . '/bbf_export.php'; require_once __DIR__ . '/bbf_read.php'; require_once __DIR__ . '/bbf_review.php'; require_once __DIR__ . '/bbf_versions.php'; require_once __DIR__ . '/bbf_submit_tx.php'; require_once __DIR__ . '/bbf_upgrade.php';
 set_exception_handler(static function (Throwable $error): void { error_log('BareBonesForms viewer: ' . $error->getMessage()); viewerRespond(500, ['error' => 'Cannot read submissions.']); });
 // Shared access is required on every host, including loopback.
 require_once __DIR__ . '/bbf_auth.php';
@@ -1085,6 +1085,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <div class="panel-forms" id="panel-forms">
         <div class="panel-forms-header"><?= htmlspecialchars($viewerLang === 'sk' ? 'Formuláre' : ($viewerLang === 'de' ? 'Formulare' : 'Forms')) ?></div>
         <div class="form-list" id="form-list"></div>
+        <div style="padding:8px 16px;font-size:11px;opacity:.55">BareBonesForms <?= htmlspecialchars(bbf_version()) ?></div>
     </div>
     <div class="drawer-backdrop" id="drawer-backdrop"></div>
     <div class="panel-main" id="panel-main"></div>

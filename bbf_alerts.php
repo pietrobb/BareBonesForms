@@ -246,8 +246,9 @@ function bbf_alert_send(string $to, string $subject, string $body, array $config
 /**
  * Daily health check (cron): every form definition, writable data folders, SMTP login, and deliveries
  * from the last 7 days still waiting for the admin. Each problem is recorded as an incident.
+ * Also asks GitHub once whether a newer release exists (bbf_update_check).
  */
-function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null): array {
+function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null, ?callable $fetchLatest = null): array {
     $problems = [];
     $forms = 0;
     $formsDir = rtrim((string)($config['forms_dir'] ?? __DIR__ . '/forms'), '/\\');
@@ -292,10 +293,12 @@ function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null): array 
     }
 
     foreach ($problems as [$form, $type, $detail]) bbf_alert_record($config, $form, $type, $detail);
+    require_once __DIR__ . '/bbf_upgrade.php';
     return [
         'ok' => $problems === [],
         'forms_checked' => $forms,
         'problems' => array_map(static fn(array $p) => ['form' => $p[0], 'type' => $p[1], 'detail' => $p[2]], $problems),
+        'update' => bbf_update_check($config, $fetchLatest),
         'notify' => trim((string)($config['error_notify'] ?? '')) === '' ? 'error_notify is empty: problems are only logged, no email is sent' : 'enabled',
     ];
 }

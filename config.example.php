@@ -137,6 +137,9 @@ return [
     // The same problem on the same form is emailed at most once per this many seconds; repeats are
     // counted and included in the next email.
     'error_notify_interval' => 3600,
+    // selfcheck asks GitHub once a day whether a newer release exists and reports each new version
+    // once to error_notify. Set to false to never contact GitHub.
+    'update_check' => true,
 
     // ─── API & management access ────────────────────────────────
     // (api_token is at the top of this file.)

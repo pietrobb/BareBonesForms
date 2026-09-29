@@ -22,10 +22,15 @@ jobs:
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/barebonesforms"
-          php tools/package-deploy.php --destination "$out"
-          php tools/package-deploy.php --check --destination "$out"
+          version="${GITHUB_REF_NAME#v}"
+          php tools/package-deploy.php --version "$version" --destination "$out"
+          php tools/package-deploy.php --version "$version" --check --destination "$out"
           rm "$out/.bbf-package"
           (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}.zip" barebonesforms)
+          # Upgrade ZIP: code only. Uploading it over FTP never overwrites your templates or sample forms.
+          php -r '$m = json_decode(file_get_contents($argv[1]), true); foreach ($m["files"] as $p => $f) if ($f["kind"] !== "code") unlink($argv[2] . "/" . $p);' \
+            "$out/.bbf-manifest.json" "$out"
+          (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" barebonesforms)
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -40,4 +45,5 @@ jobs:
           ' CHANGELOG.md > "$notes"
           [ -s "$notes" ] || echo "See CHANGELOG.md." > "$notes"
           gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}.zip" \
+            "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" \
             --title "$GITHUB_REF_NAME" --notes-file "$notes"

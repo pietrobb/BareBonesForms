@@ -5,7 +5,7 @@
  * Usage:
  *   php tools/package-deploy.php
  *   php tools/package-deploy.php --check
- *   php tools/package-deploy.php [--check] --destination <directory>
+ *   php tools/package-deploy.php [--check] --destination <directory> [--version <x.y.z>]
  */
 declare(strict_types=1);
 
@@ -28,7 +28,7 @@ IGNORE;
 const BBF_DEPLOY_MARKER = "BareBonesForms generated deployment package. Do not use this directory for live data.\n";
 
 /** @return array<string, array{source?: string, content?: string}> */
-function bbf_deploy_manifest(string $root): array
+function bbf_deploy_manifest(string $root, string $version = 'dev'): array
 {
     // This is deliberately a closed list. Never replace it with a recursive root copy.
     $topLevel = [
@@ -54,6 +54,7 @@ function bbf_deploy_manifest(string $root): array
         'bbf_retention.php',
         'bbf_storage.php',
         'bbf_submit_tx.php',
+        'bbf_upgrade.php',
         'bbf_uploads.php',
         'bbf_versions.php',
         'check.php',
@@ -126,9 +127,31 @@ function bbf_deploy_manifest(string $root): array
     $manifest['actions/README.md'] = ['source' => $root . DIRECTORY_SEPARATOR . 'actions' . DIRECTORY_SEPARATOR . 'README.md']; $manifest['actions/google-ads-conversion.php'] = ['source' => $root . '/actions/google-ads-conversion.php'];
     $manifest['data/city-to-psc.json'] = ['source' => $root . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'city-to-psc.json']; $manifest['tools/migrate-system-fields.php'] = ['source' => $root . '/tools/migrate-system-fields.php'];
     $manifest['data/psc-to-city.json'] = ['source' => $root . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'psc-to-city.json'];
+    $manifest['tools/upgrade.php'] = ['source' => $root . DIRECTORY_SEPARATOR . 'tools' . DIRECTORY_SEPARATOR . 'upgrade.php'];
     $manifest['.gitignore'] = ['content' => BBF_DEPLOY_GITIGNORE . "\n"];
     $manifest['logs/.gitkeep'] = ['content' => ''];
     $manifest['submissions/.gitkeep'] = ['content' => ''];
+
+    // Release manifest for `maintenance.php upgrade` (see bbf_upgrade.php). code: always installed.
+    // seed: yours after install; added when missing, updated only while unchanged. sample: like seed, but never
+    // added, so a live site does not grow demo form endpoints. extra: docs and demo pages; updated, never added.
+    // The -upgrade ZIP carries code only.
+    $kinds = array_fill_keys(['.gitignore', 'logs/.gitkeep', 'submissions/.gitkeep'], 'seed')
+        + array_fill_keys(array_map(static fn($name) => "templates/$name", $templates), 'seed')
+        + array_fill_keys(array_map(static fn($name) => "forms/$name", array_diff($stockForms, ['form.schema.json'])), 'sample')
+        + array_fill_keys(array_merge(['README.md', 'LICENSE', 'docs.html', 'index.html', 'demo.css', 'actions/README.md'],
+            array_values(array_filter($topLevel, static fn($path) => (bool)preg_match('/^demo\d*\.html$/', $path)))), 'extra');
+    $files = [];
+    foreach ($manifest as $path => $entry) {
+        if ($path === '.bbf-package') continue;
+        $hash = isset($entry['source']) ? hash_file('sha256', $entry['source']) : hash('sha256', $entry['content']);
+        $files[$path] = ['sha256' => $hash === false ? '' : $hash, 'kind' => $kinds[$path] ?? 'code'];
+    }
+    ksort($files, SORT_STRING);
+    $manifest['.bbf-manifest.json'] = ['content' => json_encode(
+        ['name' => 'BareBonesForms', 'version' => $version, 'requires_php' => '8.1', 'files' => $files],
+        JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+    ) . "\n"];
 
     ksort($manifest, SORT_STRING);
     return $manifest;
@@ -215,12 +238,14 @@ function bbf_deploy_validate_manifest(array $manifest, string $root): void
 {
     $requiredDependencies = [
         'api-psc.php' => ['data/city-to-psc.json', 'data/psc-to-city.json'],
+        'bbf_alerts.php' => ['bbf_upgrade.php'],
+        'maintenance.php' => ['bbf_upgrade.php', 'smoketest.php'],
         'bbf_functions.php' => ['bbf_alerts.php', 'bbf_delivery.php', 'bbf_outbox.php', 'bbf_storage.php', 'bbf_uploads.php'],
         'bbf_uploads.php' => ['bbf_storage.php', 'bbf_diagnostics.php'],
-        'check.php' => ['bbf_auth.php', 'bbf_diagnostics.php', 'bbf_submit_tx.php', 'bbf_uploads.php'],
+        'check.php' => ['bbf_auth.php', 'bbf_diagnostics.php', 'bbf_submit_tx.php', 'bbf_upgrade.php', 'bbf_uploads.php'],
         'submissions.php' => ['bbf_auth.php', 'bbf_export.php', 'bbf_outbox.php', 'bbf_read.php'],
         'submit.php' => ['bbf_alerts.php', 'bbf_auth.php', 'bbf_functions.php', 'bbf_read.php', 'bbf_submit_tx.php'],
-        'viewer.php' => ['bbf_auth.php', 'bbf_export.php', 'bbf_functions.php', 'bbf_read.php', 'bbf_review.php', 'bbf_submit_tx.php'],
+        'viewer.php' => ['bbf_auth.php', 'bbf_export.php', 'bbf_functions.php', 'bbf_read.php', 'bbf_review.php', 'bbf_submit_tx.php', 'bbf_upgrade.php'],
     ];
 
     $realRoot = realpath($root);
@@ -261,13 +286,24 @@ function bbf_deploy_validate_manifest(array $manifest, string $root): void
     }
 }
 
-/** @return array{destination: string, check: bool} */
+/** @return array{destination: string, check: bool, version: string} */
 function bbf_deploy_arguments(array $arguments, string $defaultDestination): array
 {
     $check = false;
     $destination = null;
+    $version = null;
     for ($index = 0; $index < count($arguments); ++$index) {
         $argument = $arguments[$index];
+        if ($argument === '--version' || str_starts_with($argument, '--version=')) {
+            if ($version !== null || ($argument === '--version' && !isset($arguments[$index + 1]))) {
+                throw new InvalidArgumentException('--version requires exactly one value.');
+            }
+            $version = $argument === '--version' ? $arguments[++$index] : substr($argument, strlen('--version='));
+            if (!preg_match('/\A\d+\.\d+\.\d+\z/D', $version)) {
+                throw new InvalidArgumentException('--version must look like 2.1.0.');
+            }
+            continue;
+        }
         if ($argument === '--check') {
             if ($check) {
                 throw new InvalidArgumentException('Duplicate --check option.');
@@ -290,7 +326,7 @@ function bbf_deploy_arguments(array $arguments, string $defaultDestination): arr
             continue;
         }
         if ($argument === '--help' || $argument === '-h') {
-            print "Usage: php tools/package-deploy.php [--check] [--destination <directory>]\n";
+            print "Usage: php tools/package-deploy.php [--check] [--destination <directory>] [--version <x.y.z>]\n";
             exit(0);
         }
         throw new InvalidArgumentException("Unknown argument: $argument");
@@ -299,7 +335,7 @@ function bbf_deploy_arguments(array $arguments, string $defaultDestination): arr
     if ($destination === '') {
         throw new InvalidArgumentException('Destination must not be empty.');
     }
-    return ['destination' => $destination ?? $defaultDestination, 'check' => $check];
+    return ['destination' => $destination ?? $defaultDestination, 'check' => $check, 'version' => $version ?? 'dev'];
 }
 
 function bbf_deploy_absolute_destination(string $destination, string $root, string $defaultDestination): string
@@ -575,7 +611,7 @@ try {
     $defaultDestination = $root . DIRECTORY_SEPARATOR . 'deploy' . DIRECTORY_SEPARATOR . 'barebonesforms';
     $options = bbf_deploy_arguments(array_slice($argv, 1), $defaultDestination);
     $destination = bbf_deploy_absolute_destination($options['destination'], $root, $defaultDestination);
-    $manifest = bbf_deploy_manifest($root);
+    $manifest = bbf_deploy_manifest($root, $options['version']);
     bbf_deploy_validate_manifest($manifest, $root);
 
     if ($options['check']) {
@@ -591,7 +627,7 @@ try {
     bbf_deploy_build($destination, $manifest);
     print 'Deployment package replaced safely: ' . count($manifest) . " files at $destination.\n";
 } catch (InvalidArgumentException $error) {
-    fwrite(STDERR, $error->getMessage() . "\nUsage: php tools/package-deploy.php [--check] [--destination <directory>]\n");
+    fwrite(STDERR, $error->getMessage() . "\nUsage: php tools/package-deploy.php [--check] [--destination <directory>] [--version <x.y.z>]\n");
     exit(2);
 } catch (Throwable $error) {
     fwrite(STDERR, 'Deployment packaging failed: ' . $error->getMessage() . "\n");

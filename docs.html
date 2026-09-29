@@ -255,6 +255,31 @@ details summary:hover { text-decoration: underline; }
 
 <p>Your data lives in places an upgrade never needs to touch: <strong><code>config.php</code></strong>, <strong><code>forms/</code></strong>, <strong><code>templates/</code></strong> and <strong><code>submissions/</code></strong> &mdash; plus <code>actions/</code> if you wrote custom actions and <code>lang/</code> if you added a language. Also preserve your configured data directories, including <strong><code>uploads.dir</code></strong>, archives and backups; these are not replaceable code.</p>
 
+<h3>One command (SSH)</h3>
+<p>Every release from 2.1.0 on knows its version (<code>php maintenance.php version</code>, also shown in <code>check.php</code> and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:</p>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php upgrade --package=../barebonesforms-v2.1.0.zip</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>This is a dry run &mdash; nothing changes. It verifies every file of the package, runs the new version's smoke test against <strong>your</strong> forms and templates, checks the new PHP files for syntax errors, and prints:</p>
+<ul>
+    <li>the installed and the new version, how many files will be added or replaced, and which obsolete files will be removed;</li>
+    <li><code>keep_yours</code>: sample forms and email templates you changed &mdash; they stay as they are (untouched ones are updated);</li>
+    <li><code>overwrite_local_edits</code>: code files you edited by hand &mdash; they will be replaced (the backup keeps your copy);</li>
+    <li><code>new_config_settings</code>: keys that appeared in <code>config.example.php</code>; all have safe defaults, add the ones you want;</li>
+    <li><code>breaking</code>: every <strong>Breaking</strong> item from the CHANGELOG between your version and the new one;</li>
+    <li><code>problems</code>: anything that blocks the upgrade &mdash; a damaged package, an older version, PHP too old, or a form that passes today and would fail with the new code.</li>
+</ul>
+<p>If it looks right, run the printed command with <code>--apply --confirm=&lt;digest&gt;</code>. The upgrade saves every file it overwrites or deletes to <code>logs_dir/upgrades/&lt;date&gt;-&lt;from&gt;-to-&lt;to&gt;-&hellip;/</code>, swaps files one by one (each file atomically), runs the smoke test again, and <strong>rolls itself back</strong> if anything fails. <code>config.php</code>, your own forms, templates, submissions, uploads and logs are never touched &mdash; the manifest lists only the files the release owns. Demo pages, docs and sample forms are updated where you have them, but never added to an installation that left them out, so a live site does not grow demo form endpoints.</p>
+<p>To undo a finished upgrade later: <code>php maintenance.php upgrade-rollback --backup=&lt;folder printed by the upgrade&gt;</code> (dry run first, then <code>--apply --confirm=&hellip;</code>).</p>
+<p><strong>Upgrading from a version before 2.1.0</strong> (its <code>maintenance.php</code> does not know <code>upgrade</code> yet): unzip the new release next to the installation and let the new code do it &mdash; same checks, backup and rollback:</p>
+<div class="code-block"><span class="lang">bash</span><pre>unzip barebonesforms-v2.1.0.zip            # creates ./barebonesforms
+php barebonesforms/tools/upgrade.php --install=/path/to/bbf</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>Without a manifest from the old version it cannot tell which sample forms and templates you edited, so it keeps every one that differs from the new release and removes nothing.</p>
+<p>Needs the PHP <code>zip</code> extension to read the ZIP; without it, unzip the package and pass the folder: <code>--package=../barebonesforms</code>. On hosts where PHP cannot start child processes, the smoke tests are skipped &mdash; run <code>php smoketest.php</code> yourself afterwards.</p>
+<p><strong>Update notices:</strong> the daily <code>php maintenance.php selfcheck</code> asks GitHub whether a newer release exists and emails <code>error_notify</code> <strong>once</strong> per new version. Set <code>'update_check' =&gt; false</code> to turn this off.</p>
+
+<h3>FTP only</h3>
+<p>Download <strong><code>barebonesforms-vX.Y.Z-upgrade.zip</code></strong> from the release, not the full ZIP. It contains only code &mdash; no <code>config.php</code>, sample forms, email templates, docs or demo pages &mdash; so uploading it over your installation cannot overwrite anything you edited. Files removed from a release stay behind; that is harmless. Then open <code>check.php</code> to confirm the new version.</p>
+
+<h3>By hand</h3>
 <p><strong>Before you start:</strong> read the <a href="https://github.com/pietrobb/BareBonesForms/blob/main/CHANGELOG.md" target="_blank">CHANGELOG</a> entries between your version and the new one. Items marked <strong>Breaking</strong> tell you exactly what to change.</p>
 
 <p><strong>1. Back up</strong> the whole installation folder <strong>and any external data directories</strong>, including <code>uploads.dir</code>. Uploaded bytes are not in the database or necessarily inside the installation; preserve their matching records too. See <a href="#maintenance">Retention &amp; Backups</a>.</p>
@@ -271,7 +296,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 
 <p><strong>5. Verify:</strong> run <code>php smoketest.php</code> on the live folder, submit one real test form, and open it in <code>viewer.php</code>.</p>
 
-<p><strong>Rolling back</strong> = restoring the backup from step 1.</p>
+<p><strong>Rolling back</strong> by hand = restoring the backup from step 1.</p>
 
 <!-- ============================================================ -->
 <h2 id="file-structure">File Structure</h2>
@@ -1986,8 +2011,10 @@ php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CON
 
 <p>Some problems happen while nobody submits anything, so add a daily cron job, and test delivery once:</p>
 
-<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php selfcheck     # forms, writable folders, SMTP login, deliveries stuck in the last 7 days
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php selfcheck     # forms, writable folders, SMTP login, deliveries stuck in the last 7 days, new release
 php maintenance.php alerts-test   # confirm the alert email reaches you</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p><code>selfcheck</code> also tells you once when a newer BareBonesForms release is out (see <a href="#upgrading">Upgrading</a>; <code>'update_check' =&gt; false</code> turns it off).</p>
 
 <p>If the whole server is down, nothing in BareBonesForms can run to tell you. Point a free external uptime monitor at <code>submit.php?form=&lt;your-form&gt;&amp;action=definition</code>; it returns HTTP 200 only when PHP runs and the definition loads.</p>
 

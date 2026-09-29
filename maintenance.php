@@ -26,7 +26,10 @@ $usage = 'Usage: php maintenance.php retention --form=<id> [--apply --confirm=<r
     . "\n       php maintenance.php uploads-cleanup"
     . "\n       php maintenance.php selfcheck      (daily cron: check forms, folders, SMTP, stuck deliveries; email problems)"
     . "\n       php maintenance.php alerts         (send pending admin alerts now)"
-    . "\n       php maintenance.php alerts-test    (send a test alert to error_notify)";
+    . "\n       php maintenance.php alerts-test    (send a test alert to error_notify)"
+    . "\n       php maintenance.php version"
+    . "\n       php maintenance.php upgrade --package=<release.zip|folder> [--apply --confirm=<upgrade-digest>]"
+    . "\n       php maintenance.php upgrade-rollback --backup=<logs/upgrades/...> [--apply --confirm=<rollback-digest>]";
 $arguments = $argv;
 array_shift($arguments);
 $command = array_shift($arguments);
@@ -35,13 +38,15 @@ $allowed = match ($command) {
     'backup' => ['form'],
     'restore' => ['bundle', 'confirm'],
     'restore-abort' => ['form', 'confirm'],
-    'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test' => [],
+    'upgrade' => ['package', 'confirm'],
+    'upgrade-rollback' => ['backup', 'confirm'],
+    'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test', 'version' => [],
     default => bbf_maintenance_fail($usage),
 };
 $options = ['apply' => false];
 foreach ($arguments as $argument) {
     if ($argument === '--apply') {
-        if ($options['apply'] || in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
+        if ($options['apply'] || in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test', 'version'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
         $options['apply'] = true;
         continue;
     }
@@ -58,10 +63,31 @@ if (in_array($command, ['retention', 'backup', 'restore-abort'], true)) {
 if ($command === 'restore' && !is_string($options['bundle'] ?? null)) {
     bbf_maintenance_fail('A --bundle path is required.');
 }
-if (!in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
+if (!in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'selfcheck', 'alerts', 'alerts-test', 'version'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
     bbf_maintenance_fail('--apply and --confirm must be supplied together.');
 }
 $config = bbf_auth_load_config(__DIR__ . '/config.php');
+if (in_array($command, ['version', 'upgrade', 'upgrade-rollback'], true)) {
+    require_once __DIR__ . '/bbf_upgrade.php';
+    if ($command === 'version') {
+        fwrite(STDOUT, 'BareBonesForms ' . bbf_version() . "\n");
+        exit(0);
+    }
+    $path = $options[$command === 'upgrade' ? 'package' : 'backup'] ?? null;
+    if (!is_string($path) || $path === '') bbf_maintenance_fail($command === 'upgrade' ? 'A --package path is required.' : 'A --backup path is required.');
+    try {
+        $result = $command === 'upgrade'
+            ? bbf_upgrade($config, $path, $options['apply'] ? $options['confirm'] : null)
+            : bbf_upgrade_rollback($path, $options['apply'] ? $options['confirm'] : null);
+    } catch (Throwable $error) {
+        bbf_maintenance_fail(ucfirst($command) . ' failed: ' . $error->getMessage(), 1);
+    }
+    if (!$options['apply'] && ($result['ok'] ?? false) && isset($result['confirm']) && !($result['up_to_date'] ?? false)) {
+        $result['next'] = "php maintenance.php $command --" . ($command === 'upgrade' ? 'package' : 'backup') . "=$path --apply --confirm={$result['confirm']}";
+    }
+    fwrite(STDOUT, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+    exit(($result['ok'] ?? false) ? 0 : 1);
+}
 if (in_array($command, ['selfcheck', 'alerts', 'alerts-test'], true)) {
     require_once __DIR__ . '/bbf_functions.php';
     if ($command === 'alerts-test') {
