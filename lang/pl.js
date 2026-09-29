@@ -62,4 +62,7 @@ BBF.registerLang('pl', {
     filesFailed:       'Niektórych plików nie udało się przesłać. Ponów lub usuń je przed wysłaniem.',
     filesExpireSoon:   'Przesłane pliki wkrótce wygasną. Wyślij formularz teraz albo prześlij je ponownie.',
     filesNotInDrafts:  'Pliki nie są zapisywane w wersji roboczej. Dołącz je przed wysłaniem.',
+    pageStatus:        'Strona {current} z {total}',
+    optionOther:       'Inne…',
+    rating:            'Ocena',
 });

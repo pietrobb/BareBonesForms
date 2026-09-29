@@ -62,4 +62,7 @@ BBF.registerLang('it', {
     filesFailed:       'Alcuni file non sono stati caricati. Riprova o rimuovili prima di inviare.',
     filesExpireSoon:   'I file caricati scadranno a breve. Invia ora il modulo o caricali di nuovo.',
     filesNotInDrafts:  'I file non vengono salvati nelle bozze. Allegali prima di inviare.',
+    pageStatus:        'Pagina {current} di {total}',
+    optionOther:       'Altro…',
+    rating:            'Valutazione',
 });

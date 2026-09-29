@@ -62,4 +62,7 @@ BBF.registerLang('zh', {
     filesFailed:       '部分文件上传失败。请在提交前重试或将其移除。',
     filesExpireSoon:   '已上传的文件即将过期。请立即提交表单或重新上传。',
     filesNotInDrafts:  '文件不会保存在草稿中。请在提交前附加文件。',
+    pageStatus:        '第 {current} 页，共 {total} 页',
+    optionOther:       '其他…',
+    rating:            '评分',
 });

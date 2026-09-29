@@ -60,6 +60,7 @@ class MiniElement {
         for (const listener of [...(this.listeners[event.type] || [])]) listener(event);
         return true;
     }
+    get options() { return this.children.filter(child => child.tagName === 'OPTION'); }
     focus() { this.focused = true; }
     scrollIntoView() { this.scrolled = true; }
     matches(selector) {
@@ -665,6 +666,33 @@ test('repeatable conditions, validation, and serialization stay row-local', () =
     assert.equal(enabled.listeners.change.length, 2);
 });
 
+test('repeatable row conditions follow a form field that another condition hides', () => {
+    const { BBF, context } = loadBBF();
+    const form = BBF._buildForm({ fields: [
+        { name: 'gate', type: 'select', options: ['on', 'off'] },
+        { name: 'enabled', type: 'text', show_if: { field: 'gate', value: 'on' } },
+        { name: 'items', type: 'group', title: 'Items', repeatable: true, min_items: 1, max_items: 2, fields: [
+            { name: 'detail', type: 'text', label: 'Detail', required: true, show_if: { field: 'enabled', value: 'yes' } },
+            { name: 'reason', type: 'text', label: 'Reason', required: true, show_if: { field: 'enabled', op: 'empty' } },
+        ] },
+    ] }, 'test', 'https://example.test/', {}, null, null, true);
+    const gate = form.querySelector('[name="gate"]');
+    const enabled = form.querySelector('[name="enabled"]');
+    const row = () => form.querySelector('.bbf-repeatable-row');
+    gate.value = 'on'; gate.dispatchEvent(new context.Event('change'));
+    enabled.value = 'yes'; enabled.dispatchEvent(new context.Event('input'));
+    assert.equal(row().querySelector('[data-field="items__1__detail"]').style.display, '');
+    assert.equal(row().querySelector('[data-field="items__1__reason"]').style.display, 'none');
+    // Hiding "enabled" makes it empty for the rows too, exactly as the server evaluates it.
+    gate.value = 'off'; gate.dispatchEvent(new context.Event('change'));
+    assert.equal(form.querySelector('[data-field="enabled"]').style.display, 'none');
+    assert.equal(row().querySelector('[data-field="items__1__detail"]').style.display, 'none');
+    assert.equal(row().querySelector('[data-field="items__1__reason"]').style.display, '');
+    gate.value = 'on'; gate.dispatchEvent(new context.Event('change'));
+    assert.equal(row().querySelector('[data-field="items__1__detail"]').style.display, '');
+    assert.equal(row().querySelector('[data-field="items__1__reason"]').style.display, 'none');
+});
+
 test('repeatable reset restores minimum rows and page navigation validates current rows', () => {
     const timers = [];
     const { BBF, context } = loadBBF({ setTimeout: fn => { timers.push(fn); return fn; } });
@@ -720,6 +748,86 @@ test('submit emits structured repeatable rows and maps dotted server errors to c
     const skuWrap = row.querySelector('[data-field="items__1__sku"]');
     assert.equal(skuWrap.querySelector('.bbf-field-error').textContent, 'Server rejected SKU');
     assert.equal(skuWrap.querySelector('input').focused, true);
+});
+
+test('2.1.2 select default matching no option stays empty, also after reset', () => {
+    const { BBF } = loadBBF();
+    const wrap = BBF._buildField({ name: 'size', type: 'select', required: true, value: 'XXL', options: ['S', 'M'] });
+    const select = wrap.querySelector('select');
+    const selected = select.options.filter(o => o.selected);
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].value, '');
+    assert.equal(selected[0].defaultSelected, true);
+    assert.equal(selected[0].hidden, true);
+    const matching = BBF._buildField({ name: 'size', type: 'select', value: 'M', options: ['S', 'M'] }).querySelector('select');
+    assert.deepEqual(matching.options.filter(o => o.selected).map(o => o.value), ['M']);
+    assert.equal(matching.options.length, 2);
+});
+
+test('2.1.2 page change is announced and row removal never focuses another Remove button', () => {
+    const { BBF, context } = loadBBF();
+    const form = BBF._buildForm({ fields: [{ name: 'a', type: 'text' }, { type: 'page_break' }, { name: 'b', type: 'text' }] },
+        'test', 'https://example.test/', {}, null, null, true);
+    const status = form.querySelector('.bbf-page-status');
+    assert.equal(status.getAttribute('role'), 'status');
+    assert.equal(form.querySelector('.bbf-page-indicator').getAttribute('aria-hidden'), 'true');
+    form.querySelector('.bbf-next').dispatchEvent(new context.Event('click'));
+    assert.equal(status.textContent, 'Page 2 of 2');
+
+    const group = BBF._buildField({ name: 'items', type: 'group', title: 'Items', repeatable: true, min_items: 1, max_items: 3,
+        fields: [{ name: 'sku', type: 'text' }] });
+    const add = group.querySelector('.bbf-repeatable-add');
+    add.dispatchEvent(new context.Event('click'));
+    add.dispatchEvent(new context.Event('click'));
+    let rows = group.querySelectorAll('.bbf-repeatable-row');
+    rows[0].querySelector('.bbf-repeatable-remove').dispatchEvent(new context.Event('click'));
+    assert.equal(rows[1].focused, true);
+    assert.equal(rows[1].tabIndex, -1);
+    assert.notEqual(rows[1].querySelector('.bbf-repeatable-remove').focused, true);
+});
+
+test('2.1.2 Other/Rating are translated, "Other" hides on reset, $& in a label stays literal', () => {
+    const { BBF, context } = loadBBF();
+    BBF.registerLang('sk', { optionOther: 'Iné…', rating: 'Hodnotenie', required: '{label} je povinné.' });
+    const radio = BBF._buildField({ name: 'pick', type: 'radio', other: true, options: ['a'] }, 'sk');
+    assert.equal(radio.querySelector('.bbf-option-other').querySelector('span').textContent, 'Iné…');
+    const select = BBF._buildField({ name: 'sel', type: 'select', other: true, options: ['a'] }, 'sk');
+    assert.equal(select.querySelector('select').options.at(-1).textContent, 'Iné…');
+    const rating = BBF._buildField({ name: 'stars', type: 'rating', max: 5 }, 'sk');
+    assert.equal(rating.querySelector('.bbf-rating-stars').getAttribute('aria-label'), 'Hodnotenie');
+    assert.equal(BBF._t('required', { label: 'Cena $& {label}' }, 'SK'), 'Cena $& {label} je povinné.');
+    assert.equal(BBF._t('required', { label: 'x' }, 'pt-BR'), 'x is required.');
+
+    const form = new MiniElement('form');
+    form.appendChild(select);
+    const sel = select.querySelector('select');
+    const otherText = select.querySelector('.bbf-other-input');
+    sel.value = '__other__'; sel.dispatchEvent(new context.Event('change'));
+    assert.equal(otherText.style.display, '');
+    sel.value = 'a';
+    BBF._resetCustomFields(form);
+    assert.equal(otherText.style.display, 'none');
+});
+
+test('2.1.2 unparseable number, file fields in min_filled, and _payment errors are reported', () => {
+    const { BBF } = loadBBF();
+    const form = new MiniElement('form');
+    const num = BBF._buildField({ name: 'qty', type: 'number', label: 'Qty' });
+    form.appendChild(num);
+    num.querySelector('input').validity = { badInput: true };
+    assert.deepEqual(JSON.parse(JSON.stringify(BBF._validate([{ name: 'qty', type: 'number', label: 'Qty' }], form))), { qty: 'Qty must be a number.' });
+
+    const fileWrap = form.appendChild(new MiniElement('div'));
+    fileWrap.setAttribute('data-field', 'photo');
+    fileWrap._bbfFiles = [{ state: 'done', token: 't1' }];
+    assert.equal(Object.keys(BBF._validateCrossField([{ type: 'min_filled', fields: ['photo', 'note'], min: 1 }], form)).length, 0);
+    fileWrap._bbfFiles = [{ state: 'uploading', token: 't2' }];
+    assert.equal(Object.keys(BBF._validateCrossField([{ type: 'min_filled', fields: ['photo', 'note'], min: 1 }], form)).length, 1);
+
+    const msg = form.appendChild(new MiniElement('div')); msg.className = 'bbf-message';
+    assert.deepEqual([...BBF._showErrors(form, { _payment: 'Card amount changed.' })], ['Card amount changed.']);
+    assert.equal(msg.textContent, 'Card amount changed.');
+    assert.match(msg.className, /bbf-error/);
 });
 
 test('6129-F09 cross-field zero, whitespace, arrays, and hidden values match PHP', () => {

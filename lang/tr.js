@@ -62,4 +62,7 @@ BBF.registerLang('tr', {
     filesFailed:       'Bazı dosyalar yüklenemedi. Göndermeden önce yeniden deneyin veya kaldırın.',
     filesExpireSoon:   'Yüklenen dosyalarınızın süresi yakında dolacak. Formu şimdi gönderin veya dosyaları yeniden yükleyin.',
     filesNotInDrafts:  'Dosyalar taslaklara kaydedilmez. Göndermeden önce ekleyin.',
+    pageStatus:        'Sayfa {current} / {total}',
+    optionOther:       'Diğer…',
+    rating:            'Değerlendirme',
 });

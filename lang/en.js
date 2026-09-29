@@ -69,4 +69,7 @@ BBF.registerLang('en', {
     filesFailed:       'Some files could not be uploaded. Retry or remove them before you submit.',
     filesExpireSoon:   'Your uploaded files expire soon. Submit the form now, or upload them again.',
     filesNotInDrafts:  'Files are not saved in drafts. Attach them before you submit.',
+    pageStatus:        'Page {current} of {total}',
+    optionOther:       'Other…',
+    rating:            'Rating',
 });

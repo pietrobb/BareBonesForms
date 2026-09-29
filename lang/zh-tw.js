@@ -62,4 +62,7 @@ BBF.registerLang('zh-tw', {
     filesFailed:       '部分檔案上傳失敗。請在提交前重試或將其移除。',
     filesExpireSoon:   '已上傳的檔案即將過期。請立即提交表單或重新上傳。',
     filesNotInDrafts:  '檔案不會儲存在草稿中。請在提交前附加檔案。',
+    pageStatus:        '第 {current} 頁，共 {total} 頁',
+    optionOther:       '其他…',
+    rating:            '評分',
 });

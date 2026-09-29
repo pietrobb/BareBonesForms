@@ -62,4 +62,7 @@ BBF.registerLang('ko', {
     filesFailed:       '일부 파일을 업로드할 수 없습니다. 제출 전에 다시 시도하거나 삭제해 주세요.',
     filesExpireSoon:   '업로드한 파일이 곧 만료됩니다. 지금 양식을 제출하거나 다시 업로드해 주세요.',
     filesNotInDrafts:  '파일은 임시 저장에 포함되지 않습니다. 제출 전에 첨부해 주세요.',
+    pageStatus:        '{total}페이지 중 {current}페이지',
+    optionOther:       '기타…',
+    rating:            '평점',
 });

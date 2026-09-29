@@ -618,7 +618,7 @@ All visual properties in `bbf.css` are controlled by `--bbf-*` CSS custom proper
 Scope per form using `data-form`:
 
 ```css
-[data-form="contact"] .bbf-form-container { --bbf-btn-bg: #059669; }
+.bbf-form-container[data-form="contact"] { --bbf-btn-bg: #059669; }
 [data-form="quote"]   .bbf-form-container { --bbf-btn-bg: #7c3aed; }
 ```
 

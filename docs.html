@@ -1144,7 +1144,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 <p>Scope per form by targeting <code>[data-form="..."]</code>:</p>
 
 <div class="code-block"><span class="lang">css</span><pre>/* Different button color for each form */
-[data-form="contact"] .bbf-form-container { --bbf-btn-bg: #059669; }
+.bbf-form-container[data-form="contact"] { --bbf-btn-bg: #059669; }
 [data-form="quote"]   .bbf-form-container { --bbf-btn-bg: #7c3aed; }</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <h4>Full variable reference</h4>

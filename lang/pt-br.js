@@ -62,4 +62,7 @@ BBF.registerLang('pt-br', {
     filesFailed:       'Alguns arquivos não foram enviados. Tente novamente ou remova-os antes de enviar o formulário.',
     filesExpireSoon:   'Seus arquivos enviados vão expirar em breve. Envie o formulário agora ou envie os arquivos novamente.',
     filesNotInDrafts:  'Os arquivos não são salvos nos rascunhos. Anexe-os antes de enviar.',
+    pageStatus:        'Página {current} de {total}',
+    optionOther:       'Outro…',
+    rating:            'Avaliação',
 });

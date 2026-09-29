@@ -62,4 +62,7 @@ BBF.registerLang('id', {
     filesFailed:       'Beberapa file tidak dapat diunggah. Coba lagi atau hapus sebelum mengirim.',
     filesExpireSoon:   'File yang Anda unggah akan segera kedaluwarsa. Kirim formulir sekarang atau unggah ulang.',
     filesNotInDrafts:  'File tidak disimpan dalam draf. Lampirkan sebelum mengirim.',
+    pageStatus:        'Halaman {current} dari {total}',
+    optionOther:       'Lainnya…',
+    rating:            'Penilaian',
 });

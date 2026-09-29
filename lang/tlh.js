@@ -64,4 +64,7 @@ BBF.registerLang('tlh', {
     filesFailed:       '\'op De\'wI\' ghItlhmey lI\'laHbe\'lu\'. ngeHpa\' yInIDqa\' pagh yIteq.',
     filesExpireSoon:   'De\'wI\' ghItlhmey lI\'lu\'pu\'bogh tugh Qaw\'. DaH nab yIngeH pagh yIlI\'qa\'.',
     filesNotInDrafts:  'nab pollu\'bogh De\'wI\' ghItlhmey ngaSbe\'. ngeHpa\' yIrar.',
+    pageStatus:        'nav {current} ({total} nav)',
+    optionOther:       'latlh…',
+    rating:            'patlh',
 });

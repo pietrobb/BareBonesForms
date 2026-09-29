@@ -67,4 +67,7 @@ BBF.registerLang('sk', {
     filesFailed:       'Niektoré súbory sa nepodarilo nahrať. Pred odoslaním ich nahrajte znova alebo odstráňte.',
     filesExpireSoon:   'Nahraté súbory čoskoro vypršia. Odošlite formulár teraz alebo ich nahrajte znova.',
     filesNotInDrafts:  'Súbory sa do konceptu neukladajú. Priložte ich až pred odoslaním.',
+    pageStatus:        'Strana {current} z {total}',
+    optionOther:       'Iné…',
+    rating:            'Hodnotenie',
 });

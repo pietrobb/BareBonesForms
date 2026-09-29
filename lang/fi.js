@@ -62,4 +62,7 @@ BBF.registerLang('fi', {
     filesFailed:       'Joidenkin tiedostojen lataus epäonnistui. Yritä uudelleen tai poista ne ennen lähettämistä.',
     filesExpireSoon:   'Ladatut tiedostot vanhenevat pian. Lähetä lomake nyt tai lataa ne uudelleen.',
     filesNotInDrafts:  'Tiedostoja ei tallenneta luonnoksiin. Liitä ne ennen lähettämistä.',
+    pageStatus:        'Sivu {current}/{total}',
+    optionOther:       'Muu…',
+    rating:            'Arvio',
 });

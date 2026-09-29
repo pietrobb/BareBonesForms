@@ -62,4 +62,7 @@ BBF.registerLang('nl', {
     filesFailed:       'Sommige bestanden konden niet worden geüpload. Probeer het opnieuw of verwijder ze voordat u verzendt.',
     filesExpireSoon:   'Uw geüploade bestanden verlopen binnenkort. Verzend het formulier nu of upload ze opnieuw.',
     filesNotInDrafts:  'Bestanden worden niet in concepten opgeslagen. Voeg ze toe voordat u verzendt.',
+    pageStatus:        'Pagina {current} van {total}',
+    optionOther:       'Anders…',
+    rating:            'Beoordeling',
 });

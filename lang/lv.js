@@ -60,4 +60,7 @@ BBF.registerLang('lv', {
     filesFailed:       'Dažus failus neizdevās augšupielādēt. Pirms nosūtīšanas mēģiniet vēlreiz vai noņemiet tos.',
     filesExpireSoon:   'Augšupielādēto failu derīguma termiņš drīz beigsies. Nosūtiet veidlapu tagad vai augšupielādējiet failus vēlreiz.',
     filesNotInDrafts:  'Faili melnrakstos netiek saglabāti. Pievienojiet tos pirms nosūtīšanas.',
+    pageStatus:        '{current}. lapa no {total}',
+    optionOther:       'Cits…',
+    rating:            'Vērtējums',
 });

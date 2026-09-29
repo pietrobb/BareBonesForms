@@ -62,4 +62,7 @@ BBF.registerLang('ja', {
     filesFailed:       '一部のファイルをアップロードできませんでした。送信前に再試行するか削除してください。',
     filesExpireSoon:   'アップロードしたファイルはまもなく期限切れになります。今すぐ送信するか、もう一度アップロードしてください。',
     filesNotInDrafts:  'ファイルは下書きに保存されません。送信前に添付してください。',
+    pageStatus:        '{total} ページ中 {current} ページ',
+    optionOther:       'その他…',
+    rating:            '評価',
 });

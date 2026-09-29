@@ -62,4 +62,7 @@ BBF.registerLang('hu', {
     filesFailed:       'Néhány fájlt nem sikerült feltölteni. Próbálja újra, vagy távolítsa el őket beküldés előtt.',
     filesExpireSoon:   'A feltöltött fájlok hamarosan lejárnak. Küldje be most az űrlapot, vagy töltse fel őket újra.',
     filesNotInDrafts:  'A fájlok nem kerülnek a piszkozatba. Beküldés előtt csatolja őket.',
+    pageStatus:        '{current}. oldal / {total}',
+    optionOther:       'Egyéb…',
+    rating:            'Értékelés',
 });

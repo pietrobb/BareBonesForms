@@ -62,4 +62,7 @@ BBF.registerLang('cs', {
     filesFailed:       'Některé soubory se nepodařilo nahrát. Před odesláním je nahrajte znovu nebo odeberte.',
     filesExpireSoon:   'Nahrané soubory brzy vyprší. Odešlete formulář hned, nebo je nahrajte znovu.',
     filesNotInDrafts:  'Soubory se do konceptu neukládají. Přiložte je až před odesláním.',
+    pageStatus:        'Stránka {current} z {total}',
+    optionOther:       'Jiné…',
+    rating:            'Hodnocení',
 });

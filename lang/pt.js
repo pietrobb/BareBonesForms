@@ -62,4 +62,7 @@ BBF.registerLang('pt', {
     filesFailed:       'Alguns ficheiros não foram carregados. Tente novamente ou remova-os antes de enviar.',
     filesExpireSoon:   'Os ficheiros carregados vão expirar em breve. Envie o formulário agora ou carregue-os novamente.',
     filesNotInDrafts:  'Os ficheiros não são guardados nos rascunhos. Anexe-os antes de enviar.',
+    pageStatus:        'Página {current} de {total}',
+    optionOther:       'Outro…',
+    rating:            'Classificação',
 });

@@ -60,4 +60,7 @@ BBF.registerLang('lt', {
     filesFailed:       'Kai kurių failų nepavyko įkelti. Prieš siųsdami bandykite dar kartą arba juos pašalinkite.',
     filesExpireSoon:   'Įkeltų failų galiojimas netrukus baigsis. Išsiųskite formą dabar arba įkelkite failus iš naujo.',
     filesNotInDrafts:  'Failai juodraščiuose neišsaugomi. Pridėkite juos prieš išsiųsdami.',
+    pageStatus:        '{current} puslapis iš {total}',
+    optionOther:       'Kita…',
+    rating:            'Įvertinimas',
 });

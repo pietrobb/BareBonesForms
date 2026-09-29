@@ -62,4 +62,7 @@ BBF.registerLang('es', {
     filesFailed:       'Algunos archivos no se pudieron subir. Reinténtelo o quítelos antes de enviar.',
     filesExpireSoon:   'Sus archivos subidos caducarán pronto. Envíe el formulario ahora o vuelva a subirlos.',
     filesNotInDrafts:  'Los archivos no se guardan en los borradores. Adjúntelos antes de enviar.',
+    pageStatus:        'Página {current} de {total}',
+    optionOther:       'Otro…',
+    rating:            'Valoración',
 });

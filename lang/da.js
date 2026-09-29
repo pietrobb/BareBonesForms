@@ -62,4 +62,7 @@ BBF.registerLang('da', {
     filesFailed:       'Nogle filer kunne ikke uploades. Prøv igen, eller fjern dem, før du sender.',
     filesExpireSoon:   'Dine uploadede filer udløber snart. Send formularen nu, eller upload dem igen.',
     filesNotInDrafts:  'Filer gemmes ikke i kladder. Vedhæft dem, før du sender.',
+    pageStatus:        'Side {current} af {total}',
+    optionOther:       'Andet…',
+    rating:            'Bedømmelse',
 });

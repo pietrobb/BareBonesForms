@@ -480,6 +480,16 @@
     color: var(--bbf-text-light);
 }
 
+/* Read by screen readers, not shown (page-change announcements). */
+.bbf-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
 .bbf-prev,
 .bbf-next {
     display: inline-block;

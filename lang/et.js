@@ -62,4 +62,7 @@ BBF.registerLang('et', {
     filesFailed:       'Mõnda faili ei õnnestunud üles laadida. Proovige uuesti või eemaldage need enne saatmist.',
     filesExpireSoon:   'Üleslaaditud failid aeguvad varsti. Saatke vorm kohe või laadige need uuesti üles.',
     filesNotInDrafts:  'Faile mustandisse ei salvestata. Lisage need enne saatmist.',
+    pageStatus:        'Leht {current}/{total}',
+    optionOther:       'Muu…',
+    rating:            'Hinnang',
 });

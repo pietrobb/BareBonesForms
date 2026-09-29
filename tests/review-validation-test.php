@@ -414,6 +414,14 @@ check('mail headers: quoted display names and RFC 5322 Date/Message-ID', functio
     same(true, (bool)preg_match('/\A<[0-9a-f]{32}@example\.com>\z/', $headers['Message-ID']) && strtotime($headers['Date']) > 0);
 });
 
+// ─── 2.1.2: re-review of 2.1.1 ─────────────────────────────────
+check('\d and \w stay ASCII like the browser: Arabic digits do not pass ^\d{5}$', function (): void {
+    rejects(['type' => 'text', 'pattern' => '^\d{5}$'], '١٢٣٤٥', 'invalidFormat');
+    accepts(['type' => 'text', 'pattern' => '^\d{5}$'], '12345');
+    rejects(['type' => 'text', 'pattern' => '^\w+$'], 'ščť', 'invalidFormat');
+    accepts(['type' => 'text', 'pattern' => '^[a-zščťžýáíé]{5}$'], 'ščťžý');
+});
+
 restore_error_handler();
 printf("Typed validation regression tests: %d passed, %d failed.\n", $passed, $failed);
 exit($failed === 0 ? 0 : 1);

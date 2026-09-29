@@ -25,7 +25,7 @@
 .bbf-form-container {
     --bbf-text: #e8e6e3;
     --bbf-text-muted: #a0a0a0;
-    --bbf-text-light: #6b6b6b;
+    --bbf-text-light: #959595;   /* 5.5:1 on --bbf-bg, 4.7:1 on --bbf-bg-alt */
     --bbf-bg: #1e1e28;
     --bbf-bg-alt: #2a2a36;
     --bbf-bg-readonly: #252530;
@@ -129,12 +129,12 @@
    ═══════════════════════════════════════════════════════
    Scope variables to a specific form using data-form:
 
-   [data-form="contact"] .bbf-form-container {
+   .bbf-form-container[data-form="contact"] {
        --bbf-btn-bg: #059669;
        --bbf-focus: #059669;
    }
 
-   [data-form="quote"] .bbf-form-container {
+   .bbf-form-container[data-form="quote"] {
        --bbf-btn-bg: #7c3aed;
        --bbf-focus: #7c3aed;
        --bbf-max-width: 680px;

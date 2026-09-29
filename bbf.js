@@ -88,6 +88,9 @@
             draftDeleting:    'Deleting draft…',
             draftDeleted:     'Saved progress deleted.',
             draftFailed:      'Draft request failed.',
+            pageStatus:       'Page {current} of {total}',
+            optionOther:      'Other…',
+            rating:           'Rating',
             repeatableAdd:    'Add item',
             repeatableRemove: 'Remove item',
             repeatableItem:   '{label} item {index}',
@@ -121,7 +124,7 @@
          * Usage: BBF.registerLang('de', { required: '{label} ist erforderlich.', ... });
          */
         registerLang: function(code, messages) {
-            this.langs[code] = messages;
+            this.langs[String(code).toLowerCase()] = messages;
         },
 
         /**
@@ -129,14 +132,10 @@
          * _t('required', { label: 'Email' }, 'de') → 'Email ist erforderlich.'
          */
         _t: function(key, params, langCode) {
-            const msgs = (langCode && this.langs[langCode]) || this.lang;
-            let msg = msgs[key] || this.lang[key] || key;
-            if (params) {
-                Object.keys(params).forEach(k => {
-                    msg = msg.replace(new RegExp('\\{' + k + '\\}', 'g'), params[k]);
-                });
-            }
-            return msg;
+            const msgs = (langCode && this.langs[String(langCode).toLowerCase()]) || this.lang;
+            const msg = msgs[key] || this.lang[key] || key;
+            // One pass with a function replacement: "$&" or "{label}" inside a label is inserted literally.
+            return params ? msg.replace(/\{(\w+)\}/g, (match, k) => Object.hasOwn(params, k) ? String(params[k]) : match) : msg;
         },
 
         _instanceSequence: 0, _clientScripts: Object.create(null), _loadClientScript: function(url) { return this._clientScripts[url] || (this._clientScripts[url] = new Promise(resolve => { const script = document.createElement('script'); const timer = setTimeout(resolve, 5000); script.onload = script.onerror = () => { clearTimeout(timer); resolve(); }; script.src = url; document.head.appendChild(script); })); },
@@ -180,9 +179,10 @@
             const isCurrent = () => container._bbfRenderRequest === renderRequest;
 
             // Resolve language: options.lang > data-lang > global default
-            const langCode = options.lang
+            // Case-insensitive, like HTML lang: "pt-BR" and "zh-TW" load lang/pt-br.js and lang/zh-tw.js.
+            const langCode = String(options.lang
                 || container.getAttribute('data-lang')
-                || null;
+                || '').toLowerCase() || null;
 
             container.classList.add('bbf-loading');
             container.innerHTML = `<div class="bbf-spinner">${this._t('loading', {}, langCode)}</div>`;
@@ -281,6 +281,8 @@
                 nav.querySelector('.bbf-submit').style.display = pageIndex === totalPages - 1 ? '' : 'none';
                 const indicator = nav.querySelector('.bbf-page-indicator');
                 if (indicator) indicator.textContent = `${pageIndex + 1} / ${totalPages}`;
+                const status = nav.querySelector('.bbf-page-status');
+                if (status && moveFocus) status.textContent = this._t('pageStatus', { current: pageIndex + 1, total: totalPages }, langCode);
             }
         },
 
@@ -409,7 +411,13 @@
             if (inputs.length > 0 && inputs[0].type === 'checkbox') {
                 return inputs.filter(input => input.checked).map(input => input.value);
             }
-            return inputs.length > 0 ? inputs[0].value : '';
+            if (inputs.length > 0) return inputs[0].value;
+            // File fields keep upload tokens in memory, not in a named input (conditions, min_filled, min_sum).
+            const fileWrap = formEl.querySelector(`[data-field="${fieldName}"]`);
+            if (fileWrap && fileWrap._bbfFiles && (!visibleOnly || !this._isHidden(fileWrap))) {
+                return fileWrap._bbfFiles.filter(f => f.state === 'done').map(f => f.token);
+            }
+            return '';
         },
 
         // Compare a field value against a target using an operator
@@ -552,6 +560,8 @@
                 input._bbfResetRating();
             });
             formEl.querySelectorAll('.bbf-field-file').forEach(wrap => { if (wrap._bbfClearFiles) wrap._bbfClearFiles(); });
+            // reset() restores the choice but fires no change event: hide "Other" text boxes whose choice is gone.
+            formEl.querySelectorAll('.bbf-other-input').forEach(input => { if (input._bbfSyncOther) input._bbfSyncOther(); });
         },
 
         // ─── File fields (two-phase upload; tokens live in memory only) ─
@@ -884,12 +894,17 @@
                     if (typeof o === 'object' && o.show_if) this._collectSources(o.show_if).forEach(s => sources.add(s));
                 });
             });
+            const rowLevel = fieldRoot !== valueRoot;
             var handler = function() {
                 self._stabilizeOptionConditions(fieldRoot, valueRoot);
                 self._applyConditions(fieldRoot, fields, animate, valueRoot);
                 // Option conditions see a newly hidden source field as empty only after the pass above.
                 self._stabilizeOptionConditions(fieldRoot, valueRoot);
+                // Repeatable rows may depend on a form field this pass just hid or showed (a hidden field counts
+                // as empty, like on the server): let every row re-evaluate after the form-level pass.
+                if (!rowLevel) valueRoot.dispatchEvent(new Event('bbf:visibility'));
             };
+            if (rowLevel) valueRoot.addEventListener('bbf:visibility', handler);
             const boundInputs = [];
             sources.forEach(srcName => {
                 const inputs = valueRoot.querySelectorAll(`[name="${srcName}"]`);
@@ -903,7 +918,9 @@
             this._stabilizeOptionConditions(fieldRoot, valueRoot);
             this._applyConditions(fieldRoot, fields, false, valueRoot);
             this._stabilizeOptionConditions(fieldRoot, valueRoot);
+            if (!rowLevel) valueRoot.dispatchEvent(new Event('bbf:visibility'));
             return function() {
+                if (rowLevel) valueRoot.removeEventListener('bbf:visibility', handler);
                 boundInputs.forEach(inp => {
                     inp.removeEventListener('change', handler);
                     inp.removeEventListener('input', handler);
@@ -1206,6 +1223,12 @@
                 const indicator = document.createElement('span');
                 indicator.className = 'bbf-page-indicator';
                 indicator.textContent = `1 / ${pages.length}`;
+                indicator.setAttribute('aria-hidden', 'true');
+                // Screen readers hear the page change; the "2 / 3" indicator alone is silent.
+                const pageStatus = document.createElement('span');
+                pageStatus.className = 'bbf-page-status bbf-sr-only';
+                pageStatus.setAttribute('role', 'status');
+                pageStatus.setAttribute('aria-live', 'polite');
 
                 const nextBtn = document.createElement('button');
                 nextBtn.type = 'button';
@@ -1220,6 +1243,7 @@
 
                 nav.appendChild(prevBtn);
                 nav.appendChild(indicator);
+                nav.appendChild(pageStatus);
                 nav.appendChild(nextBtn);
                 nav.appendChild(submitBtn);
                 el.appendChild(nav);
@@ -1396,15 +1420,10 @@
                         }
                     } else {
                         if (options.onError) options.onError(result);
-                        if (result.errors) {
-                            this._showErrors(el, result.errors);
-                        }
-                        // Cross-field rule messages have no field to sit under; they are the useful message here.
-                        const crossMessages = Object.entries(result.errors || {})
-                            .filter(([key]) => key.startsWith('_cross_') || key.startsWith('_validation_'))
-                            .map(([, text]) => text);
+                        // Errors with no field to sit under (cross-field rules, _payment) are the useful message here.
+                        const formLevel = result.errors ? this._showErrors(el, result.errors) : [];
                         msg.className = 'bbf-message bbf-error';
-                        msg.textContent = crossMessages.length ? crossMessages.join(' ') : (result.message || this._t('errorDefault', {}, langCode));
+                        msg.textContent = formLevel.length ? formLevel.join(' ') : (result.message || this._t('errorDefault', {}, langCode));
                         msg.style.display = 'block';
                     }
                 } catch (err) {
@@ -1626,14 +1645,14 @@
                 remove.addEventListener('click', () => {
                     const siblings = this._repeatableRows(group);
                     if (siblings.length <= min) return;
-                    // Keep keyboard focus nearby (the neighbouring row, else "Add"), not lost on <body>.
+                    // Keep keyboard focus nearby, not lost on <body>: on the neighbouring row itself (its legend is
+                    // announced), never on its Remove button — a repeated Space would delete a second row.
                     const index = siblings.indexOf(row);
                     const neighbour = siblings[index + 1] || siblings[index - 1];
                     if (row._bbfConditionCleanup) row._bbfConditionCleanup();
                     row.remove();
                     update(true);
-                    const target = neighbour && neighbour.querySelector('.bbf-repeatable-remove');
-                    if (target && !target.disabled) target.focus(); else add.focus();
+                    if (neighbour) { neighbour.tabIndex = -1; neighbour.focus(); } else add.focus();
                 });
                 row.appendChild(remove);
                 rows.appendChild(row);
@@ -1827,7 +1846,7 @@
                     if (field.other) {
                         const otherOpt = document.createElement('option');
                         otherOpt.value = '__other__';
-                        otherOpt.textContent = field.other_label || 'Other…';
+                        otherOpt.textContent = field.other_label || this._t('optionOther', {}, langCode);
                         input.appendChild(otherOpt);
                     }
                     break;
@@ -1873,6 +1892,18 @@
             if (field.value !== undefined && input.tagName === 'SELECT') {
                 const wanted = [].concat(field.value).map(String);
                 Array.from(input.options).forEach(o => { o.defaultSelected = o.selected = wanted.includes(o.value); });
+                // A default matching no option must leave the select empty (so "required" catches it), not fall
+                // back to the first option: select a hidden empty option, which reset() also returns to.
+                if (!input.multiple && !Array.from(input.options).some(o => o.defaultSelected)) {
+                    let empty = Array.from(input.options).find(o => o.value === '');
+                    if (!empty) {
+                        empty = document.createElement('option');
+                        empty.value = '';
+                        empty.hidden = empty.disabled = true;
+                        input.insertBefore(empty, input.firstChild);
+                    }
+                    empty.selected = empty.defaultSelected = true;
+                }
             } else if (field.value !== undefined) {
                 input.defaultValue = String(field.value);
                 input.value = String(field.value);
@@ -1912,14 +1943,15 @@
                 otherInput.type = 'text';
                 otherInput.name = field.name + '_other';
                 otherInput.className = 'bbf-input bbf-other-input';
-                otherInput.placeholder = field.other_label || 'Other…';
+                otherInput.placeholder = field.other_label || this._t('optionOther', {}, langCode);
                 otherInput.style.display = 'none';
-                otherInput.setAttribute('aria-label', field.other_label || 'Other');
+                otherInput.setAttribute('aria-label', field.other_label || this._t('optionOther', {}, langCode));
                 otherInput.style.marginTop = '6px';
                 wrap.appendChild(otherInput);
 
+                otherInput._bbfSyncOther = () => { otherInput.style.display = input.value === '__other__' ? '' : 'none'; };
                 input.addEventListener('change', () => {
-                    otherInput.style.display = input.value === '__other__' ? '' : 'none';
+                    otherInput._bbfSyncOther();
                     if (input.value !== '__other__') otherInput.value = '';
                 });
             }
@@ -2229,7 +2261,7 @@
                 otherInp.id = fieldId + '-other';
                 otherInp.value = '__other__';
                 const otherSpan = document.createElement('span');
-                otherSpan.textContent = field.other_label || 'Other…';
+                otherSpan.textContent = field.other_label || this._t('optionOther', {}, langCode);
                 otherWrap.appendChild(otherInp);
                 otherWrap.appendChild(otherSpan);
 
@@ -2238,16 +2270,15 @@
                 otherText.name = field.name + '_other';
                 otherText.className = 'bbf-input bbf-other-input';
                 otherText.style.display = 'none';
-                otherText.setAttribute('aria-label', field.other_label || 'Other');
+                otherText.setAttribute('aria-label', field.other_label || this._t('optionOther', {}, langCode));
                 otherText.style.marginTop = '4px';
 
-                otherInp.addEventListener('change', () => {
-                    otherText.style.display = otherInp.checked ? '' : 'none';
-                });
+                otherText._bbfSyncOther = () => { otherText.style.display = otherInp.checked ? '' : 'none'; };
+                otherInp.addEventListener('change', otherText._bbfSyncOther);
                 // Hide "other" text when another option is selected (radio only)
                 if (type === 'radio') {
                     optionsWrap.addEventListener('change', () => {
-                        otherText.style.display = otherInp.checked ? '' : 'none';
+                        otherText._bbfSyncOther();
                         if (!otherInp.checked) otherText.value = '';
                     });
                 }
@@ -2307,7 +2338,7 @@
             const starsWrap = document.createElement('div');
             starsWrap.className = 'bbf-rating-stars';
             starsWrap.setAttribute('role', 'radiogroup');
-            starsWrap.setAttribute('aria-label', field.label || 'Rating');
+            starsWrap.setAttribute('aria-label', field.label || this._t('rating', {}, langCode));
             starsWrap.setAttribute('aria-describedby', (field.description ? fieldId + '-desc ' : '') + fieldId + '-error');
 
             const updateRating = (value, focusStar = false, emitEvents = true) => {
@@ -2427,6 +2458,11 @@
                 } else {
                     const input = formEl.querySelector(`[name="${name}"]`);
                     value = input ? input.value.trim() : '';
+                    // Unparseable text in <input type="number"> reads as "": report it instead of silently sending nothing.
+                    if (input && input.validity && input.validity.badInput) {
+                        errors[name] = t('invalidNumber', { label: field.label || name });
+                        return;
+                    }
                 }
 
                 const label = field.label || name;
@@ -2580,6 +2616,7 @@
         _showErrors: function(formEl, errors) {
             this._clearErrors(formEl);
             let firstInput = null;
+            const formLevel = [];
             Object.entries(errors).forEach(([name, msg]) => {
                 const wrap = this._errorWrap(formEl, name);
                 if (wrap) {
@@ -2594,16 +2631,17 @@
                         (ratingGroup || inp).setAttribute('aria-invalid', 'true');
                         if (!firstInput) firstInput = inp;
                     }
-                } else if (name.startsWith('_validation_') || name.startsWith('_cross_')) {
-                    // Cross-field error (client key _validation_*, server key _cross_*) — show in form message area
-                    const msgEl = formEl.querySelector('.bbf-message');
-                    if (msgEl) {
-                        msgEl.className = 'bbf-message bbf-error';
-                        msgEl.textContent = msg;
-                        msgEl.style.display = '';
-                    }
+                } else {
+                    // No field to attach to: cross-field (_validation_*, _cross_*), _payment, or a field not rendered.
+                    formLevel.push(String(msg));
                 }
             });
+            const msgEl = formLevel.length ? formEl.querySelector('.bbf-message') : null;
+            if (msgEl) {
+                msgEl.className = 'bbf-message bbf-error';
+                msgEl.textContent = formLevel.join(' ');
+                msgEl.style.display = '';
+            }
             if (firstInput) {
                 const page = firstInput.closest('.bbf-page');
                 const pageState = formEl._bbfPageState;
@@ -2622,6 +2660,7 @@
                     msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
             }
+            return formLevel;
         },
 
         _renderSandboxPreview: function(result) {

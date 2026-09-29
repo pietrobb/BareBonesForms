@@ -62,4 +62,7 @@ BBF.registerLang('ro', {
     filesFailed:       'Unele fișiere nu au putut fi încărcate. Reîncercați sau eliminați-le înainte de trimitere.',
     filesExpireSoon:   'Fișierele încărcate expiră în curând. Trimiteți formularul acum sau încărcați-le din nou.',
     filesNotInDrafts:  'Fișierele nu se salvează în ciorne. Atașați-le înainte de trimitere.',
+    pageStatus:        'Pagina {current} din {total}',
+    optionOther:       'Altceva…',
+    rating:            'Evaluare',
 });

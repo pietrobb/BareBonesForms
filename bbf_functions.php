@@ -1754,13 +1754,15 @@ function bbfValidUtf8Deep(mixed $value): bool {
 
 /**
  * Compile a field "pattern" (written like a JS RegExp source) into a delimited PCRE.
- * Unescaped "/" is escaped so it cannot end the pattern early; the u flag matches the
- * client's RegExp(pattern, 'u'). Returns null when the pattern is not a valid regex.
+ * Unescaped "/" is escaped so it cannot end the pattern early. (*UTF) matches the client's
+ * RegExp(pattern, 'u'): characters, not bytes, while \d, \w and \b stay ASCII as in JavaScript.
+ * PHP's /u flag would also turn on Unicode properties, so \d would accept Arabic digits.
+ * Returns null when the pattern is not a valid regex.
  */
 function bbfFieldPatternRegex(string $pattern): ?string {
     $body = preg_replace('~(?<!\\\\)((?:\\\\\\\\)*)/~', '$1\\/', $pattern);
-    foreach (['u', ''] as $flags) {
-        $regex = '/' . $body . '/' . $flags;
+    foreach (['(*UTF)', ''] as $prefix) {
+        $regex = '/' . $prefix . $body . '/';
         if (@preg_match($regex, '') !== false) return $regex;
     }
     return null;

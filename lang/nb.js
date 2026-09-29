@@ -62,4 +62,7 @@ BBF.registerLang('nb', {
     filesFailed:       'Noen filer kunne ikke lastes opp. Prøv igjen eller fjern dem før du sender.',
     filesExpireSoon:   'De opplastede filene utløper snart. Send skjemaet nå, eller last dem opp på nytt.',
     filesNotInDrafts:  'Filer lagres ikke i utkast. Legg dem ved før du sender.',
+    pageStatus:        'Side {current} av {total}',
+    optionOther:       'Annet…',
+    rating:            'Vurdering',
 });

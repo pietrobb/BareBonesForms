@@ -67,4 +67,7 @@ BBF.registerLang('de', {
     filesFailed:       'Einige Dateien konnten nicht hochgeladen werden. Versuchen Sie es erneut oder entfernen Sie sie vor dem Absenden.',
     filesExpireSoon:   'Ihre hochgeladenen Dateien laufen bald ab. Senden Sie das Formular jetzt ab oder laden Sie sie erneut hoch.',
     filesNotInDrafts:  'Dateien werden nicht im Entwurf gespeichert. Hängen Sie sie vor dem Absenden an.',
+    pageStatus:        'Seite {current} von {total}',
+    optionOther:       'Sonstiges…',
+    rating:            'Bewertung',
 });

@@ -62,4 +62,7 @@ BBF.registerLang('sv', {
     filesFailed:       'Vissa filer kunde inte laddas upp. Försök igen eller ta bort dem innan du skickar.',
     filesExpireSoon:   'Dina uppladdade filer upphör snart att gälla. Skicka formuläret nu eller ladda upp dem igen.',
     filesNotInDrafts:  'Filer sparas inte i utkast. Bifoga dem innan du skickar.',
+    pageStatus:        'Sida {current} av {total}',
+    optionOther:       'Annat…',
+    rating:            'Betyg',
 });

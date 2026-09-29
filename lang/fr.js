@@ -62,4 +62,7 @@ BBF.registerLang('fr', {
     filesFailed:       'Certains fichiers n\'ont pas pu être téléversés. Réessayez ou retirez-les avant d\'envoyer.',
     filesExpireSoon:   'Vos fichiers téléversés vont bientôt expirer. Envoyez le formulaire maintenant ou téléversez-les à nouveau.',
     filesNotInDrafts:  'Les fichiers ne sont pas enregistrés dans les brouillons. Joignez-les avant d\'envoyer.',
+    pageStatus:        'Page {current} sur {total}',
+    optionOther:       'Autre…',
+    rating:            'Évaluation',
 });
