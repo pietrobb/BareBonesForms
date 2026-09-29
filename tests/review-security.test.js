@@ -221,13 +221,14 @@ test('editor preview renders hostile errors as text inside an opaque-origin sand
         const page = path.join(temporary, 'parent.html');
         fs.writeFileSync(page, '<!doctype html><meta charset="utf-8">'
             + '<iframe id="preview" sandbox="allow-scripts"></iframe><pre id="security-result"></pre>'
-            + '<script>let xss=false;const events=[];const frame=document.getElementById("preview");'
+            // Review 2.1.4: a fixed 500 ms fallback raced the iframe load on slow CI runners. The fallback is now 20 s of
+            // virtual time (it only fires when the preview never answers); a late bbf-xss still rewrites the result.
+            + '<script>let xss=false,result=null;const events=[];const frame=document.getElementById("preview");'
+            + 'const write=()=>{if(result)document.getElementById("security-result").textContent=JSON.stringify({...result,xss,events})};'
             + 'window.addEventListener("message",event=>{if(event.source!==frame.contentWindow)return;events.push(event.data);'
             + 'if(event.data?.type==="bbf-handler"){events.push({type:"bbf-sent"});event.source.postMessage({type:"bbf-render",json:"{}"},"*");return}'
-            + 'if(event.data?.type==="bbf-xss"){xss=true;return}if(event.data?.type==="bbf-preview-result")'
-            + 'document.getElementById("security-result").textContent=JSON.stringify({...event.data,xss,events});});'
-            + 'frame.src="preview.html";setTimeout(()=>{const out=document.getElementById("security-result");if(!out.textContent)'
-            + 'out.textContent=JSON.stringify({timeout:true,xss,events});},500);<\/script>');
+            + 'if(event.data?.type==="bbf-xss"){xss=true;write();return}if(event.data?.type==="bbf-preview-result"){result=event.data;write()}});'
+            + 'frame.src="preview.html";setTimeout(()=>{if(!result){result={timeout:true};write()}},20000);<\/script>');
 
         const portFile = path.join(temporary, 'port.txt');
         const serverCode = `
@@ -256,7 +257,9 @@ test('editor preview renders hostile errors as text inside an opaque-origin sand
         const pageUrl = 'http://127.0.0.1:' + fs.readFileSync(portFile, 'utf8').trim() + '/parent.html';
 
         const args = ['--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-            '--disable-background-networking', '--disable-extensions', '--virtual-time-budget=1000',
+            // Virtual time does not wait for messages to an out-of-process frame: keep the sandboxed iframe in-process.
+            '--disable-features=IsolateSandboxedIframes,site-per-process', '--disable-site-isolation-trials',
+            '--disable-background-networking', '--disable-extensions', '--virtual-time-budget=30000',
             '--user-data-dir=' + path.join(temporary, 'profile'), '--dump-dom', pageUrl];
         if (process.platform !== 'win32' && process.getuid?.() === 0) args.unshift('--no-sandbox');
         const result = spawnSync(browserExecutable(), args, { encoding: 'utf8', timeout: 45000,
@@ -299,7 +302,7 @@ test('renderer and sandbox load failures keep hostile messages inert in real Chr
             + 'rendererText:renderer.textContent,rendererElements:renderer.querySelectorAll("img,script").length,'
             + 'sandboxText:sandbox.textContent,sandboxElements:sandbox.querySelectorAll("img,script").length,xss:window.__xss});},50);})();<\/script>');
         const args = ['--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-            '--disable-background-networking', '--disable-extensions', '--virtual-time-budget=500',
+            '--disable-background-networking', '--disable-extensions', '--virtual-time-budget=5000',
             '--user-data-dir=' + path.join(temporary, 'profile'), '--dump-dom', pathToFileURL(page).href];
         if (process.platform !== 'win32' && process.getuid?.() === 0) args.unshift('--no-sandbox');
         const result = spawnSync(browserExecutable(), args, { encoding: 'utf8', timeout: 45000,

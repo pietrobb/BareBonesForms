@@ -49,4 +49,9 @@ return [
     'draftNotFound'         => 'Išsaugota pažanga nerasta. Patikrinkite tęsimo kodą.',
     'draftTooLarge'         => 'Forma per didelė, kad būtų išsaugota kaip juodraštis.',
     'draftQuota'            => 'Šiuo metu išsaugota per daug juodraščių. Bandykite vėliau.',
+    'requestTooLarge'       => 'Forma per didelė, kad būtų išsiųsta.',
+    'tooManyRequests'       => 'Per daug bandymų. Palaukite minutę ir bandykite dar kartą.',
+    'submitAgain'           => 'Nepavyko užbaigti formos siuntimo. Bandykite dar kartą — dublikatas nebus sukurtas.',
+    'submitProcessing'      => 'Jūsų forma dar apdorojama. Nepildykite jos iš naujo — po kelių minučių vėl spustelėkite Siųsti; dublikatas nebus sukurtas.',
+    'submitUnconfirmed'     => 'Nepavyko patvirtinti formos išsiuntimo. Organizatorius buvo informuotas.',
 ];

@@ -115,7 +115,7 @@ try {
         "## [2.2.0] - 2026-10-01\n\n### Breaking\n- **Renamed `old_key` to `new_key`.** Rename it in config.php.\n\n", file_get_contents("$tmp/new/CHANGELOG.md"), 1));
     upgrade_remanifest("$tmp/new", '2.2.0', ['newfile.php']);
 
-    $dry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/site");
+    $dry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/site");
     $plan = $dry['json'] ?? [];
     check_upgrade($dry['code'] === 0 && ($plan['ok'] ?? false) && $plan['from'] === '2.1.0' && $plan['to'] === '2.2.0', 'dry run plans 2.1.0 -> 2.2.0');
     check_upgrade(($plan['files']['add'] ?? 0) === 1 && ($plan['files']['replace'] ?? 0) === 5, 'adds the new file; replaces bbf.js, maintenance.php, config example, CHANGELOG, untouched notify.html and nothing else');
@@ -132,7 +132,7 @@ try {
     check_upgrade(($plan['check']['status'] ?? '') === 'passed', 'new code passes the smoke test against the live forms');
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'dry run changes nothing');
 
-    $wrong = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . str_repeat('0', 64)], "$tmp/site");
+    $wrong = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new", '--apply', '--confirm=' . str_repeat('0', 64)], "$tmp/site");
     check_upgrade($wrong['code'] === 1 && upgrade_snapshot("$tmp/site") === $before, 'a wrong digest is refused without changes');
 
     check_upgrade(!str_contains((string)file_get_contents("$repo/bbf_upgrade.php"), 'getenv('), 'the upgrader has no environment-controlled test hooks');
@@ -141,16 +141,16 @@ try {
     upgrade_copy("$tmp/new", "$tmp/postfail");
     file_put_contents("$tmp/postfail/smoketest.php", "<?php\nif (basename(__DIR__) !== 'site') { echo \"1/1 forms passed\\n\"; exit(0); }\necho \"  \u{2717} kontakt (3 fields)\\n\";\nexit(1);\n");
     upgrade_remanifest("$tmp/postfail", '2.2.0', ['newfile.php']);
-    $pfPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/postfail"], "$tmp/site")['json'] ?? [];
-    $injected = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/postfail", '--apply', '--confirm=' . ($pfPlan['confirm'] ?? '')], "$tmp/site");
+    $pfPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/postfail"], "$tmp/site")['json'] ?? [];
+    $injected = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/postfail", '--apply', '--confirm=' . ($pfPlan['confirm'] ?? '')], "$tmp/site");
     check_upgrade($injected['code'] === 1 && ($injected['json']['rolled_back'] ?? false) === true, 'a failure after writing files is rolled back');
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'rollback restores every byte and removes added files');
 
     // A process killed mid-upgrade leaves a journal without completed_at; upgrade-rollback still undoes it.
     upgrade_copy("$tmp/site", "$tmp/killed");
     upgrade_rmtree("$tmp/killed/logs/upgrades");
-    $killedPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/killed")['json'] ?? [];
-    upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . ($killedPlan['confirm'] ?? '')], "$tmp/killed");
+    $killedPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/killed")['json'] ?? [];
+    upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new", '--apply', '--confirm=' . ($killedPlan['confirm'] ?? '')], "$tmp/killed");
     $killedBackup = glob("$tmp/killed/logs/upgrades/*", GLOB_ONLYDIR)[0] ?? '';
     $killedJournal = json_decode((string)file_get_contents("$killedBackup/upgrade.json"), true);
     unset($killedJournal['completed_at']); // what a process killed after its last write leaves behind
@@ -160,7 +160,7 @@ try {
     $killedApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$killedBackup", '--apply', '--confirm=' . ($killedRollback['confirm'] ?? '')], "$tmp/killed");
     check_upgrade($killedApply['code'] === 0 && upgrade_snapshot("$tmp/killed") === $before, 'the interrupted upgrade is fully undone');
 
-    $apply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . $plan['confirm']], "$tmp/site");
+    $apply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new", '--apply', '--confirm=' . $plan['confirm']], "$tmp/site");
     check_upgrade($apply['code'] === 0 && ($apply['json']['ok'] ?? false), 'upgrade applies' . ($apply['code'] === 0 ? '' : ': ' . $apply['out'] . $apply['err']));
     $after = upgrade_snapshot("$tmp/site");
     check_upgrade($after['bbf.js'] === hash_file('sha256', "$tmp/new/bbf.js") && isset($after['newfile.php']) && !isset($after['demo10.html']), 'code is replaced, added and removed');
@@ -175,7 +175,7 @@ try {
     $backup = (string)($apply['json']['backup'] ?? '');
     check_upgrade(is_file("$backup/upgrade.json") && is_file("$backup/files/bbf.js.bak") && str_starts_with(str_replace('\\', '/', $backup), "$tmp/site/logs/upgrades/"),
         'backup and journal are kept in logs_dir/upgrades');
-    $again = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/site");
+    $again = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/site");
     check_upgrade(($again['json']['up_to_date'] ?? false) === true && !isset($again['json']['next']), 're-running the same package reports up to date');
 
     // ─── A rollback that fails part-way can be run again ─────────────
@@ -228,49 +228,49 @@ try {
     check_upgrade(!str_contains($matched['err'], '--checksum'), 'a matching --checksum passes on to the package checks');
     upgrade_copy("$tmp/new", "$tmp/damaged");
     file_put_contents("$tmp/damaged/bbf.js", "tampered\n", FILE_APPEND);
-    $damaged = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/damaged"], "$tmp/site");
+    $damaged = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/damaged"], "$tmp/site");
     check_upgrade($damaged['code'] === 1 && str_contains($damaged['err'], 'does not match its checksum'), 'a damaged package is refused');
 
     upgrade_copy("$tmp/new", "$tmp/older");
     upgrade_remanifest("$tmp/older", '2.0.9');
-    $older = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/older"], "$tmp/site");
+    $older = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/older"], "$tmp/site");
     check_upgrade($older['code'] === 1 && str_contains(implode(' ', $older['json']['problems'] ?? []), 'older than the installed'), 'a downgrade is refused');
 
     upgrade_copy("$tmp/new", "$tmp/syntax");
     file_put_contents("$tmp/syntax/newfile.php", "<?php\nfunction broken( {\n");
     upgrade_remanifest("$tmp/syntax", '2.2.0');
-    $syntax = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/syntax"], "$tmp/site");
+    $syntax = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/syntax"], "$tmp/site");
     check_upgrade($syntax['code'] === 1 && str_contains(implode(' ', $syntax['json']['problems'] ?? []), 'newfile.php'), 'a PHP syntax error in the package blocks the upgrade');
 
     upgrade_copy("$tmp/new", "$tmp/smoke");
     file_put_contents("$tmp/smoke/smoketest.php", "<?php\necho \"  \u{2717} kontakt (3 fields)\\n\";\nexit(1);\n");
     upgrade_remanifest("$tmp/smoke", '2.2.0');
-    $smoke = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/smoke"], "$tmp/site");
+    $smoke = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/smoke"], "$tmp/site");
     check_upgrade($smoke['code'] === 1 && ($smoke['json']['check']['new_failures'] ?? []) === ['kontakt'], 'a form that would start failing blocks the upgrade');
 
     upgrade_copy("$tmp/new", "$tmp/codeonly");
     foreach ((json_decode(file_get_contents("$tmp/codeonly/.bbf-manifest.json"), true)['files']) as $path => $file) {
         if ($file['kind'] !== 'code') unlink("$tmp/codeonly/$path");
     }
-    $codeOnly = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly"], "$tmp/site");
+    $codeOnly = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly"], "$tmp/site");
     check_upgrade(($codeOnly['json']['ok'] ?? false) && !isset($codeOnly['json']['files']['keep_yours']) && ($codeOnly['json']['files']['remove'] ?? []) === ['demo10.html'],
         'the code-only upgrade package works; only files dropped from the release are removed');
     // Applied, it records only what it installed: the untouched 2.1.0 notify.html stays recognisably ours.
     upgrade_copy("$tmp/site", "$tmp/cosite");
-    $coPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly"], "$tmp/cosite")['json'] ?? [];
-    $coApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly", '--apply', '--confirm=' . ($coPlan['confirm'] ?? '')], "$tmp/cosite");
+    $coPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly"], "$tmp/cosite")['json'] ?? [];
+    $coApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly", '--apply', '--confirm=' . ($coPlan['confirm'] ?? '')], "$tmp/cosite");
     $coManifest = json_decode((string)file_get_contents("$tmp/cosite/.bbf-manifest.json"), true);
     check_upgrade($coApply['code'] === 0 && ($coManifest['version'] ?? '') === '2.2.0'
         && ($coManifest['files']['templates/notify.html']['sha256'] ?? '') === hash_file('sha256', "$tmp/cosite/templates/notify.html"),
         'a code-only upgrade keeps the checksum of templates it did not install');
-    $coNext = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/cosite")['json'] ?? [];
+    $coNext = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/cosite")['json'] ?? [];
     check_upgrade(in_array('templates/notify.html', $coNext['replaced'] ?? [], true) && ($coNext['files']['keep_yours'] ?? []) === ['templates/confirm.html'],
         'the next full package still updates the untouched template and keeps yours');
 
     // A lean live site without demo pages, docs and sample forms does not get them back.
     upgrade_copy("$tmp/site", "$tmp/lean");
     foreach (['demo1.html', 'README.md', 'forms/newsletter.json'] as $path) unlink("$tmp/lean/$path");
-    $lean = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/lean");
+    $lean = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/lean");
     check_upgrade(($lean['json']['ok'] ?? false) && ($lean['json']['files']['add'] ?? -1) === 1, 'missing demo pages, docs and sample forms are not added back');
 
     // ─── Release history: a file the 2.1.0 upgrader mis-recorded is still recognised as ours ─
@@ -281,13 +281,13 @@ try {
     upgrade_copy("$tmp/new", "$tmp/hist");
     file_put_contents("$tmp/hist/README.md", "\n2.2.0 docs\n", FILE_APPEND);
     upgrade_remanifest("$tmp/hist", '2.2.0', ['newfile.php']);
-    $noHistory = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/hist"], "$tmp/hsite")['json'] ?? [];
+    $noHistory = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/hist"], "$tmp/hsite")['json'] ?? [];
     check_upgrade(in_array('README.md', $noHistory['files']['overwrite_local_edits'] ?? [], true)
         && in_array('templates/notify.html', $noHistory['files']['keep_yours'] ?? [], true), 'without history a mis-recorded checksum looks like a local edit');
     $histManifest = json_decode((string)file_get_contents("$tmp/hist/.bbf-manifest.json"), true);
     foreach (['README.md', 'templates/notify.html'] as $path) $histManifest['files'][$path]['history'] = [hash_file('sha256', "$tmp/old/$path")];
     file_put_contents("$tmp/hist/.bbf-manifest.json", json_encode($histManifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-    $withHistory = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/hist"], "$tmp/hsite")['json'] ?? [];
+    $withHistory = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/hist"], "$tmp/hsite")['json'] ?? [];
     check_upgrade(($withHistory['ok'] ?? false) && !in_array('README.md', $withHistory['files']['overwrite_local_edits'] ?? [], true)
         && in_array('templates/notify.html', $withHistory['replaced'] ?? [], true)
         && ($withHistory['files']['keep_yours'] ?? []) === ['templates/confirm.html'],
@@ -303,16 +303,16 @@ try {
     $coManifest2 = json_decode((string)file_get_contents("$tmp/codeonly2/.bbf-manifest.json"), true);
     $coManifest2['files']['.htaccess']['sha256'] = hash_file('sha256', "$tmp/codeonly2/.htaccess.dist");
     file_put_contents("$tmp/codeonly2/.bbf-manifest.json", json_encode($coManifest2, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-    $dist = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly2"], "$tmp/site")['json'] ?? [];
+    $dist = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly2"], "$tmp/site")['json'] ?? [];
     check_upgrade(($dist['ok'] ?? false) && in_array('.htaccess', $dist['replaced'] ?? [], true), 'an unchanged .htaccess is updated from .htaccess.dist of the code-only ZIP');
     upgrade_copy("$tmp/site", "$tmp/hta");
     file_put_contents("$tmp/hta/.htaccess", "AddHandler application/x-httpd-php84 .php\n", FILE_APPEND);
-    $distYours = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly2"], "$tmp/hta")['json'] ?? [];
+    $distYours = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly2"], "$tmp/hta")['json'] ?? [];
     check_upgrade(in_array('.htaccess', $distYours['files']['keep_yours'] ?? [], true), 'an .htaccess with your own lines is kept');
     check_upgrade(in_array('.htaccess.dist', $distYours['added'] ?? [], true) && str_contains(implode(' ', $distYours['notices'] ?? []), '.htaccess.dist'),
         'the new rules are written next to your .htaccess as .htaccess.dist and the plan says so');
     $htaOwn = file_get_contents("$tmp/hta/.htaccess");
-    $htaApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly2", '--apply', '--confirm=' . ($distYours['confirm'] ?? '')], "$tmp/hta");
+    $htaApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly2", '--apply', '--confirm=' . ($distYours['confirm'] ?? '')], "$tmp/hta");
     check_upgrade($htaApply['code'] === 0 && file_get_contents("$tmp/hta/.htaccess") === $htaOwn
         && @file_get_contents("$tmp/hta/.htaccess.dist") === file_get_contents("$tmp/codeonly2/.htaccess.dist")
         && str_contains(implode(' ', $htaApply['json']['notices'] ?? []), '.htaccess.dist'), 'the upgrade keeps your .htaccess, writes .htaccess.dist and repeats the notice');
@@ -329,6 +329,12 @@ try {
     check_upgrade(count($noMd ?? []) === 1 && str_contains($noMd[0], '\.md$'), 'without .htaccess.dist an .htaccess lacking the *.md rule is reported');
     check_upgrade(str_contains($noMd[0] ?? '', '^bbf_.*\.php$') && str_contains($noMd[0] ?? '', 'RewriteRule ^config/'),
         'and so are the bbf_*.php and config/ rules');
+    // Review 2.1.4: an .htaccess.dist from an earlier release must not recommend its older, weaker rule.
+    file_put_contents("$tmp/hta/.htaccess.dist", "Options -Indexes\n<FilesMatch \"^config\">\nRequire all denied\n</FilesMatch>\n");
+    $stale = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
+    check_upgrade(str_contains(implode(' ', $stale ?? []), 'earlier release') && str_contains(implode(' ', $stale ?? []), '^bbf_.*\.php$')
+        && !str_contains(implode(' ', $stale ?? []), '<FilesMatch "^config">'), 'a stale .htaccess.dist is ignored and named; the current rules are recommended');
+    unlink("$tmp/hta/.htaccess.dist");
     file_put_contents("$tmp/hta/.htaccess", file_get_contents("$repo/.htaccess"));
     check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [], 'the shipped .htaccess has every essential rule');
     unlink("$tmp/hta/.htaccess");
@@ -340,16 +346,71 @@ try {
     file_put_contents("$tmp/deleg/bbf_upgrade.php", str_replace("'notices' => \$notices,", "'notices' => array_merge(\$notices, ['planned by the 2.2.0 upgrader']),", $delegCode, $replaced));
     upgrade_remanifest("$tmp/deleg", '2.2.0', ['newfile.php']);
     upgrade_copy("$tmp/site", "$tmp/dsite");
-    $delegDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/deleg"], "$tmp/dsite");
+    $delegDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/deleg"], "$tmp/dsite");
     $delegPlan = $delegDry['json'] ?? [];
     check_upgrade($replaced === 1 && $delegDry['code'] === 0 && ($delegPlan['upgrader'] ?? '') === 'package 2.2.0'
         && in_array('planned by the 2.2.0 upgrader', $delegPlan['notices'] ?? [], true), 'the dry run is planned by the upgrader shipped in the package');
-    $delegApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/deleg", '--apply', '--confirm=' . ($delegPlan['confirm'] ?? '')], "$tmp/dsite");
+    $delegApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/deleg", '--apply', '--confirm=' . ($delegPlan['confirm'] ?? '')], "$tmp/dsite");
     check_upgrade($delegApply['code'] === 0 && ($delegApply['json']['upgrader'] ?? '') === 'package 2.2.0'
         && trim(upgrade_run([PHP_BINARY, 'maintenance.php', 'version'], "$tmp/dsite")['out']) === 'BareBonesForms 2.2.0'
         && hash_file('sha256', "$tmp/dsite/bbf_upgrade.php") === hash_file('sha256', "$tmp/deleg/bbf_upgrade.php"), 'and applied by it: the site is on 2.2.0 with the new upgrader');
-    $sameDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/site")['json'] ?? [];
+    $sameDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/site")['json'] ?? [];
     check_upgrade(($sameDry['ok'] ?? false) && !isset($sameDry['upgrader']), 'an identical upgrader in the package runs in-process');
+
+    // ─── Review 2.1.4: an unverified package's code never runs in a dry run ─
+    upgrade_copy("$tmp/deleg", "$tmp/evil");
+    $ran = "$tmp/package-code-ran.txt";
+    foreach (['bbf_upgrade.php', 'smoketest.php', 'bbf_auth.php', 'bbf_functions.php'] as $file) {
+        $code = file_get_contents("$tmp/evil/$file");
+        file_put_contents("$tmp/evil/$file", preg_replace('/\A<\?php/', '<?php file_put_contents(' . var_export($ran, true) . ', basename(__FILE__) . "\n", FILE_APPEND);', $code, 1));
+    }
+    upgrade_remanifest("$tmp/evil", '2.2.1');
+    upgrade_copy("$tmp/site", "$tmp/esite");
+    $evilDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/evil"], "$tmp/esite");
+    check_upgrade($evilDry['code'] === 0 && !is_file($ran), 'a dry run without --checksum/--trust-package runs none of the package code: ' . @file_get_contents($ran));
+    check_upgrade(($evilDry['json']['check']['status'] ?? '') === 'skipped' && !isset($evilDry['json']['upgrader'])
+        && str_contains(implode(' ', $evilDry['json']['notices'] ?? []), '--checksum=') && !str_contains($evilDry['json']['next'] ?? '', '--trust-package'),
+        'it says the package is not verified and how to verify it (--checksum from SHA256SUMS)');
+    $evilTrusted = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/evil"], "$tmp/esite");
+    check_upgrade($evilTrusted['code'] === 0 && is_file($ran) && ($evilTrusted['json']['upgrader'] ?? '') === 'package 2.2.1'
+        && str_contains($evilTrusted['json']['next'] ?? '', '--trust-package'), 'with --trust-package the package upgrader and smoke test run');
+    @unlink($ran);
+    $unverifiedApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/evil", '--apply', '--confirm=' . ($evilDry['json']['confirm'] ?? '')], "$tmp/esite");
+    check_upgrade($unverifiedApply['code'] === 0 && ($unverifiedApply['json']['ok'] ?? false) && !isset($unverifiedApply['json']['upgrader']),
+        '--apply of the unverified dry run is the operator\'s decision: applied by the installed upgrader, digest matches');
+    @unlink($ran);
+
+    // ─── Review 2.1.4: PHP notices (display_errors=On) do not break the package upgrader ─
+    upgrade_copy("$tmp/site", "$tmp/nsite");
+    file_put_contents("$tmp/nsite/config.php", preg_replace('/\A<\?php/', '<?php trigger_error("bbf-test-notice from config.php", E_USER_NOTICE);', file_get_contents("$tmp/nsite/config.php"), 1));
+    mkdir("$tmp/ini");
+    file_put_contents("$tmp/ini/zz-bbf-test.ini", "display_errors=1\nerror_reporting=E_ALL\n");
+    $iniEnv = ['PHP_INI_SCAN_DIR' => "$tmp/ini"];
+    $noisyDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/deleg"], "$tmp/nsite", $iniEnv);
+    check_upgrade($noisyDry['code'] === 0 && ($noisyDry['json']['upgrader'] ?? '') === 'package 2.2.0'
+        && str_contains(implode(' ', $noisyDry['json']['php_messages'] ?? []), 'bbf-test-notice'),
+        'a notice from config.php with display_errors=On is reported, not parsed as the result' . ($noisyDry['code'] === 0 ? '' : ': ' . substr($noisyDry['out'] . $noisyDry['err'], 0, 300)));
+    $noisyApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/deleg", '--apply', '--confirm=' . ($noisyDry['json']['confirm'] ?? '')], "$tmp/nsite", $iniEnv);
+    check_upgrade($noisyApply['code'] === 0 && ($noisyApply['json']['ok'] ?? false)
+        && trim(upgrade_run([PHP_BINARY, 'maintenance.php', 'version'], "$tmp/nsite")['out']) === 'BareBonesForms 2.2.0',
+        'and --apply with the notice succeeds and says so' . ($noisyApply['code'] === 0 ? '' : ': ' . substr($noisyApply['out'] . $noisyApply['err'], 0, 300)));
+
+    // ─── Review 2.1.4: only maintenance.php may be written in place (Windows); a library never ─
+    upgrade_copy("$tmp/deleg", "$tmp/lockpkg");
+    file_put_contents("$tmp/lockpkg/bbf_functions.php", "\n// 2.2.2 change\n", FILE_APPEND);
+    upgrade_remanifest("$tmp/lockpkg", '2.2.2');
+    $lockDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/lockpkg"], "$tmp/dsite")['json'] ?? [];
+    $libBefore = hash_file('sha256', "$tmp/dsite/bbf_functions.php");
+    $held = fopen("$tmp/dsite/bbf_functions.php", 'r'); // on Windows an open handle blocks renaming over the file
+    $locked = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/lockpkg", '--apply', '--confirm=' . ($lockDry['confirm'] ?? '')], "$tmp/dsite");
+    fclose($held);
+    if (PHP_OS_FAMILY === 'Windows') {
+        check_upgrade($locked['code'] !== 0 && hash_file('sha256', "$tmp/dsite/bbf_functions.php") === $libBefore && ($locked['json']['rolled_back'] ?? false) === true && ($locked['json']['rollback_errors'] ?? null) === [],
+            'a library that cannot be renamed is not written in place: the upgrade fails and rolls back (' . json_encode([$locked['json']['error'] ?? $locked['err'], $locked['json']['rollback_errors'] ?? null]) . ')');
+    } else {
+        check_upgrade($locked['code'] === 0 && hash_file('sha256', "$tmp/dsite/bbf_functions.php") === hash_file('sha256', "$tmp/lockpkg/bbf_functions.php"),
+            'an open handle does not block the atomic rename outside Windows');
+    }
 
     // ─── Release history covers every published release (CI gate) ───
     $tagList = trim((string)shell_exec('git -C ' . escapeshellarg($repo) . ' tag --list "v2.*"'));
@@ -362,7 +423,7 @@ try {
     upgrade_copy("$tmp/site", "$tmp/tokens");
     file_put_contents("$tmp/tokens/config.php", preg_replace("/'access_tokens' => \[\],/", "'access_tokens' => [['id' => 'short-one', 'token' => 'abc', 'forms' => [], 'permissions' => ['read'], 'revoked' => false, 'expires_at' => '2030-01-01T00:00:00Z']],",
         str_replace("'api_token' => '',", "'api_token' => 'a-long-enough-admin-token-0123',", file_get_contents("$tmp/tokens/config.php"))));
-    $tokenPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/tokens")['json'] ?? [];
+    $tokenPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/tokens")['json'] ?? [];
     check_upgrade(str_contains(implode(' ', $tokenPlan['access_warnings'] ?? []), 'short-one') && !str_contains(json_encode($tokenPlan), "'abc'"),
         'the dry run names a token the new version will ignore');
 

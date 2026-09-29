@@ -29,7 +29,7 @@ $usage = 'Usage: php maintenance.php retention --form=<id> [--apply --confirm=<r
     . "\n       php maintenance.php alerts         (send pending admin alerts now)"
     . "\n       php maintenance.php alerts-test    (send a test alert to error_notify)"
     . "\n       php maintenance.php version"
-    . "\n       php maintenance.php upgrade --package=<release.zip|folder> [--checksum=<sha256 from SHA256SUMS>] [--apply --confirm=<upgrade-digest>]"
+    . "\n       php maintenance.php upgrade --package=<release.zip|folder> [--checksum=<sha256 from SHA256SUMS> | --trust-package] [--apply --confirm=<upgrade-digest>]"
     . "\n       php maintenance.php upgrade-rollback --backup=<logs/upgrades/...> [--apply --confirm=<rollback-digest>]";
 $arguments = $argv;
 array_shift($arguments);
@@ -46,6 +46,10 @@ $allowed = match ($command) {
 };
 $options = ['apply' => false];
 foreach ($arguments as $argument) {
+    if ($argument === '--trust-package' && $command === 'upgrade' && !isset($options['trust'])) {
+        $options['trust'] = true;
+        continue;
+    }
     if ($argument === '--apply') {
         if ($options['apply'] || in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'deliveries-retry', 'selfcheck', 'alerts', 'alerts-test', 'version'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
         $options['apply'] = true;
@@ -82,17 +86,19 @@ if (in_array($command, ['version', 'upgrade', 'upgrade-rollback'], true)) {
         if (!preg_match('/\A[0-9a-f]{64}\z/D', $checksum) || !is_file($path)) bbf_maintenance_fail('--checksum needs a 64-character SHA-256 and a --package ZIP file.');
         if (!hash_equals($checksum, (string)hash_file('sha256', $path))) bbf_maintenance_fail("The package does not match --checksum; it is not the published release ZIP.", 1);
     }
+    // Package code (its upgrader, its smoke test) runs in a dry run only for a verified package.
+    $verified = $checksum !== '' || !empty($options['trust']);
     try {
         $confirm = $options['apply'] ? $options['confirm'] : null;
         $result = $command === 'upgrade'
-            ? (bbf_upgrade_delegate($path, $confirm, __DIR__) ?? bbf_upgrade($config, $path, $confirm))
+            ? (bbf_upgrade_delegate($path, $confirm, __DIR__, $verified) ?? bbf_upgrade($config, $path, $confirm, __DIR__, $verified))
             : bbf_upgrade_rollback($path, $confirm);
     } catch (Throwable $error) {
         bbf_maintenance_fail(ucfirst($command) . ' failed: ' . $error->getMessage(), 1);
     }
     if (!$options['apply'] && ($result['ok'] ?? false) && isset($result['confirm']) && !($result['up_to_date'] ?? false)) {
         $result['next'] = "php maintenance.php $command --" . ($command === 'upgrade' ? 'package' : 'backup') . "=$path"
-            . ($checksum !== '' ? " --checksum=$checksum" : '') . " --apply --confirm={$result['confirm']}";
+            . ($checksum !== '' ? " --checksum=$checksum" : '') . (!empty($options['trust']) ? ' --trust-package' : '') . " --apply --confirm={$result['confirm']}";
     }
     fwrite(STDOUT, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
     exit(($result['ok'] ?? false) ? 0 : 1);

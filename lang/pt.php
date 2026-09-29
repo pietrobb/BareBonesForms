@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'O progresso guardado não foi encontrado. Verifique o código de retoma.',
     'draftTooLarge'         => 'O formulário é demasiado grande para ser guardado como rascunho.',
     'draftQuota'            => 'Existem demasiados rascunhos guardados neste momento. Tente novamente mais tarde.',
+    'requestTooLarge'       => 'O formulário é demasiado grande para ser enviado.',
+    'tooManyRequests'       => 'Demasiadas tentativas. Aguarde um minuto e tente novamente.',
+    'submitAgain'           => 'Não foi possível concluir o seu envio. Envie novamente — não será duplicado.',
+    'submitProcessing'      => 'O seu envio ainda está a ser processado. Não preencha o formulário novamente — clique em Enviar outra vez dentro de alguns minutos; não será criado um duplicado.',
+    'submitUnconfirmed'     => 'Não foi possível confirmar o seu envio. O organizador foi notificado.',
 ];

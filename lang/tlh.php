@@ -53,4 +53,9 @@ return [
     'draftNotFound'         => 'pol\'eghpu\'bogh ta\' tu\'be\'lu\'. ngoq yInuD.',
     'draftTooLarge'         => 'nav tIn law\' pol\'eghmeH.',
     'draftQuota'            => 'DaH law\'qu\' pol\'eghbogh ta\'. tugh yInIDqa\'.',
+    'requestTooLarge'       => 'nav tIn law\' ngeHmeH.',
+    'tooManyRequests'       => 'law\' nIDmey. wa\' tup yIloS \'ej yInIDqa\'.',
+    'submitAgain'           => 'ngeH rInlaHbe\'. ngeH yInIDqa\' — cha\'logh ngeHlu\'be\'.',
+    'submitProcessing'      => 'ngeHlu\'taH. nab yIteb\'eghQo\' — tup puS pIq ngeH yIwIvqa\'; cha\'logh ngeHlu\'be\'.',
+    'submitUnconfirmed'     => 'ngeH wIwIvlaHbe\'. DevwI\' SovmoHlu\'ta\'.',
 ];

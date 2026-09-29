@@ -241,7 +241,9 @@ if ($action === 'create') {
     checkToken();
     if ($isReadOnly) editorRespond(403, ['error' => 'Forms directory is not writable.']);
     $body = @json_decode(file_get_contents('php://input'), true);
+    if (!is_array($body)) $body = [];
     $id = sanitizeId($body['id'] ?? '');
+    if (isset($body['name']) && !is_string($body['name'])) editorRespond(400, ['error' => 'Form name must be text.']);
     $name = trim($body['name'] ?? '');
     if (!$id) editorRespond(400, ['error' => 'Missing form ID.']);
     if (!$name) $name = $id;
@@ -272,6 +274,7 @@ if ($action === 'delete') {
     checkToken();
     if ($isReadOnly) editorRespond(403, ['error' => 'Forms directory is not writable.']);
     $body = @json_decode(file_get_contents('php://input'), true);
+    if (!is_array($body)) $body = [];
     $id = sanitizeId($body['id'] ?? '');
     if (!$id) editorRespond(400, ['error' => 'Missing form ID.']);
     if ($id === 'form.schema') editorRespond(403, ['error' => 'Cannot delete form.schema.json.']);

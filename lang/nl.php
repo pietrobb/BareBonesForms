@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Opgeslagen voortgang niet gevonden. Controleer de hervattingscode.',
     'draftTooLarge'         => 'Het formulier is te groot om als concept op te slaan.',
     'draftQuota'            => 'Er zijn op dit moment te veel concepten opgeslagen. Probeer het later opnieuw.',
+    'requestTooLarge'       => 'Het formulier is te groot om te verzenden.',
+    'tooManyRequests'       => 'Te veel pogingen. Wacht een minuut en probeer het opnieuw.',
+    'submitAgain'           => 'Uw inzending kon niet worden voltooid. Verzend opnieuw — er ontstaat geen dubbele inzending.',
+    'submitProcessing'      => 'Uw inzending wordt nog verwerkt. Vul het formulier niet opnieuw in — klik over een paar minuten nogmaals op Verzenden; er ontstaat geen dubbele inzending.',
+    'submitUnconfirmed'     => 'We konden uw inzending niet bevestigen. De organisator is op de hoogte gebracht.',
 ];

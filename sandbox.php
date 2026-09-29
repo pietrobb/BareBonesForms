@@ -22,8 +22,8 @@ if (empty($config['sandbox'])) {
 }
 
 // Same unrestricted-admin boundary as submit.php; loopback is not a credential.
-$principal = bbf_authenticate($config);
 $action = $_GET['action'] ?? '';
+$principal = bbf_authenticate($config, true, $action === '');
 $operations = ['' => 'sandbox_page', 'forms' => 'sandbox_forms', 'definition' => 'sandbox_definition'];
 if (!is_string($action) || !isset($operations[$action])) {
     // Never copy caller-controlled action text (including credentials) to the audit.
@@ -32,18 +32,12 @@ if (!is_string($action) || !isset($operations[$action])) {
     bbf_auth_fail(($principal['admin'] ?? false) ? 400 : 403);
 }
 $method = $_SERVER['REQUEST_METHOD'] ?? '';
-$exchange = $method === 'GET' && array_key_exists('token', $_GET);
-$fid = !$exchange && $action === 'definition' ? bbf_auth_id($_GET['form'] ?? '') : '';
+$fid = $action === 'definition' ? bbf_auth_id($_GET['form'] ?? '') : '';
 // POST (including AJAX) always requires the management session CSRF header.
-bbf_access_begin($config, $principal, $exchange ? 'sandbox_login' : $operations[$action], $fid, [], true, $method === 'POST');
+bbf_access_begin($config, $principal, $operations[$action], $fid, [], true, $method === 'POST');
 if (!in_array($method, ['GET', 'POST'], true)) {
     bbf_access_finish(0, false);
     bbf_auth_fail(405);
-}
-if ($exchange) {
-    bbf_access_finish();
-    header('Location: sandbox.php', true, 303);
-    exit;
 }
 
 /** Read/validate fully before a successful audit or any disclosure. No error details leak. */

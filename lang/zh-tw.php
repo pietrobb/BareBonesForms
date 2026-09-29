@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => '找不到儲存的進度。請檢查繼續代碼。',
     'draftTooLarge'         => '表單太大，無法儲存為草稿。',
     'draftQuota'            => '目前儲存的草稿過多。請稍後再試。',
+    'requestTooLarge'       => '表單太大，無法送出。',
+    'tooManyRequests'       => '嘗試次數過多。請等候一分鐘後再試。',
+    'submitAgain'           => '您的提交未能完成。請重新提交——不會重複。',
+    'submitProcessing'      => '您的提交仍在處理中。請勿重新填寫表單——幾分鐘後再次按下提交即可，不會產生重複紀錄。',
+    'submitUnconfirmed'     => '無法確認您的提交。已通知主辦單位。',
 ];

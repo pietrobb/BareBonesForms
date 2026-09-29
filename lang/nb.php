@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Fant ikke lagret fremdrift. Kontroller gjenopptakelseskoden.',
     'draftTooLarge'         => 'Skjemaet er for stort til å lagres som utkast.',
     'draftQuota'            => 'Det er for mange lagrede utkast akkurat nå. Prøv igjen senere.',
+    'requestTooLarge'       => 'Skjemaet er for stort til å sendes.',
+    'tooManyRequests'       => 'For mange forsøk. Vent ett minutt og prøv igjen.',
+    'submitAgain'           => 'Innsendingen din kunne ikke fullføres. Send inn på nytt — den blir ikke duplisert.',
+    'submitProcessing'      => 'Innsendingen din behandles fortsatt. Ikke fyll ut skjemaet på nytt — klikk Send igjen om noen minutter; det opprettes ingen duplikat.',
+    'submitUnconfirmed'     => 'Vi kunne ikke bekrefte innsendingen din. Arrangøren er varslet.',
 ];

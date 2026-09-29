@@ -49,4 +49,9 @@ return [
     'draftNotFound'         => 'Saglabātais progress netika atrasts. Pārbaudiet turpināšanas kodu.',
     'draftTooLarge'         => 'Veidlapa ir pārāk liela, lai to saglabātu kā melnrakstu.',
     'draftQuota'            => 'Pašlaik ir saglabāts pārāk daudz melnrakstu. Mēģiniet vēlāk.',
+    'requestTooLarge'       => 'Veidlapa ir pārāk liela, lai to nosūtītu.',
+    'tooManyRequests'       => 'Pārāk daudz mēģinājumu. Uzgaidiet minūti un mēģiniet vēlreiz.',
+    'submitAgain'           => 'Neizdevās pabeigt veidlapas nosūtīšanu. Mēģiniet vēlreiz — dublikāts netiks izveidots.',
+    'submitProcessing'      => 'Jūsu veidlapa vēl tiek apstrādāta. Neaizpildiet to atkārtoti — pēc dažām minūtēm vēlreiz nospiediet Nosūtīt; dublikāts netiks izveidots.',
+    'submitUnconfirmed'     => 'Neizdevās apstiprināt veidlapas iesniegšanu. Organizators ir informēts.',
 ];

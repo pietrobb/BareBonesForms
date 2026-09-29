@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'No se encontró el progreso guardado. Compruebe el código de reanudación.',
     'draftTooLarge'         => 'El formulario es demasiado grande para guardarlo como borrador.',
     'draftQuota'            => 'Hay demasiados borradores guardados en este momento. Inténtelo más tarde.',
+    'requestTooLarge'       => 'El formulario es demasiado grande para enviarlo.',
+    'tooManyRequests'       => 'Demasiados intentos. Espere un minuto e inténtelo de nuevo.',
+    'submitAgain'           => 'No se pudo completar su envío. Envíelo de nuevo — no se duplicará.',
+    'submitProcessing'      => 'Su envío aún se está procesando. No vuelva a rellenar el formulario — pulse Enviar de nuevo dentro de unos minutos; no se creará un duplicado.',
+    'submitUnconfirmed'     => 'No hemos podido confirmar su envío. Se ha avisado al organizador.',
 ];

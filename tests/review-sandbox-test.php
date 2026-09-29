@@ -84,10 +84,16 @@ try {
     $bypass = sb_post(); $bypass['headers'] += ['X-BBF-Smoke-Token' => $base['smoke_token'], 'Origin' => $base['allowed_origins'][0]];
     sb_check(sb_http('submit.php?form=alpha&sandbox=1', $bypass)['code'] === 403, 'smoke token and CORS never authorize sandbox');
     sb_untouched('unauthorized sandbox no storage, actions, rate-limit or security-check writes');
+    // Review 2.1.4: a ?token= link never signs the browser in (login CSRF); the sandbox has its own sign-in form.
     $q = sb_http('sandbox.php?token=' . $base['api_token'] . '&form=' . $base['api_token'] . '&action=definition');
-    sb_check($q['code'] === 303 && str_contains($q['headers'], "Location: sandbox.php\r\n") && $q['body'] === '', 'query credential exchanges to clean fixed URL');
-    sb_check(!str_contains($q['headers'], $base['api_token']), 'query exchange does not reflect redundant credentials');
-    sb_check(sb_http('sandbox.php', ['cookie' => sb_cookie($q)])['code'] === 200, 'clean redirect session authorizes page');
+    sb_check($q['code'] === 403 && !str_contains($q['headers'] . $q['body'], $base['api_token']), 'query credential is ignored and not reflected');
+    $page = sb_http('sandbox.php?token=' . $base['api_token']);
+    sb_check($page['code'] === 403 && str_contains($page['body'], 'Tokens in the address are not accepted'), 'sandbox ?token= shows the sign-in form with a notice');
+    preg_match('/name="login_csrf" value="([a-f0-9]+)"/', $page['body'], $lc);
+    $signIn = sb_http('sandbox.php', ['method' => 'POST', 'cookie' => sb_cookie($page), 'headers' => ['Content-Type' => 'application/x-www-form-urlencoded'],
+        'raw' => http_build_query(['token' => $base['api_token'], 'login_csrf' => $lc[1] ?? ''])]);
+    sb_check($signIn['code'] === 303 && str_contains($signIn['headers'], "Location: sandbox.php\r\n"), 'sandbox sign-in form redirects to the clean URL');
+    sb_check(sb_http('sandbox.php', ['cookie' => sb_cookie($signIn)])['code'] === 200, 'sign-in form session authorizes page');
     $s = sb_login();
     sb_check(!str_contains($s['response']['body'], $base['api_token']) && str_contains($s['response']['headers'], 'no-store')
         && str_contains($s['response']['headers'], 'no-referrer') && str_contains(strtolower($s['response']['headers']), 'httponly'), 'page omits API secret and sets privacy/session headers');
@@ -228,7 +234,7 @@ try {
             sb_check(sb_http($path, $scoped)['code'] === 403, "$state scoped token denied $path");
         $post = sb_post(); $post['headers'] += $scoped['headers'];
         sb_check(sb_http('submit.php?form=alpha&sandbox=1', $post)['code'] === 403, "$state scoped token denied submit");
-        sb_check(sb_http('sandbox.php?token=' . $base['access_tokens'][0]['token'])['code'] === 403, "$state scoped query never exchanges as admin");
+        sb_check(sb_http('sandbox.php', ['headers' => ['X-BBF-Token' => $base['access_tokens'][0]['token']]])['code'] === 403, "$state scoped header never signs in as admin");
     }
     sb_config($base); $s = sb_login();
     $bad = sb_post($s); $bad['headers']['X-BBF-Token'] = 'invalid';

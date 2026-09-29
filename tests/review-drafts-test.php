@@ -350,6 +350,12 @@ try {
     $csrf = $csrfResponse['json']['csrf_token'] ?? '';
     drafts_check($csrfResponse['code'] === 200 && isset($cookie[1]) && is_string($csrf) && $csrf !== '',
         'draft HTTP flow obtains same-origin CSRF session');
+    drafts_check(preg_match('/^Set-Cookie:\s*PHPSESSID=[^\r\n]*;\s*HttpOnly/mi', $csrfResponse['headers']) === 1,
+        'respondent session cookie is HttpOnly (scripts cannot read the CSRF session)');
+    $forged = bbf_test_http($server, $baseUrl . '?form=consultation&action=csrf', null,
+        ['headers' => ['Cookie' => 'PHPSESSID=attackerchosenid1234567890']]);
+    drafts_check(preg_match('/Set-Cookie:\s*PHPSESSID=([^;\r\n]+)/i', $forged['headers'], $fresh) === 1
+        && $fresh[1] !== 'attackerchosenid1234567890', 'strict mode replaces an uninitialised respondent session ID');
     $post = static function (string $formId, string $action, array $body, bool $withCsrf = true, string $token = '') use ($server, $baseUrl, $cookie, $csrf): array {
         if ($withCsrf) $body['_bbf_csrf'] = $token !== '' ? $token : $csrf;
         return bbf_test_http($server, $baseUrl . '?form=' . rawurlencode($formId) . '&action=' . $action, null,

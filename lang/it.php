@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Progressi salvati non trovati. Controlla il codice di ripresa.',
     'draftTooLarge'         => 'Il modulo è troppo grande per essere salvato come bozza.',
     'draftQuota'            => 'Troppe bozze salvate al momento. Riprova più tardi.',
+    'requestTooLarge'       => 'Il modulo è troppo grande per essere inviato.',
+    'tooManyRequests'       => 'Troppi tentativi. Attendi un minuto e riprova.',
+    'submitAgain'           => 'Non è stato possibile completare il tuo invio. Invialo di nuovo — non verrà duplicato.',
+    'submitProcessing'      => 'Il tuo invio è ancora in elaborazione. Non compilare di nuovo il modulo — tra qualche minuto premi di nuovo Invia; non verrà creato un duplicato.',
+    'submitUnconfirmed'     => 'Non è stato possibile confermare il tuo invio. L\'organizzatore è stato avvisato.',
 ];

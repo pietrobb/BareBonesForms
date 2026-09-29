@@ -63,16 +63,17 @@ function prefixFields(array $fields, string $prefix, array $tplNames): array {
     return $result;
 }
 
-function prefixCondition(array $cond, string $prefix, array $tplNames): array {
-    if (!empty($cond['all'])) {
+function prefixCondition(mixed $cond, string $prefix, array $tplNames): mixed {
+    if (!is_array($cond)) return $cond; // malformed: left for validateFormDefinition() to report
+    if (bbfConditionList($cond['all'] ?? null)) {
         $cond['all'] = array_map(fn($c) => prefixCondition($c, $prefix, $tplNames), $cond['all']);
         return $cond;
     }
-    if (!empty($cond['any'])) {
+    if (bbfConditionList($cond['any'] ?? null)) {
         $cond['any'] = array_map(fn($c) => prefixCondition($c, $prefix, $tplNames), $cond['any']);
         return $cond;
     }
-    if (!empty($cond['field']) && isset($tplNames[$cond['field']])) {
+    if (is_string($cond['field'] ?? null) && isset($tplNames[$cond['field']])) {
         $cond['field'] = $prefix . $cond['field'];
     }
     return $cond;
@@ -83,7 +84,7 @@ function prefixCondition(array $cond, string $prefix, array $tplNames): array {
 function flattenFields(array $fields, ?array $parentShowIf = null): array {
     $result = [];
     foreach ($fields as $f) {
-        $localShowIf = !empty($f['show_if']) ? $f['show_if'] : null;
+        $localShowIf = !empty($f['show_if']) && is_array($f['show_if']) ? $f['show_if'] : null;
         if ($parentShowIf && $localShowIf) {
             $f['show_if'] = ['all' => [$parentShowIf, $localShowIf]];
         } elseif ($parentShowIf) {
@@ -91,7 +92,7 @@ function flattenFields(array $fields, ?array $parentShowIf = null): array {
         }
         $result[] = $f;
         if (($f['type'] ?? '') === 'group' && empty($f['repeatable']) && !empty($f['fields'])) {
-            $groupShowIf = !empty($f['show_if']) ? $f['show_if'] : null;
+            $groupShowIf = !empty($f['show_if']) && is_array($f['show_if']) ? $f['show_if'] : null;
             foreach (flattenFields($f['fields'], $groupShowIf) as $child) {
                 $result[] = $child;
             }
@@ -105,25 +106,64 @@ function bbfNormalizeInputValue($value) {
 }
 
 // Evaluate a show_if condition against submitted data.
-// Mirrors the client-side _evalCondition / _compareValues logic.
-function evalCondition(array $cond, array $input): bool {
-    if (!empty($cond['all'])) {
+// Mirrors the client-side _evalCondition / _compareValues logic. A malformed condition ("all": {…}, a string,
+// a non-string op) is ignored like bbf.js ignores it, never a 500; validateFormDefinition() reports its shape.
+function evalCondition(mixed $cond, array $input): bool {
+    if (!is_array($cond)) return true;
+    if (bbfConditionList($cond['all'] ?? null)) {
         foreach ($cond['all'] as $c) {
             if (!evalCondition($c, $input)) return false;
         }
         return true;
     }
-    if (!empty($cond['any'])) {
+    if (bbfConditionList($cond['any'] ?? null)) {
         foreach ($cond['any'] as $c) {
             if (evalCondition($c, $input)) return true;
         }
         return false;
     }
-    if (!empty($cond['field'])) {
-        $val = bbfNormalizeInputValue($input[$cond['field']] ?? '');
-        return compareValues($val, $cond['value'] ?? null, $cond['op'] ?? '');
+    $field = $cond['field'] ?? null;
+    if ((is_string($field) || is_int($field)) && !empty($field)) {
+        $val = bbfNormalizeInputValue($input[(string)$field] ?? '');
+        $target = $cond['value'] ?? null;
+        if (is_array($target)) $target = array_values(array_filter($target, 'is_scalar'));
+        elseif (!is_scalar($target)) $target = null;
+        return compareValues($val, $target, is_string($cond['op'] ?? null) ? $cond['op'] : '');
     }
     return true;
+}
+
+/** all/any apply only as a non-empty JSON list, as in bbf.js (Array.isArray && length). */
+function bbfConditionList(mixed $list): bool {
+    return is_array($list) && $list !== [] && array_is_list($list);
+}
+
+/**
+ * Shape errors of a show_if condition: {field, op?, value?} or {all: [...]} / {any: [...]}. Only shapes that broke
+ * submissions (500) or that bbf.js silently ignores are errors; an unknown op still means "equals" on both sides,
+ * so forms that work today keep working after an upgrade.
+ */
+function bbfConditionErrors(mixed $cond, string $path, int $depth = 0): array {
+    if ($depth === 0 && empty($cond)) return []; // "show_if": null / false / {} means no condition, as before
+    if (!is_array($cond) || ($cond !== [] && array_is_list($cond))) return ["$path: Expected an object {field, op, value} or {all: [...]} / {any: [...]}."];
+    if ($depth > 20) return ["$path: Conditions are nested too deeply."];
+    $errors = [];
+    foreach (['all', 'any'] as $key) {
+        if (!array_key_exists($key, $cond)) continue;
+        if (!is_array($cond[$key]) || !array_is_list($cond[$key])) {
+            $errors[] = "$path.$key: Expected a list of conditions, e.g. \"$key\": [{\"field\": \"…\", \"value\": \"…\"}].";
+            continue;
+        }
+        foreach ($cond[$key] as $i => $sub) array_push($errors, ...bbfConditionErrors($sub, "$path.{$key}[$i]", $depth + 1));
+    }
+    if (array_key_exists('all', $cond) || array_key_exists('any', $cond)) return $errors;
+    if (array_key_exists('field', $cond) && !is_string($cond['field']) && !is_int($cond['field'])) {
+        $errors[] = "$path.field: Expected the name of a field.";
+    }
+    if (array_key_exists('op', $cond) && !is_string($cond['op'])) {
+        $errors[] = "$path.op: Expected a string: not, contains, empty, not_empty, gt, gte, lt or lte.";
+    }
+    return $errors;
 }
 
 /**
@@ -371,13 +411,19 @@ function renderTemplate(string $templateFile, array $vars): string {
 }
 
 /** on_submit.redirect after interpolation: only http(s) or a relative URL, never javascript:/data: or control characters.
- *  Field values are percent-encoded, so "Jana Nová" stays one query value and "&"/"#"/"/" cannot add parameters or change the target. */
+ *  Field values are percent-encoded, so "Jana Nová" stays one query value and "&"/"#"/"/" cannot add parameters or change the target.
+ *  Checkbox values are joined with ","; a field without a value becomes empty, never a literal "{{tags}}". A target that
+ *  is only a field ("{{return_url}}") would let the respondent choose where to go (open redirect): no redirect then,
+ *  the success message is shown. */
 function bbf_redirect_url(string $template, array $data): ?string {
+    if (preg_match('/\A\s*\{\{\s*[\w-]+\s*\}\}\s*\z/', $template)) return null;
     $encoded = [];
     foreach ($data as $key => $value) {
+        if (is_array($value)) $value = implode(',', array_filter($value, 'is_scalar'));
+        if (is_bool($value)) $value = $value ? '1' : '';
         if (is_string($value) || is_numeric($value)) $encoded[$key] = rawurlencode((string)$value);
     }
-    $url = trim(interpolate($template, $encoded));
+    $url = trim(preg_replace('/\{\{[\w-]+\}\}/', '', interpolate($template, $encoded)));
     if ($url === '' || preg_match('/[\x00-\x20\x7f]/', $url)) return null;
     if (preg_match('/\A([a-z][a-z0-9+.-]*):/i', $url, $m)) return in_array(strtolower($m[1]), ['http', 'https'], true) ? $url : null;
     return str_starts_with($url, '\\') || str_starts_with($url, '/\\') ? null : $url;
@@ -991,17 +1037,35 @@ function bbf_delivery_run_job(string $path, string $jobKey, array $config, array
  * result, attempts left, next_retry reached). Ambiguous and terminal jobs stay manual.
  * Ledgers touched in the last $quietSeconds are skipped so a submit still in flight owns its jobs.
  * Every failed attempt rewrites its ledger and retries are at most a day apart, so ledgers untouched for
- * $horizonSeconds have no automatic retry left: they are skipped by mtime without being read (the viewer
- * can still retry them manually).
+ * $horizonSeconds have no automatic retry left: they are not retried (the viewer can still retry them manually).
+ * skipped_old counts only those that still hold an undelivered job; whether an old ledger is fully delivered
+ * is remembered by mtime in .delivery/.old-ledgers.json, so each old ledger is read once, not on every run.
  */
 function bbf_delivery_retry_due(array $config, int $quietSeconds = 120, ?int $now = null, int $horizonSeconds = 7 * 86400): array {
     $now ??= time();
     $report = ['ok' => true, 'checked' => 0, 'attempted' => 0, 'succeeded' => 0, 'failed' => 0, 'skipped_in_flight' => 0, 'skipped_old' => 0];
     $root = rtrim((string)($config['submissions_dir'] ?? __DIR__ . '/submissions'), '/\\') . '/.delivery';
+    $cacheFile = $root . '/.old-ledgers.json';
+    $cache = is_file($cacheFile) ? json_decode((string)@file_get_contents($cacheFile), true) : [];
+    if (!is_array($cache)) $cache = [];
+    $oldSeen = [];
     foreach (glob($root . '/*/*.json') ?: [] as $path) {
         $mtime = (int)@filemtime($path);
         if ($mtime > $now - $quietSeconds) { $report['skipped_in_flight']++; continue; }
-        if ($mtime < $now - $horizonSeconds) { $report['skipped_old']++; continue; }
+        if ($mtime < $now - $horizonSeconds) {
+            $key = basename(dirname($path)) . '/' . basename($path);
+            $entry = $cache[$key] ?? null;
+            if (!is_array($entry) || ($entry[0] ?? null) !== $mtime || !is_bool($entry[1] ?? null)) {
+                $read = bbf_outbox_read($path);
+                $ledger = $read['ledger'] ?? null;
+                $open = ($read['ok'] ?? false) && is_array($ledger['jobs'] ?? null) && ($ledger['deleted'] ?? false) !== true
+                    && array_filter($ledger['jobs'], static fn($job) => !is_array($job) || ($job['state'] ?? '') !== 'succeeded') !== [];
+                $entry = [$mtime, $open];
+            }
+            $oldSeen[$key] = $entry;
+            if ($entry[1]) $report['skipped_old']++;
+            continue;
+        }
         $formId = basename(dirname($path));
         if (!preg_match('/\A[a-zA-Z0-9_-]+\z/', $formId)) continue;
         $read = bbf_outbox_read($path);
@@ -1024,9 +1088,13 @@ function bbf_delivery_retry_due(array $config, int $quietSeconds = 120, ?int $no
             $report[($run['ok'] ?? false) ? 'succeeded' : 'failed']++;
         }
     }
+    if ($oldSeen != $cache && is_dir($root)) {
+        $tmp = $cacheFile . '.' . bin2hex(random_bytes(4)) . '.tmp';
+        if (@file_put_contents($tmp, json_encode($oldSeen, JSON_UNESCAPED_SLASHES)) === false || !@rename($tmp, $cacheFile)) @unlink($tmp);
+    }
     if ($report['skipped_old'] > 0) {
-        $report['note'] = $report['skipped_old'] . ' delivery record(s) untouched for more than ' . intdiv($horizonSeconds, 86400)
-            . ' days were not checked: they have no automatic retry left. Retry a failed delivery by hand in the viewer.';
+        $report['note'] = $report['skipped_old'] . ' delivery record(s) older than ' . intdiv($horizonSeconds, 86400)
+            . ' days still have an undelivered delivery and no automatic retry left. Retry them by hand in the viewer.';
     }
     return $report;
 }
@@ -1725,6 +1793,12 @@ function validateFieldList(array $fields, string $path, array &$errors, array &$
         if (isset($field['sensitive']) && !is_bool($field['sensitive'])) {
             $errors[] = "$prefix.sensitive: Expected boolean.";
         }
+        if (array_key_exists('show_if', $field)) array_push($errors, ...bbfConditionErrors($field['show_if'], "$prefix.show_if"));
+        foreach (is_array($field['options'] ?? null) ? $field['options'] : [] as $o => $option) {
+            if (is_array($option) && array_key_exists('show_if', $option)) {
+                array_push($errors, ...bbfConditionErrors($option['show_if'], "$prefix.options[$o].show_if"));
+            }
+        }
 
         // Layout-only types — skip further validation
         if (in_array($type, ['section', 'page_break'], true)) continue;
@@ -1819,26 +1893,40 @@ function bbfFieldPatternRegex(string $pattern): ?string {
 /**
  * JavaScript's \s also matches Unicode spaces (NBSP, U+2000–U+200A, U+3000, BOM …); PCRE's \s without
  * Unicode properties matches only ASCII whitespace. Spell the JavaScript set out so "Jana Nová" typed with
- * a no-break space passes on both sides. \S outside a character class becomes the complement; inside a
- * class it is left as is (a class cannot contain a negated class).
+ * a no-break space passes on both sides. \S outside a character class becomes the complement. A class cannot
+ * contain a negated class, so a class with \S is rewritten as an equivalent group:
+ * [x\S] → (?:[x]|[^space]) and [^x\S] (e.g. [^\S\r\n], "whitespace but no line break") → (?:(?![x])[space]).
  */
 function bbfJsWhitespaceClasses(string $body): string {
-    $extra = '\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}';
+    $space = '\s\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}';
     $out = '';
-    $inClass = false;
     $len = strlen($body);
     for ($i = 0; $i < $len; $i++) {
         $c = $body[$i];
         if ($c === '\\' && $i + 1 < $len) {
             $n = $body[++$i];
-            if ($n === 's') $out .= $inClass ? '\s' . $extra : '[\s' . $extra . ']';
-            elseif ($n === 'S' && !$inClass) $out .= '[^\s' . $extra . ']';
-            else $out .= '\\' . $n;
+            $out .= match ($n) { 's' => "[$space]", 'S' => "[^$space]", default => '\\' . $n };
             continue;
         }
-        if ($c === '[') $inClass = true;
-        elseif ($c === ']') $inClass = false;
-        $out .= $c;
+        if ($c !== '[') { $out .= $c; continue; }
+        $negated = $i + 1 < $len && $body[$i + 1] === '^';
+        $items = '';
+        $hasNotSpace = false;
+        $j = $i + ($negated ? 2 : 1);
+        for (; $j < $len && $body[$j] !== ']'; $j++) {
+            if ($body[$j] === '\\' && $j + 1 < $len) {
+                $n = $body[++$j];
+                if ($n === 'S') $hasNotSpace = true;
+                else $items .= $n === 's' ? $space : '\\' . $n;
+            } else {
+                $items .= $body[$j];
+            }
+        }
+        if ($j >= $len) return $body; // unterminated class: leave it to the regex compiler to reject
+        $i = $j;
+        if (!$hasNotSpace) $out .= '[' . ($negated ? '^' : '') . $items . ']';
+        elseif ($items === '') $out .= $negated ? "[$space]" : "[^$space]";
+        else $out .= $negated ? "(?:(?![$items])[$space])" : "(?:[$items]|[^$space])";
     }
     return $out;
 }

@@ -103,3 +103,13 @@ test('every message key used in code exists in the English sources', () => {
         for (const m of read(file).matchAll(/\b(?:msg|bbf_uploads_t)\('(\w+)'/g)) assert.ok(m[1] in enPhp, `${file} uses ${m[1]}`);
     }
 });
+
+test('review 2.1.4: answers a respondent can see (429, 413, 202, 503) are translated, not English literals', () => {
+    const literal = [...read('submit.php').matchAll(/respond\((429|413|202|503), ['"]([^'"]*)['"]/g)].map(m => `${m[1]} ${m[2]}`)
+        .filter(answer => answer !== '202 OK');
+    assert.deepEqual(literal, []);
+    const sk = phpPack('sk.php');
+    for (const key of ['tooManyRequests', 'requestTooLarge', 'submitAgain', 'submitProcessing', 'submitUnconfirmed']) {
+        assert.notEqual(sk[key], phpPack('en.php')[key], `sk.php ${key} is Slovak`);
+    }
+});

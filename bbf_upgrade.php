@@ -8,8 +8,12 @@
  * CLI only, through `php maintenance.php upgrade` / `upgrade-rollback`; selfcheck uses bbf_update_check().
  */
 defined('BBF_LOADED') || exit;
+// Run as the package upgrader, stdout carries the JSON result: PHP notices (display_errors=On on XAMPP/Windows
+// hosts, e.g. from config.php) go to stderr so they cannot corrupt it. Also covers a 2.1.3/2.1.4 parent.
+if (defined('BBF_UPGRADE_DELEGATED')) ini_set('display_errors', 'stderr');
 
 const BBF_MANIFEST = '.bbf-manifest.json';
+const BBF_UPGRADE_RESULT = "\n--BBF-UPGRADE-RESULT--\n";
 const BBF_RELEASES_LATEST = 'https://api.github.com/repos/pietrobb/BareBonesForms/releases/latest';
 
 /** Installed release version, or 'dev' for a git checkout / package built without --version. */
@@ -64,11 +68,15 @@ function bbf_upgrade_put(string $target, string $data): void {
         throw new RuntimeException("Cannot write $target");
     }
     @chmod($temp, is_file($target) ? fileperms($target) & 0777 : 0644);
-    if (@rename($temp, $target)) return;
+    // Windows refuses a rename while another process briefly reads the target (a web request, an antivirus scan).
+    for ($try = 0; $try < 5; $try++) {
+        if (@rename($temp, $target)) return;
+        usleep(200000);
+    }
     @unlink($temp);
-    // Windows cannot rename over a file another handle holds open, such as the maintenance.php running this
-    // upgrade; writing into it works there. Not atomic, so it is only the fallback, verified by checksum.
-    if (!is_file($target) || @file_put_contents($target, $data, LOCK_EX) !== strlen($data)
+    // Windows cannot rename over the maintenance.php that runs this upgrade (the parent process holds it open);
+    // writing into it works. Only that CLI entry point, never a library the web could load half-written.
+    if (basename($target) !== 'maintenance.php' || !is_file($target) || @file_put_contents($target, $data, LOCK_EX) !== strlen($data)
         || hash_file('sha256', $target) !== hash('sha256', $data)) {
         throw new RuntimeException("Cannot replace $target");
     }
@@ -214,7 +222,7 @@ function bbf_upgrade_access_warnings(string $stageDir, string $install): array {
 }
 
 /** What an upgrade to the staged package would do. Nothing is changed. */
-function bbf_upgrade_plan(array $stage, string $install): array {
+function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = true): array {
     $new = $stage['manifest'];
     $old = bbf_upgrade_manifest($install);
     $from = $old['version'] ?? 'unknown';
@@ -266,7 +274,11 @@ function bbf_upgrade_plan(array $stage, string $install): array {
     $lint = $problems === [] ? bbf_upgrade_lint($stage['dir'], array_merge($files['add'], $files['replace'])) : [];
     if ($lint) $problems[] = 'PHP syntax errors in the package: ' . implode('; ', $lint);
     $check = ['status' => 'not run'];
-    if ($problems === []) {
+    if (!$runPackageCode) {
+        $check = ['status' => 'skipped', 'reason' => 'the package is not verified, so none of its code was run (no smoke test, no access check by the new code)'];
+        $notices[] = 'Package not verified: only its file checksums and PHP syntax were checked. To let the dry run test the new code with your forms (and use the package\'s upgrader), '
+            . 'add --checksum=<SHA-256 of the ZIP from SHA256SUMS on the GitHub release page>, or --trust-package for a package you built yourself.';
+    } elseif ($problems === []) {
         $after = bbf_upgrade_smoke($stage['dir'], $install);
         if ($after === null) {
             $check = ['status' => 'skipped', 'reason' => 'this PHP cannot start child processes (proc_open); run php smoketest.php yourself after the upgrade'];
@@ -295,7 +307,7 @@ function bbf_upgrade_plan(array $stage, string $install): array {
         'new_config_settings' => is_file("$install/config.example.php")
             ? array_values(array_diff(bbf_upgrade_config_keys("{$stage['dir']}/config.example.php"), bbf_upgrade_config_keys("$install/config.example.php"))) : [],
         'breaking' => bbf_upgrade_breaking((string)@file_get_contents("{$stage['dir']}/CHANGELOG.md"), $from, $to),
-        'access_warnings' => bbf_upgrade_access_warnings($stage['dir'], $install),
+        'access_warnings' => $runPackageCode ? bbf_upgrade_access_warnings($stage['dir'], $install) : [],
         'notices' => $notices,
         'check' => $check,
         'problems' => $problems,
@@ -310,19 +322,22 @@ function bbf_upgrade_plan(array $stage, string $install): array {
  * `maintenance.php upgrade` runs the upgrader shipped in the PACKAGE when it differs from the installed one, so a
  * fix to the upgrade itself (new file kinds, .htaccess.dist, release history) applies to the very upgrade that
  * ships it. Returns null when the package's upgrader is this one or PHP cannot start a child: then run in-process.
- * Stable contract with later versions: bbf_upgrade(array $config, string $package, ?string $confirm, string $install).
+ * Stable contract with later versions: bbf_upgrade(array $config, string $package, ?string $confirm, string $install, bool $verified).
+ * Package code runs only for a $verified package (--checksum matched the published SHA256SUMS, or --trust-package).
  */
-function bbf_upgrade_delegate(string $package, ?string $confirm, string $install): ?array {
-    if (defined('BBF_UPGRADE_DELEGATED') || !function_exists('proc_open') || PHP_BINARY === '') return null;
+function bbf_upgrade_delegate(string $package, ?string $confirm, string $install, bool $verified = false): ?array {
+    if (!$verified || defined('BBF_UPGRADE_DELEGATED') || !function_exists('proc_open') || PHP_BINARY === '') return null;
     $package = realpath($package) ?: $package; // the child runs in the installation folder
     $stage = bbf_upgrade_stage($package); // verifies every checksum before any package code runs
     try {
         $new = "{$stage['dir']}/bbf_upgrade.php";
         if (!is_file($new) || hash_file('sha256', $new) === hash_file('sha256', __FILE__)) return null;
-        $script = 'define("BBF_LOADED", true); define("BBF_UPGRADE_DELEGATED", true); require $argv[1];'
+        // Notices (display_errors=On, e.g. from config.php) go to stderr; the result follows a marker line.
+        $script = 'ini_set("display_errors", "stderr"); define("BBF_LOADED", true); define("BBF_UPGRADE_DELEGATED", true); require $argv[1];'
             . ' $c = (static fn() => require $argv[2])();'
             . ' if (!is_array($c)) { fwrite(STDERR, "Cannot read config.php."); exit(1); }'
-            . ' try { echo json_encode(bbf_upgrade($c, $argv[3], $argv[4] === "" ? null : $argv[4], $argv[5]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); }'
+            . ' try { $r = bbf_upgrade($c, $argv[3], $argv[4] === "" ? null : $argv[4], $argv[5], true);'
+            . ' echo ' . var_export(BBF_UPGRADE_RESULT, true) . ', json_encode($r, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); }'
             . ' catch (Throwable $e) { fwrite(STDERR, $e->getMessage()); exit(1); }';
         $process = @proc_open([PHP_BINARY, '-r', $script, $new, "$install/config.php", $package, $confirm ?? '', $install],
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $install);
@@ -333,9 +348,13 @@ function bbf_upgrade_delegate(string $package, ?string $confirm, string $install
         fclose($pipes[1]);
         fclose($pipes[2]);
         proc_close($process);
-        $result = json_decode($out, true);
-        if (!is_array($result)) throw new RuntimeException(trim($err) !== '' ? trim($err) : 'the upgrader of the package ' . $stage['manifest']['version'] . ' gave no result.');
+        $at = strrpos($out, BBF_UPGRADE_RESULT);
+        $result = $at === false ? null : json_decode(substr($out, $at + strlen(BBF_UPGRADE_RESULT)), true);
+        if (!is_array($result)) throw new RuntimeException(trim($err . "\n" . $out) !== '' ? trim($err . "\n" . $out) : 'the upgrader of the package ' . $stage['manifest']['version'] . ' gave no result.');
         $result['upgrader'] = 'package ' . $stage['manifest']['version'];
+        // PHP notices printed along the way are shown, but they do not turn a finished upgrade into a failure.
+        $messages = array_values(array_filter(array_map('trim', explode("\n", trim($err . "\n" . substr($out, 0, $at)))), 'strlen'));
+        if ($messages !== []) $result['php_messages'] = array_slice($messages, 0, 20);
         return $result;
     } finally {
         bbf_upgrade_rmtree($stage['dir']);
@@ -343,10 +362,11 @@ function bbf_upgrade_delegate(string $package, ?string $confirm, string $install
 }
 
 /** Dry run without $confirm; with the plan's digest it backs up, upgrades, verifies and rolls back on failure. */
-function bbf_upgrade(array $config, string $package, ?string $confirm, string $install = __DIR__): array {
+function bbf_upgrade(array $config, string $package, ?string $confirm, string $install = __DIR__, bool $verified = true): array {
     $stage = bbf_upgrade_stage($package);
     try {
-        $plan = bbf_upgrade_plan($stage, $install);
+        // An unverified package's code never runs in a dry run ("just looking"); --apply is the decision to run it.
+        $plan = bbf_upgrade_plan($stage, $install, $verified || $confirm !== null);
         $files = $plan['_files'];
         unset($plan['_files']);
         if (!$plan['ok'] || $plan['up_to_date']) return $plan;
@@ -519,13 +539,19 @@ function bbf_htaccess_missing_rules(string $install): array {
     $norm = static fn(string $line): string => (string)preg_replace('/\s+/', ' ', trim($line));
     $have = array_flip(array_map($norm, preg_split('/\R/', $own) ?: []));
     $dist = @file_get_contents("$install/.htaccess.dist");
-    $wanted = is_string($dist)
-        ? array_filter(array_map($norm, preg_split('/\R/', $dist) ?: []), static fn(string $line): bool => $line !== '' && $line[0] !== '#')
-        : ['<FilesMatch "\.md$">', // README.md/CHANGELOG.md reveal the installed version
-            '<FilesMatch "^config|^bbf_.*\.php$">', 'RewriteRule ^config/ - [F,L]']; // libraries and credentials (2.1.4)
+    $essential = ['<FilesMatch "\.md$">', // README.md/CHANGELOG.md reveal the installed version
+        '<FilesMatch "^config|^bbf_.*\.php$">', 'RewriteRule ^config/ - [F,L]']; // libraries and credentials (2.1.4)
+    // An .htaccess.dist left by an earlier release (e.g. an older FTP upgrade) would recommend its older, weaker
+    // rules: one that lacks a rule every current release has is ignored and named.
+    $distLines = is_string($dist) ? array_flip(array_map($norm, preg_split('/\R/', $dist) ?: [])) : [];
+    $stale = is_string($dist) && array_diff_key(array_flip($essential), $distLines) !== [];
+    $wanted = is_string($dist) && !$stale
+        ? [...array_filter(array_map($norm, preg_split('/\R/', $dist) ?: []), static fn(string $line): bool => $line !== '' && $line[0] !== '#'), ...$essential]
+        : $essential;
     $missing = array_values(array_filter(array_unique($wanted), static fn(string $line): bool => !isset($have[$line])));
-    if ($missing === []) return [];
-    return [count($missing) . ' rule line(s) of this release are missing from .htaccess' . (is_string($dist) ? ' (compare it with .htaccess.dist and copy them over)' : '')
+    $out = $stale ? ['.htaccess.dist is from an earlier release and is ignored; delete it (the current rules are in the release ZIP\'s .htaccess / .htaccess.dist).'] : [];
+    if ($missing === []) return $out;
+    return [...$out, count($missing) . ' rule line(s) of this release are missing from .htaccess' . (is_string($dist) && !$stale ? ' (compare it with .htaccess.dist and copy them over)' : '')
         . ': ' . implode(' | ', array_slice($missing, 0, 5)) . (count($missing) > 5 ? ' | ...' : '')];
 }
 

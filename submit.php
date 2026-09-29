@@ -80,6 +80,8 @@ if (!$isSandbox && (!file_exists($_bbfCheckFile) || filemtime($_bbfCheckFile) < 
         $_bbfWarnings[] = '.htaccess is missing — config.php, submissions/, and logs/ may be web-accessible.';
     if (ini_get('display_errors') && strtolower(ini_get('display_errors')) !== 'off' && ini_get('display_errors') !== '0')
         $_bbfWarnings[] = 'PHP display_errors is ON — error messages may leak paths and credentials to browsers.';
+    if ((!empty($_SERVER['HTTP_X_FORWARDED_FOR']) || !empty($_SERVER['HTTP_CF_CONNECTING_IP'])) && bbf_trusted_proxies($config) === [])
+        $_bbfWarnings[] = 'Requests arrive through a proxy (X-Forwarded-For / CF-Connecting-IP) but trusted_proxies is empty: all visitors share the proxy address for rate limits and the sign-in limit.';
     if ($_bbfWarnings) {
         error_log('BareBonesForms security check (' . count($_bbfWarnings) . ' warning(s)):');
         foreach ($_bbfWarnings as $_w) error_log('  ⚠ ' . $_w);
@@ -120,6 +122,13 @@ header('Content-Type: application/json; charset=utf-8');
 function ensureSession(): void {
     static $loaded = false;
     if ($loaded || session_status() === PHP_SESSION_ACTIVE) return;
+    // The respondent session holds only the CSRF secret: scripts never need it, so keep it HttpOnly
+    // (and Secure on HTTPS). SameSite stays at the browser default so iframe embeds keep working.
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.use_trans_sid', '0');
+    ini_set('session.cookie_httponly', '1');
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ini_set('session.cookie_secure', '1');
     session_start();
     if (empty($_SESSION['bbf_secret'])) {
         $_SESSION['bbf_secret'] = bin2hex(random_bytes(32));
@@ -255,8 +264,8 @@ unset($input[$hpField]);
 // ─── CSRF validation ────────────────────────────────────────────
 // Skip public CSRF only for a valid nonempty smoke-token header (used by smoketest.php).
 $_smokeToken = $_SERVER['HTTP_X_BBF_SMOKE_TOKEN'] ?? '';
-$_smokeAuth  = is_string($config['smoke_token'] ?? null) && $config['smoke_token'] !== ''
-               && is_string($_smokeToken) && $_smokeToken !== '' && hash_equals($config['smoke_token'], $_smokeToken);
+$_smokeAuth  = bbf_smoke_token($config) !== null // a smoke_token shorter than 16 characters is no credential
+               && is_string($_smokeToken) && $_smokeToken !== '' && hash_equals(bbf_smoke_token($config), $_smokeToken);
 $isCorsRequest = !empty($origin) && !empty($config['allowed_origins'])
     && in_array($origin, $config['allowed_origins'], true);
 if (!$isSandbox && ($config['csrf'] ?? true) && !$isCorsRequest && !$_smokeAuth) {
@@ -273,7 +282,7 @@ unset($input['_bbf_csrf']);
 $ip = bbf_client_ip($config);
 $rateLimitOk = $isSandbox || checkRateLimit($ip, $config['rate_limit'], $config['logs_dir']);
 if (!$rateLimitOk) {
-    respond(429, 'Too many submissions. Try again later.');
+    respond(429, msg('tooManyRequests'));
 }
 
 // ─── Resolve templates ─────────────────────────────────────────
@@ -551,7 +560,7 @@ if (!$isPayment) {
         $deliveryJobs = bbf_delivery_prepare_jobs($deliveryForm, $submission, $storeConfig, $templateData);
     } catch (Throwable $error) {
         error_log('BareBonesForms: Delivery plan preparation failed for ' . $submissionId);
-        if ($storeEnabled) respond(500, 'Submission delivery could not be prepared. Please try again later.');
+        if ($storeEnabled) respond(500, msg('submitAgain'));
         $deliveryStatus = $deliveryAttention + [
             'durable' => false,
             'retry_available' => false,
@@ -573,7 +582,7 @@ if (!$storeEnabled) {
     $deliveryStatus = bbf_delivery_inline_status($inlineResults);
 } else {
     // Unencodable data (invalid UTF-8) fails every attempt: a permanent 500, never a retryable intent.
-    try { bbf_storage_json($submission); } catch (JsonException $error) { respond(500, 'Submission could not be saved.'); }
+    try { bbf_storage_json($submission); } catch (JsonException $error) { respond(500, msg('submitAgain')); }
     // ─── Step B tail: open the intent (spec §5) ─────────────────
     ignore_user_abort(true);
     $tx = null;
@@ -615,7 +624,7 @@ if (!$storeEnabled) {
         error_log('BareBonesForms: submit transaction could not start: ' . $error->getMessage());
         $mysqlPdo = null;
         bbf_tx_deadline_clear();
-        respond(503, 'Submission could not be saved. Please try again.');
+        respond(503, msg('submitAgain'));
     }
     if (bbf_tx_remaining() <= 0) bbf_submit_tx_stop($tx, bbf_tx_state($txState, 'aborted'), 503, 'Submission could not be saved. Please submit again.');
 
@@ -759,7 +768,7 @@ function bbf_submit_payment_response(array $finished, bool $replay): never {
     $response = (array)($state['response'] ?? []);
     $flag = $replay ? ['already_submitted' => true] : [];
     if ($finished['retry'] ?? false) {
-        respond(503, 'The payment could not be started yet. Please try again; your submission will not be duplicated.',
+        respond(503, msg('submitAgain'),
             ['code' => 'submit_pending', 'retry_after' => 5] + $flag);
     }
     if (isset($response['payment_unavailable'])) {
@@ -806,8 +815,8 @@ function bbf_submit_client_file_fields(array $config, array $fields): array {
 function bbf_submit_upload_csrf(array $config, string $formId): void {
     global $origin;
     $smoke = $_SERVER['HTTP_X_BBF_SMOKE_TOKEN'] ?? '';
-    $smokeAuth = is_string($config['smoke_token'] ?? null) && $config['smoke_token'] !== ''
-        && is_string($smoke) && $smoke !== '' && hash_equals($config['smoke_token'], $smoke);
+    $smokeAuth = bbf_smoke_token($config) !== null
+        && is_string($smoke) && $smoke !== '' && hash_equals(bbf_smoke_token($config), $smoke);
     $cors = !empty($origin) && in_array($origin, (array)($config['allowed_origins'] ?? []), true);
     if (!($config['csrf'] ?? true) || $cors || $smokeAuth) return;
     ensureSession();
@@ -889,10 +898,10 @@ function bbf_submit_upload(array $config, string $formId, bool $isSandbox): neve
  */
 function bbf_submit_json_body(): mixed {
     $max = 1048576;
-    if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $max) respond(413, 'Request body is too large.');
+    if ((int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $max) respond(413, msg('requestTooLarge'));
     $raw = (string)file_get_contents('php://input', false, null, 0, $max + 1);
     if (strlen($raw) > $max || substr_count($raw, '{') + substr_count($raw, '[') > 20000) {
-        respond(413, 'Request body is too large.');
+        respond(413, msg('requestTooLarge'));
     }
     return json_decode($raw, true, 64);
 }
@@ -913,7 +922,7 @@ function bbf_submit_upload_delete(array $config, string $formId, bool $isSandbox
         $result = bbf_uploads_delete_staged($config, $root['root'], $formId, $token);
     } catch (Throwable $error) {
         error_log('BareBonesForms upload delete failed: ' . $error->getMessage());
-        respond(503, 'Temporary storage problem. Please try again.', ['retry_after' => 5]);
+        respond(503, msg('uploadTemporary'), ['retry_after' => 5]);
     }
     if (!$result['ok']) respond($result['code'], $result['message'], isset($result['retry_after']) ? ['retry_after' => $result['retry_after']] : []);
     respond(200, 'OK');
@@ -928,12 +937,12 @@ function bbf_submit_step_a(array $config, string $formId, string $k, array $rawI
         $dir = bbf_tx_form_dir($config, $formId, false);
         if ($dir === null || !file_exists(bbf_tx_paths($dir, $k)['lock'])) return;
         if (!checkRateLimit('replay:' . $k, (int)($config['submit_replay_rate'] ?? 30), $config['logs_dir'])) {
-            respond(429, 'Too many retries. Try again later.', ['retry_after' => 60]);
+            respond(429, msg('tooManyRequests'), ['retry_after' => 60]);
         }
         $taken = bbf_tx_take($config, $formId, $k);
         if ($taken['status'] === 'none') return;
         if ($taken['status'] === 'busy') {
-            respond(202, 'Your submission is being processed.', ['status' => 'processing', 'retry_after' => 2]);
+            respond(202, msg('submitProcessing'), ['status' => 'processing', 'retry_after' => 2]);
         }
         $h = $taken['h'];
         $read = bbf_tx_read_state($h);
@@ -941,7 +950,7 @@ function bbf_submit_step_a(array $config, string $formId, string $k, array $rawI
         if ($read['kind'] === 'unreadable') {
             bbf_tx_release($h);
             bbfNotifyError($formId, 'Submit state unreadable', "Intent $k cannot be read; a human must decide.", $config);
-            respond(503, 'We could not confirm your submission. The organiser has been notified.', ['code' => 'submit_state_unreadable']);
+            respond(503, msg('submitUnconfirmed'), ['code' => 'submit_state_unreadable']);
         }
         $state = $read['state'];
         if (in_array($state['state'], ['open', 'committed'], true)) {
@@ -951,12 +960,12 @@ function bbf_submit_step_a(array $config, string $formId, string $k, array $rawI
         if ($state['state'] === 'aborted') { bbf_tx_delete($h); bbf_tx_flush_notices($config); return; }
         bbf_submit_tx_end($h, $config, $formId);
         if ($state['state'] !== 'complete') {
-            respond(503, 'Your submission is still being processed. Please try again in a moment.', ['code' => 'submit_pending', 'retry_after' => 5]);
+            respond(503, msg('submitProcessing'), ['code' => 'submit_pending', 'retry_after' => 5]);
         }
         bbf_submit_replay($config, $formId, $state, $h, $rawInput);
     } catch (Throwable $error) {
         error_log('BareBonesForms: submit key lookup failed: ' . $error->getMessage());
-        respond(503, 'Submission could not be checked. Please try again.', ['code' => 'submit_pending', 'retry_after' => 5]);
+        respond(503, msg('submitAgain'), ['code' => 'submit_pending', 'retry_after' => 5]);
     }
 }
 
@@ -981,7 +990,7 @@ function bbf_submit_replay(array $config, string $formId, array $state, array $h
         $record = null;
     }
     if ($record === null) {
-        respond(503, "Your submission $id was saved; its payment status is temporarily unavailable.",
+        respond(503, msg('submitProcessing'),
             ['code' => 'submit_pending', 'retry_after' => 5, 'already_submitted' => true, 'submission_id' => $id]);
     }
     $status = $record['meta']['payment_status'] ?? 'pending';

@@ -53,4 +53,9 @@ return [
     'draftNotFound'         => 'Gespeicherter Fortschritt nicht gefunden. Prüfen Sie den Fortsetzungscode.',
     'draftTooLarge'         => 'Das Formular ist zu groß, um als Entwurf gespeichert zu werden.',
     'draftQuota'            => 'Derzeit sind zu viele Entwürfe gespeichert. Bitte versuchen Sie es später erneut.',
+    'requestTooLarge'       => 'Das Formular ist zu groß zum Absenden.',
+    'tooManyRequests'       => 'Zu viele Versuche. Bitte warten Sie eine Minute und versuchen Sie es erneut.',
+    'submitAgain'           => 'Ihre Übermittlung konnte nicht abgeschlossen werden. Bitte senden Sie erneut — es entsteht kein Duplikat.',
+    'submitProcessing'      => 'Ihre Übermittlung wird noch verarbeitet. Bitte füllen Sie das Formular nicht erneut aus — klicken Sie in ein paar Minuten noch einmal auf Senden; es entsteht kein Duplikat.',
+    'submitUnconfirmed'     => 'Wir konnten Ihre Übermittlung nicht bestätigen. Der Veranstalter wurde benachrichtigt.',
 ];

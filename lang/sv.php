@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Sparade framsteg hittades inte. Kontrollera återupptagningskoden.',
     'draftTooLarge'         => 'Formuläret är för stort för att sparas som utkast.',
     'draftQuota'            => 'För många sparade utkast just nu. Försök igen senare.',
+    'requestTooLarge'       => 'Formuläret är för stort för att skickas.',
+    'tooManyRequests'       => 'För många försök. Vänta en minut och försök igen.',
+    'submitAgain'           => 'Formuläret kunde inte skickas klart. Skicka igen — det dubbleras inte.',
+    'submitProcessing'      => 'Ditt formulär behandlas fortfarande. Fyll inte i formuläret igen — klicka på Skicka igen om några minuter; det skapas ingen dubblett.',
+    'submitUnconfirmed'     => 'Vi kunde inte bekräfta att formuläret skickades. Arrangören har meddelats.',
 ];

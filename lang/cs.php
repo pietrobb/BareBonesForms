@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Uložený postup nebyl nalezen. Zkontrolujte kód pro pokračování.',
     'draftTooLarge'         => 'Formulář je příliš velký na uložení jako koncept.',
     'draftQuota'            => 'Právě je uloženo příliš mnoho konceptů. Zkuste to později.',
+    'requestTooLarge'       => 'Formulář je příliš velký na odeslání.',
+    'tooManyRequests'       => 'Příliš mnoho pokusů. Počkejte minutu a zkuste to znovu.',
+    'submitAgain'           => 'Odeslání se nepodařilo dokončit. Odešlete formulář znovu — duplicitní záznam nevznikne.',
+    'submitProcessing'      => 'Vaše odeslání se ještě zpracovává. Nevyplňujte formulář znovu — za pár minut stiskněte Odeslat ještě jednou; duplicitní záznam nevznikne.',
+    'submitUnconfirmed'     => 'Odeslání se nepodařilo potvrdit. Organizátor byl upozorněn.',
 ];

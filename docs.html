@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BareBonesForms v2.1.4 — Documentation</title>
+<title>BareBonesForms v2.1.5 — Documentation</title>
 <style>
 :root {
     --bg: #ffffff; --bg-sidebar: #f8f9fa; --bg-code: #f4f5f7; --bg-code-block: #1e1e2e;
@@ -97,7 +97,7 @@ details summary:hover { text-decoration: underline; }
 <body>
 
 <div class="header">
-    <h1>BareBonesForms <span>v2.1.4 Docs</span></h1>
+    <h1>BareBonesForms <span>v2.1.5 Docs</span></h1>
     <span class="ver">v2.1 &middot; PHP 8.1+ &middot; September 2026</span>
 </div>
 
@@ -256,9 +256,9 @@ details summary:hover { text-decoration: underline; }
 <p>Your data lives in places an upgrade never needs to touch: <strong><code>config.php</code></strong>, <strong><code>forms/</code></strong>, <strong><code>templates/</code></strong> and <strong><code>submissions/</code></strong> &mdash; plus <code>actions/</code> if you wrote custom actions and <code>lang/</code> if you added a language. Also preserve your configured data directories, including <strong><code>uploads.dir</code></strong>, archives and backups; these are not replaceable code.</p>
 
 <h3>One command (SSH)</h3>
-<p>Every release from 2.1.0 on knows its version (<code>php maintenance.php version</code>, also shown in <code>check.php</code> and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:</p>
-<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php upgrade --package=../barebonesforms-v2.1.4.zip</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
-<p>This is a dry run &mdash; nothing changes. It verifies every file of the package, runs the new version's smoke test against <strong>your</strong> forms and templates, checks the new PHP files for syntax errors, and prints:</p>
+<p>Every release from 2.1.0 on knows its version (<code>php maintenance.php version</code>, also shown in <code>check.php</code> and the viewer) and ships a manifest with a checksum of every file. Download the release ZIP and <code>SHA256SUMS</code> from the GitHub release page, upload the ZIP next to your installation and run:</p>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php upgrade --package=../barebonesforms-v2.1.5.zip --checksum=&lt;SHA-256 of that ZIP from SHA256SUMS&gt;</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<p>This is a dry run &mdash; nothing changes. <code>--checksum</code> proves the ZIP is the published release. <strong>Only a verified package's code runs in the dry run:</strong> then the upgrader inside the new package plans and applies the upgrade (from 2.1.3 on) and the new version's smoke test runs against <strong>your</strong> forms and templates. Without <code>--checksum</code> (since 2.1.5) only the files' checksums and PHP syntax are checked, none of the new code runs (<code>check: skipped</code>), and <code>--apply</code> uses the installed upgrader; <code>--trust-package</code> is for a package you built yourself. PHP notices along the way are listed under <code>php_messages</code> and do not fail the upgrade. It prints:</p>
 <ul>
     <li>the installed and the new version, how many files will be added or replaced, and which obsolete files will be removed;</li>
     <li><code>keep_yours</code>: sample forms and email templates you changed &mdash; they stay as they are (untouched ones are updated);</li>
@@ -269,15 +269,15 @@ details summary:hover { text-decoration: underline; }
 </ul>
 <p>If it looks right, run the printed command with <code>--apply --confirm=&lt;digest&gt;</code>. The upgrade saves every file it overwrites or deletes to <code>logs_dir/upgrades/&lt;date&gt;-&lt;from&gt;-to-&lt;to&gt;-&hellip;/</code>, swaps files one by one (each file atomically), runs the smoke test again, and <strong>rolls itself back</strong> if anything fails. <code>config.php</code>, your own forms, templates, submissions, uploads and logs are never touched &mdash; the manifest lists only the files the release owns. Demo pages, docs and sample forms are updated where you have them, but never added to an installation that left them out, so a live site does not grow demo form endpoints.</p>
 <p>To undo a finished upgrade later: <code>php maintenance.php upgrade-rollback --backup=&lt;folder printed by the upgrade&gt;</code> (dry run first, then <code>--apply --confirm=&hellip;</code>).</p>
-<p><strong>Upgrading from a version before 2.1.0</strong> (its <code>maintenance.php</code> does not know <code>upgrade</code> yet): unzip the new release next to the installation and let the new code do it &mdash; same checks, backup and rollback:</p>
-<div class="code-block"><span class="lang">bash</span><pre>unzip barebonesforms-v2.1.4.zip            # creates ./barebonesforms
+<p><strong>Upgrading from a version before 2.1.3</strong> (before 2.1.0 <code>maintenance.php</code> does not know <code>upgrade</code> yet; 2.1.0&ndash;2.1.2 run their own, older upgrader): check the ZIP against <code>SHA256SUMS</code>, unzip it next to the installation and let the new code do it &mdash; same checks, backup and rollback:</p>
+<div class="code-block"><span class="lang">bash</span><pre>sha256sum -c SHA256SUMS --ignore-missing\nunzip barebonesforms-v2.1.5.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 <p>Without a manifest from the old version it cannot tell which sample forms and templates you edited, so it keeps every one that differs from the new release and removes nothing.</p>
 <p>Needs the PHP <code>zip</code> extension to read the ZIP; without it, unzip the package and pass the folder: <code>--package=../barebonesforms</code>. On hosts where PHP cannot start child processes, the smoke tests are skipped &mdash; run <code>php smoketest.php</code> yourself afterwards.</p>
 <p><strong>Update notices:</strong> the daily <code>php maintenance.php selfcheck</code> asks GitHub whether a newer release exists and emails <code>error_notify</code> <strong>once</strong> per new version. Set <code>'update_check' =&gt; false</code> to turn this off.</p>
 
 <h3>FTP only</h3>
-<p>Download <strong><code>barebonesforms-vX.Y.Z-upgrade.zip</code></strong> from the release, not the full ZIP. It contains only code plus <code>check.php</code> &mdash; no <code>config.php</code>, <code>.htaccess</code>, sample forms, email templates, docs or demo pages &mdash; so uploading it over your installation cannot overwrite anything you edited. The release's <code>.htaccess</code> rules come as <code>.htaccess.dist</code>: compare it with your <code>.htaccess</code> and copy new rules over by hand. Files removed from a release stay behind; that is harmless. Then open <code>check.php</code> to confirm the new version and that protected files are still blocked, and delete <code>check.php</code> again. The version is also shown under the forms list in <code>viewer.php</code>.</p>
+<p>Download <strong><code>barebonesforms-vX.Y.Z-upgrade.zip</code></strong> from the release, not the full ZIP. It contains only code plus <code>check.php</code> and <code>CHANGELOG.md</code> (read its <strong>Breaking</strong> items) &mdash; no <code>config.php</code>, <code>.htaccess</code>, sample forms, email templates, docs or demo pages &mdash; so uploading it over your installation cannot overwrite anything you edited. The release's <code>.htaccess</code> rules come as <code>.htaccess.dist</code>: compare it with your <code>.htaccess</code> and copy new rules over by hand. Files removed from a release stay behind; that is harmless. Then open <code>check.php</code> to confirm the new version and that protected files are still blocked, and delete <code>check.php</code> again. The version is also shown under the forms list in <code>viewer.php</code>.</p>
 
 <h3>By hand</h3>
 <p><strong>Before you start:</strong> read the <a href="https://github.com/pietrobb/BareBonesForms/blob/main/CHANGELOG.md" target="_blank">CHANGELOG</a> entries between your version and the new one. Items marked <strong>Breaking</strong> tell you exactly what to change.</p>
@@ -1633,12 +1633,19 @@ submissions.php?form=contact&amp;format=csv&amp;token=XXX&amp;last=50</pre><butt
 <p>The <code>.htaccess</code> works on <strong>Apache only</strong>. If you run Nginx or LiteSpeed, you need equivalent rules &mdash; fail to add them and your credentials, submissions, and templates will be accessible to anyone who guesses the URL:</p>
 
 <div class="code-block"><span class="lang">nginx</span><pre># Add to your server {} block. Replace BBF_BASE/ with the installation path:
-# for /bbf use ^/bbf/ ; for a domain-root install remove BBF_BASE/ and keep ^/
-location ~ ^/BBF_BASE/config { deny all; }
-location ~ ^/BBF_BASE/bbf_[^/]*\.php$ { deny all; }
-location ~ ^/BBF_BASE/(submissions|logs|templates|actions|backups|tests|data)/ { deny all; }
+# for /bbf use bbf/ ; for a domain-root install remove BBF_BASE/.
+# The ^~ lines win over any "location ~ \.php$" wherever you paste them.
+location ^~ /BBF_BASE/config { deny all; }
+location ^~ /BBF_BASE/bbf_ { deny all; }
+location ^~ /BBF_BASE/submissions/ { deny all; }
+location ^~ /BBF_BASE/logs/ { deny all; }
+location ^~ /BBF_BASE/templates/ { deny all; }
+location ^~ /BBF_BASE/actions/ { deny all; }
+location ^~ /BBF_BASE/backups/ { deny all; }
+location ^~ /BBF_BASE/tests/ { deny all; }
+location ^~ /BBF_BASE/data/ { deny all; }
+location ^~ /BBF_BASE/lang/ { location ~ \.php$ { deny all; } }
 location ~ ^/BBF_BASE/forms/.*\.json$ { deny all; }
-location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
 location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak[-_]|~$|/#[^/]*#$)" { deny all; }
 location ~ /\. { deny all; }
 location ~ ^/BBF_BASE/.*\.md$ { deny all; }
@@ -1738,7 +1745,7 @@ if (!hash_equals($expected, $received)) {
 
 <div class="callout warn">
     <strong>Disable before going public.</strong>
-    Set <code>'sandbox' => false</code> before production. The sandbox exposes form definitions, webhook URLs, email templates, and action file existence. On remote servers, sandbox access requires <code>?token=&lt;api_token&gt;</code> &mdash; but even so, disable it when you're done testing.
+    Set <code>'sandbox' => false</code> before production. The sandbox exposes form definitions, webhook URLs, email templates, and action file existence. Sandbox access requires signing in with the <code>api_token</code> on the sandbox sign-in form (a <code>?token=</code> link is not accepted) &mdash; but even so, disable it when you're done testing.
 </div>
 
 <!-- ============================================================ -->
@@ -2017,7 +2024,7 @@ php maintenance.php alerts-test   # confirm the alert email reaches you</pre><bu
 
 <p>A failed email, webhook or action is retried automatically with a growing delay. Run the retries from cron every few minutes (e.g. <code>*/5 * * * *</code>); without it they only run when you press Retry in the viewer:</p>
 <div class="code-block"><span class="lang">bash</span><pre>php maintenance.php deliveries-retry   # failed deliveries whose retry is due</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
-<p>Its report counts <code>skipped_old</code>: delivery records untouched for more than 7 days are not read, because they have no automatic retry left. Retry such a delivery by hand in the viewer.</p>
+<p>Its report counts <code>skipped_old</code>: delivery records older than 7 days that still have an undelivered delivery. They have no automatic retry left; retry such a delivery by hand in the viewer. Fully delivered old records are not counted.</p>
 
 <p><code>selfcheck</code> also tells you once when a newer BareBonesForms release is out (see <a href="#upgrading">Upgrading</a>; <code>'update_check' =&gt; false</code> turns it off).</p>
 

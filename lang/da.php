@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'De gemte fremskridt blev ikke fundet. Kontrollér genoptagelseskoden.',
     'draftTooLarge'         => 'Formularen er for stor til at blive gemt som kladde.',
     'draftQuota'            => 'Der er for mange gemte kladder lige nu. Prøv igen senere.',
+    'requestTooLarge'       => 'Formularen er for stor til at blive sendt.',
+    'tooManyRequests'       => 'For mange forsøg. Vent et minut, og prøv igen.',
+    'submitAgain'           => 'Din indsendelse kunne ikke gennemføres. Send igen — den bliver ikke dubleret.',
+    'submitProcessing'      => 'Din indsendelse behandles stadig. Udfyld ikke formularen igen — klik på Send igen om et par minutter; der oprettes ingen dublet.',
+    'submitUnconfirmed'     => 'Vi kunne ikke bekræfte din indsendelse. Arrangøren er underrettet.',
 ];

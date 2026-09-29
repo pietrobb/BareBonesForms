@@ -51,7 +51,7 @@ function msg(string $key, array $params = []): string {
 $isCli = php_sapi_name() === 'cli';
 
 // ─── Stateless smoke auth; never consume management cookies ─────
-$smokeToken = $config['smoke_token'] ?? '';
+$smokeToken = bbf_smoke_token($config) ?? ''; // shorter than 16 characters = not a credential (off)
 function smokeTokenValid($token): bool { return is_string($token) && preg_match('/\A[\x21-\x7e]{1,512}\z/D', $token) === 1; }
 $filterForm = $isCli ? (array_values(array_filter(array_slice($argv ?? [], 1), static fn($v) => $v !== '--live'))[0] ?? null) : ($_GET['form'] ?? null);
 $isLive = $isCli ? in_array('--live', $argv ?? [], true) : !empty($_GET['live']);
@@ -87,7 +87,7 @@ if (!$isCli) {
 // Header-only credentials need no browser CSRF exchange. Shutdown records unfinished failures.
 bbf_access_begin($auditConfig, $principal, $action);
 if ($filterForm !== null && !is_string($filterForm)) { http_response_code(400); exit('Invalid form selector.'); }
-if ($isLive && !smokeTokenValid($smokeToken)) { http_response_code(400); if ($isCli) { fwrite(STDERR, "Live mode requires a valid smoke_token.\n"); exit(1); } exit('Invalid smoke credential configuration.'); }
+if ($isLive && !smokeTokenValid($smokeToken)) { http_response_code(400); if ($isCli) { fwrite(STDERR, "Live mode requires a valid smoke_token (at least 16 printable characters).\n"); exit(1); } exit('Invalid smoke credential configuration.'); }
 
 // ─── Live mode: require smoke_email ─────────────────────────────
 $smokeEmail  = $config['smoke_email'] ?? '';
@@ -182,6 +182,7 @@ function smokePost(string $url, array $data, string $token): array {
 }
 
 // ─── Test data generator ────────────────────────────────────────
+const SMOKE_SAMPLE_MAX = 5000; // longest generated value: "(a{1000}){1000}" or minlength 10^9 must not exhaust memory
 /** First candidate that satisfies the field's pattern and length rules, checked like submit.php does. */
 function smokeTextValue(array $field, array $preferred = []): string {
     $min = (int)($field['minlength'] ?? 0);
@@ -189,7 +190,7 @@ function smokeTextValue(array $field, array $preferred = []): string {
     $pattern = is_string($field['pattern'] ?? null) ? $field['pattern'] : '';
     $candidates = $preferred;
     if (is_string($field['placeholder'] ?? null) && $field['placeholder'] !== '') $candidates[] = $field['placeholder'];
-    array_push($candidates, 'Test Value', str_repeat('Test data. ', (int)ceil(max($min, 11) / 11)), 'REF-A1B2C3', 'test', 'ABC123');
+    array_push($candidates, 'Test Value', str_repeat('Test data. ', (int)ceil(min(max($min, 11), SMOKE_SAMPLE_MAX) / 11)), 'REF-A1B2C3', 'test', 'ABC123');
     foreach (range(1, 20) as $length) $candidates[] = substr(str_repeat('1234567890', 2), 0, $length);
     // A value built from the pattern itself, so a placeholder like "e.g. SK1234" is not needed to pass "^[A-Z]{2}\d{4}$".
     if ($pattern !== '') foreach (['min', 'more'] as $reps) {
@@ -198,6 +199,7 @@ function smokeTextValue(array $field, array $preferred = []): string {
     }
     $regex = $pattern !== '' ? bbfFieldPatternRegex($pattern) : null;
     foreach ($candidates as $value) {
+        if ($value === '') continue; // "^a*$" allows "", but a required field would then fail as empty
         $length = function_exists('mb_strlen') ? mb_strlen($value) : strlen($value);
         if ($length < $min || ($max > 0 && $length > $max)) continue;
         if ($pattern !== '' && ($regex === null || @preg_match($regex, $value) !== 1)) continue;
@@ -235,7 +237,9 @@ function smokePatternSequence(string $p, int &$i, string $reps): ?string {
         $atom = smokePatternAtom($p, $i, $reps);
         if ($atom === null) { $ok = false; $atom = ''; }
         [$minRep, $moreRep] = smokePatternQuantifier($p, $i);
-        $out .= str_repeat($atom, $reps === 'min' ? $minRep : $moreRep);
+        $count = $reps === 'min' ? $minRep : $moreRep;
+        if ($atom !== '' && $count > intdiv(SMOKE_SAMPLE_MAX - strlen($out), strlen($atom))) { $ok = false; continue; }
+        if ($ok) $out .= str_repeat($atom, $count);
     }
     return $ok ? $out : null;
 }
@@ -310,7 +314,21 @@ function smokePatternPick(string $fragment): ?string {
     return null;
 }
 
-function generateSmokeData(array $form, string $emailOverride = ''): array {
+/** Value of the first option that is not empty ("Choose…" placeholders have value ""), so a required choice passes. */
+function smokeFirstOption(array $options): string {
+    foreach ($options as $opt) {
+        $value = is_array($opt) ? ($opt['value'] ?? '') : $opt;
+        if (is_scalar($value) && (string)$value !== '') return (string)$value;
+    }
+    return '';
+}
+
+/**
+ * $problems collects fields that cannot get a safe value. In live mode an email field gets smoke_email only: when
+ * smoke_email does not match the field's pattern, nothing is made up (a generated "a@firma.sk" is a real domain
+ * and would receive the confirmation email), the field is reported instead.
+ */
+function generateSmokeData(array $form, string $emailOverride = '', array &$problems = []): array {
     $data   = [];
     $fields = smokeFlat($form['fields'] ?? []);
     $email  = $emailOverride ?: 'smoketest@example.com';
@@ -322,7 +340,15 @@ function generateSmokeData(array $form, string $emailOverride = ''): array {
 
         switch ($type) {
             case 'text':     $data[$name] = smokeTextValue($field); break;
-            case 'email':    $data[$name] = empty($field['pattern']) ? $email : smokeTextValue($field, [$email]); break;
+            case 'email':
+                if (empty($field['pattern'])) { $data[$name] = $email; break; }
+                $value = smokeTextValue($field, [$email]);
+                if ($emailOverride !== '' && $value !== $email) {
+                    $problems[] = "smoke_email does not match the pattern of email field \"$name\"; not submitted, so no email goes to a made-up address. Set smoke_email to your address that matches it.";
+                    $value = $email;
+                }
+                $data[$name] = $value;
+                break;
             case 'tel':      $data[$name] = empty($field['pattern']) ? '+421900123456' : smokeTextValue($field, ['+421900123456']); break;
             case 'url':      $data[$name] = 'https://example.com'; break;
             case 'number':
@@ -332,22 +358,16 @@ function generateSmokeData(array $form, string $emailOverride = ''): array {
                 break;
             case 'date':     $data[$name] = $field['min'] ?? date('Y-m-d'); break;
             case 'textarea':
-                $minLen = $field['minlength'] ?? 5;
-                $data[$name] = str_repeat('Smoke test data. ', (int)ceil(max($minLen, 10) / 18));
+                $minLen = (int)($field['minlength'] ?? 5);
+                $data[$name] = str_repeat('Smoke test data. ', (int)ceil(min(max($minLen, 10), SMOKE_SAMPLE_MAX) / 17));
                 if (!empty($field['pattern'])) $data[$name] = smokeTextValue($field, [$data[$name]]);
                 break;
             case 'select':
             case 'radio':
-                if (!empty($field['options'])) {
-                    $opt = $field['options'][0];
-                    $data[$name] = is_array($opt) ? ($opt['value'] ?? '') : $opt;
-                }
+                if (!empty($field['options']) && is_array($field['options'])) $data[$name] = smokeFirstOption($field['options']);
                 break;
             case 'checkbox':
-                if (!empty($field['options'])) {
-                    $opt = $field['options'][0];
-                    $data[$name] = [is_array($opt) ? ($opt['value'] ?? '') : $opt];
-                }
+                if (!empty($field['options']) && is_array($field['options'])) $data[$name] = [smokeFirstOption($field['options'])];
                 break;
             case 'rating':   $data[$name] = '3'; break;
             case 'hidden':   $data[$name] = $field['value'] ?? 'test'; break;
@@ -380,12 +400,10 @@ function generateSmokeData(array $form, string $emailOverride = ''): array {
         foreach ($templates[$field['use']] as $tplField) {
             $prefName = $field['prefix'] . $tplField['name'];
             $tplType  = $tplField['type'] ?? 'text';
-            if (in_array($tplType, ['radio', 'select']) && !empty($tplField['options'])) {
-                $opt = $tplField['options'][0];
-                $data[$prefName] = is_array($opt) ? ($opt['value'] ?? '') : $opt;
-            } elseif ($tplType === 'checkbox' && !empty($tplField['options'])) {
-                $opt = $tplField['options'][0];
-                $data[$prefName] = [is_array($opt) ? ($opt['value'] ?? '') : $opt];
+            if (in_array($tplType, ['radio', 'select']) && !empty($tplField['options']) && is_array($tplField['options'])) {
+                $data[$prefName] = smokeFirstOption($tplField['options']);
+            } elseif ($tplType === 'checkbox' && !empty($tplField['options']) && is_array($tplField['options'])) {
+                $data[$prefName] = [smokeFirstOption($tplField['options'])];
             } elseif ($tplType === 'text')   { $data[$prefName] = 'Test'; }
             elseif   ($tplType === 'number') { $data[$prefName] = '1'; }
         }
@@ -446,10 +464,15 @@ foreach ($formFiles as $file) {
     $flatFields = flattenFields($form['fields']);
 
     // 4. Generate valid test data (in live mode, email fields → smoke_email)
-    $testData = generateSmokeData($form, $isLive ? $smokeEmail : '');
+    $dataProblems = [];
+    $testData = generateSmokeData($form, $isLive ? $smokeEmail : '', $dataProblems);
     $result['fields_tested'] = count($testData);
 
-    if ($isLive) {
+    if ($isLive && $dataProblems !== []) {
+        $result['status'] = 'fail';
+        $result['errors'] = $dataProblems;
+        $allPassed = false;
+    } elseif ($isLive) {
         // ── Live mode: POST to submit.php (full pipeline) ───────
         $submitUrl = "$baseUrl/submit.php?form=" . rawurlencode($formId);
         $response  = smokePost($submitUrl, $testData, $smokeToken);

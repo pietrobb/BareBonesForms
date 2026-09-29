@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Progression enregistrée introuvable. Vérifiez le code de reprise.',
     'draftTooLarge'         => 'Le formulaire est trop volumineux pour être enregistré comme brouillon.',
     'draftQuota'            => 'Trop de brouillons enregistrés pour le moment. Veuillez réessayer plus tard.',
+    'requestTooLarge'       => 'Le formulaire est trop volumineux pour être envoyé.',
+    'tooManyRequests'       => 'Trop de tentatives. Veuillez patienter une minute et réessayer.',
+    'submitAgain'           => 'Votre envoi n\'a pas pu aboutir. Veuillez l\'envoyer à nouveau — aucun doublon ne sera créé.',
+    'submitProcessing'      => 'Votre envoi est encore en cours de traitement. Ne remplissez pas à nouveau le formulaire — cliquez de nouveau sur Envoyer dans quelques minutes ; aucun doublon ne sera créé.',
+    'submitUnconfirmed'     => 'Nous n\'avons pas pu confirmer votre envoi. L\'organisateur a été prévenu.',
 ];

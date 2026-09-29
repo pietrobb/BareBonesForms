@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Kaydedilen ilerleme bulunamadı. Devam kodunu kontrol edin.',
     'draftTooLarge'         => 'Form, taslak olarak kaydedilemeyecek kadar büyük.',
     'draftQuota'            => 'Şu anda çok fazla kayıtlı taslak var. Lütfen daha sonra tekrar deneyin.',
+    'requestTooLarge'       => 'Form gönderilemeyecek kadar büyük.',
+    'tooManyRequests'       => 'Çok fazla deneme. Lütfen bir dakika bekleyip tekrar deneyin.',
+    'submitAgain'           => 'Gönderiminiz tamamlanamadı. Lütfen tekrar gönderin — yinelenmeyecek.',
+    'submitProcessing'      => 'Gönderiminiz hâlâ işleniyor. Formu yeniden doldurmayın — birkaç dakika sonra Gönder\'e tekrar basın; yinelenen kayıt oluşmaz.',
+    'submitUnconfirmed'     => 'Gönderiminizi doğrulayamadık. Düzenleyiciye bildirildi.',
 ];

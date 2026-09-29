@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'A mentett előrehaladás nem található. Ellenőrizze a folytatási kódot.',
     'draftTooLarge'         => 'Az űrlap túl nagy ahhoz, hogy piszkozatként menthető legyen.',
     'draftQuota'            => 'Jelenleg túl sok piszkozat van mentve. Próbálja újra később.',
+    'requestTooLarge'       => 'Az űrlap túl nagy az elküldéshez.',
+    'tooManyRequests'       => 'Túl sok próbálkozás. Várjon egy percet, és próbálja újra.',
+    'submitAgain'           => 'A beküldést nem sikerült befejezni. Küldje be újra — nem jön létre duplikátum.',
+    'submitProcessing'      => 'A beküldése még feldolgozás alatt áll. Ne töltse ki újra az űrlapot — néhány perc múlva kattintson ismét a Küldés gombra; nem jön létre duplikátum.',
+    'submitUnconfirmed'     => 'Nem tudtuk megerősíteni a beküldését. A szervezőt értesítettük.',
 ];

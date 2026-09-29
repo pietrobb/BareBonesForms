@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Progresul salvat nu a fost găsit. Verificați codul de reluare.',
     'draftTooLarge'         => 'Formularul este prea mare pentru a fi salvat ca ciornă.',
     'draftQuota'            => 'Prea multe ciorne salvate în acest moment. Încercați din nou mai târziu.',
+    'requestTooLarge'       => 'Formularul este prea mare pentru a fi trimis.',
+    'tooManyRequests'       => 'Prea multe încercări. Așteptați un minut și încercați din nou.',
+    'submitAgain'           => 'Trimiterea dvs. nu a putut fi finalizată. Trimiteți din nou — nu va fi duplicată.',
+    'submitProcessing'      => 'Trimiterea dvs. este încă în curs de procesare. Nu completați din nou formularul — apăsați din nou Trimite peste câteva minute; nu se va crea un duplicat.',
+    'submitUnconfirmed'     => 'Nu am putut confirma trimiterea dvs. Organizatorul a fost anunțat.',
 ];

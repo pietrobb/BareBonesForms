@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Salvestatud edenemist ei leitud. Kontrollige jätkamiskoodi.',
     'draftTooLarge'         => 'Vorm on mustandina salvestamiseks liiga suur.',
     'draftQuota'            => 'Praegu on salvestatud liiga palju mustandeid. Proovige hiljem uuesti.',
+    'requestTooLarge'       => 'Vorm on saatmiseks liiga suur.',
+    'tooManyRequests'       => 'Liiga palju katseid. Oodake minut ja proovige uuesti.',
+    'submitAgain'           => 'Teie saadetist ei õnnestunud lõpule viia. Saatke uuesti — duplikaati ei teki.',
+    'submitProcessing'      => 'Teie saadetist töödeldakse veel. Ärge täitke vormi uuesti — vajutage mõne minuti pärast uuesti Saada; duplikaati ei teki.',
+    'submitUnconfirmed'     => 'Me ei saanud teie saadetist kinnitada. Korraldajat on teavitatud.',
 ];

@@ -177,13 +177,13 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 
 ### One command (SSH)
 
-Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:
+Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Download the release ZIP and `SHA256SUMS` from the [GitHub release page](https://github.com/pietrobb/BareBonesForms/releases), upload the ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.4.zip
+php maintenance.php upgrade --package=../barebonesforms-v2.1.5.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
 ```
 
-This is a dry run — nothing changes. Once 2.1.3 or newer is installed, every later upgrade is planned and applied by the upgrader inside the new package (the result says `"upgrader": "package X.Y.Z"`), so fixes to the upgrade itself already apply to it. It verifies every file of the package, runs the new version's smoke test against **your** forms and templates, checks the new PHP files for syntax errors, and prints:
+This is a dry run — nothing changes. `--checksum` proves the ZIP is the published release (a wrong ZIP is refused); `gh attestation verify barebonesforms-vX.Y.Z.zip -R pietrobb/BareBonesForms` proves the same with the signed build provenance. **Only a verified package's code runs in the dry run.** Then the upgrader inside the new package plans and applies the upgrade (from 2.1.3 on; the result says `"upgrader": "package X.Y.Z"`), so fixes to the upgrade itself already apply to it, and the new version's smoke test runs against **your** forms and templates. Without `--checksum` (since 2.1.5) the dry run only checks the files against the package's own manifest and their PHP syntax, runs none of the new code (`"check": {"status": "skipped"}`) and says how to verify; `--apply` then uses the installed upgrader. For a package you built yourself, `--trust-package` has the effect of `--checksum`. PHP notices printed along the way (e.g. `display_errors=On` on XAMPP) are listed under `php_messages` and do not fail the upgrade. The dry run checks the new PHP files for syntax errors and prints:
 
 - the installed and the new version, how many files will be added or replaced, and which obsolete files will be removed;
 - `keep_yours`: sample forms and email templates you changed — they stay as they are (untouched ones are updated);
@@ -197,10 +197,11 @@ If it looks right, run the printed command with `--apply --confirm=<digest>`. Th
 
 To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup=<folder printed by the upgrade>` (dry run first, then `--apply --confirm=…`).
 
-**Upgrading from a version before 2.1.0** (its `maintenance.php` does not know `upgrade` yet): unzip the new release next to the installation and let the new code do it — same checks, backup and rollback:
+**Upgrading from a version before 2.1.3** (before 2.1.0 `maintenance.php` does not know `upgrade` yet; 2.1.0–2.1.2 run their own, older upgrader instead of the one in the package): check the ZIP against `SHA256SUMS`, unzip it next to the installation and let the new code do it — same checks, backup and rollback:
 
 ```bash
-unzip barebonesforms-v2.1.4.zip            # creates ./barebonesforms
+sha256sum -c SHA256SUMS --ignore-missing   # or compare the ZIP's SHA-256 by hand
+unzip barebonesforms-v2.1.5.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 
@@ -212,7 +213,7 @@ Needs the PHP `zip` extension to read the ZIP; without it, unzip the package and
 
 ### FTP only
 
-Download **`barebonesforms-vX.Y.Z-upgrade.zip`** from the release, not the full ZIP. It contains only code plus `check.php` — no `config.php`, `.htaccess`, sample forms, email templates, docs or demo pages — so uploading it over your installation cannot overwrite anything you edited. The release's `.htaccess` rules come as `.htaccess.dist`: compare it with your `.htaccess` and copy new rules over by hand. Files removed from a release stay behind; that is harmless. Then open `check.php` to confirm the new version and that protected files are still blocked, and delete `check.php` again. The version is also shown under the forms list in `viewer.php`.
+Download **`barebonesforms-vX.Y.Z-upgrade.zip`** from the release, not the full ZIP. It contains only code plus `check.php` and `CHANGELOG.md` (read its **Breaking** items; your web server should not serve `*.md`, see `.htaccess`) — no `config.php`, `.htaccess`, sample forms, email templates, docs or demo pages — so uploading it over your installation cannot overwrite anything you edited. The release's `.htaccess` rules come as `.htaccess.dist`: compare it with your `.htaccess` and copy new rules over by hand. Files removed from a release stay behind; that is harmless. Then open `check.php` to confirm the new version and that protected files are still blocked, and delete `check.php` again. The version is also shown under the forms list in `viewer.php`.
 
 ### By hand
 
@@ -735,7 +736,9 @@ Use `lang/en.js` and `lang/en.php` as reference — they contain every key with 
 
 ## Submissions API
 
-Examples use `&token=` for brevity. In scripts, prefer the header `X-BBF-Token: YOUR_TOKEN` so the token doesn't end up in server logs or browser history.
+Examples use `&token=` for brevity. In scripts, prefer the header `X-BBF-Token: YOUR_TOKEN` so the token doesn't end up in server logs or browser history. `?token=` works only for `submissions.php`, and a browser ignores it when the request comes from another site (`Sec-Fetch-Site: cross-site`). `viewer.php`, `editor.php` and `sandbox.php` never accept a token in the URL — sign in with their form.
+
+**Sign-in limit.** After 10 wrong tokens from one address within 15 minutes, that address gets one token check every 2 seconds (right or wrong); other attempts are answered `429` at once with `Retry-After`. An already signed-in browser is not affected. Behind Cloudflare or another proxy, list its ranges in `trusted_proxies`, otherwise all visitors share the proxy address for this limit (`check.php` warns about it).
 
 ```bash
 # List all (JSON, paginated)
@@ -939,7 +942,7 @@ A failed email, webhook or action is retried automatically with a growing delay.
 php maintenance.php deliveries-retry   # failed deliveries whose retry is due
 ```
 
-Its report counts `skipped_old`: delivery records untouched for more than 7 days are not read, because they have no automatic retry left — a `note` says so; retry such a delivery by hand in the viewer.
+Its report counts `skipped_old`: delivery records older than 7 days that still have an undelivered delivery. They have no automatic retry left — a `note` says so; retry such a delivery by hand in the viewer. Fully delivered old records are not counted.
 
 `selfcheck` also tells you once when a newer BareBonesForms release is out ([details](#upgrading); `'update_check' => false` turns it off).
 

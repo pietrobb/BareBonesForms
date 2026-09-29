@@ -81,21 +81,27 @@ try {
     auth_check(bbf_auth_throttle($c, true) === true, 'a different /64 is a different client');
     // ─── While blocked, tokens are checked one per interval (no instant 200/429 oracle) ───
     $_SERVER['REMOTE_ADDR'] = '2001:db8:1:2::1';
-    auth_check(bbf_auth_throttle_wait($c) === 0.0, 'a client below the limit is checked without waiting');
+    auth_check(bbf_auth_throttle_slot($c) === 0.0, 'a client below the limit is checked without waiting');
     $_SERVER['REMOTE_ADDR'] = '2001:db8:1:1::1';
+    // Review 2.1.4: no queue and no sleeping. The first attempt claims the free check; the rest learn the exact wait.
+    $start = microtime(true);
     $waits = [];
-    for ($i = 0; $i < 6; $i++) $waits[] = bbf_auth_throttle_wait($c);
-    $spacing = true;
-    for ($i = 0; $i < 5; $i++) $spacing = $spacing && abs($waits[$i] - BBF_AUTH_BLOCKED_INTERVAL * ($i + 1)) < 0.5;
-    auth_check($spacing, 'a blocked client gets one check per ' . BBF_AUTH_BLOCKED_INTERVAL . ' s: ' . json_encode(array_map(fn($w) => $w === null ? null : round($w, 1), $waits)));
-    auth_check($waits[5] === null, 'a blocked client whose queue exceeds ' . BBF_AUTH_BLOCKED_QUEUE . ' s is refused without a check');
+    for ($i = 0; $i < 50; $i++) $waits[] = bbf_auth_throttle_slot($c);
+    auth_check(microtime(true) - $start < 1, 'deciding 50 blocked attempts takes no waiting');
+    auth_check($waits[0] === 0.0, 'a blocked client with a free check is checked now');
+    auth_check(count(array_filter(array_slice($waits, 1), fn($w) => $w > 0 && $w <= BBF_AUTH_BLOCKED_INTERVAL)) === 49,
+        'every other attempt gets the remaining wait (<= ' . BBF_AUTH_BLOCKED_INTERVAL . ' s), never a longer queue');
+    $state = json_decode(file_get_contents("$logs/.auth_failures.json"), true);
+    $state['slots'] = array_map(fn($s) => microtime(true) - 0.1, $state['slots']); // the interval has passed
+    file_put_contents("$logs/.auth_failures.json", json_encode($state));
+    auth_check(bbf_auth_throttle_slot($c) === 0.0, 'after the interval the next attempt (e.g. the right token) is checked at once');
     $_SERVER['REMOTE_ADDR'] = '2001:db8:1:2::1';
-    auth_check(bbf_auth_throttle_wait($c) === 0.0, 'another client is not slowed by the blocked one');
+    auth_check(bbf_auth_throttle_slot($c) === 0.0, 'another client is not slowed by the blocked one');
 
     // A 2.1.2 file (a bare failures map) is still read.
     file_put_contents("$logs/.auth_failures.json", json_encode([hash('sha256', '198.51.100.5') => array_fill(0, 10, time() - 5)]));
     $_SERVER['REMOTE_ADDR'] = '198.51.100.5';
-    auth_check(bbf_auth_throttle($c, true) === false && bbf_auth_throttle_wait($c) > 0, 'the 2.1.2 failure file format is still honoured');
+    auth_check(bbf_auth_throttle($c, true) === false && bbf_auth_throttle_slot($c) === 0.0 && bbf_auth_throttle_slot($c) > 0, 'the 2.1.2 failure file format is still honoured');
 
     $state = [];
     for ($i = 0; $i < BBF_AUTH_MAX_CLIENTS + 50; $i++) $state[hash('sha256', "c$i")] = [time() - 5];
@@ -128,11 +134,19 @@ try {
     auth_check(!file_exists("$audit.1") && str_contains((string)file_get_contents("$logs/access-audit.1.php"), 'legacy'), 'when access-audit.1.php exists the old file is removed, never overwriting it');
 
     // ─── Audit redaction ignores tokens too short to be credentials ───
-    $rc = $ac + ['api_token' => str_repeat('k', 24), 'access_tokens' => [$token('tiny', 'co')], 'smoke_token' => 'sm'];
-    bbf_audit_write($rc, $principal, 'viewer_list', 'contact', ['sm-1', 'kkkkkkkkkkkkkkkkkkkkkkkk'], 'allowed', 'completed', 1);
+    $rc = $ac + ['api_token' => str_repeat('k', 24), 'access_tokens' => [$token('tiny', 'co')], 'smoke_token' => 'nt'];
+    bbf_audit_write($rc, $principal, 'viewer_list', 'contact', ['smoke-token-long-0123-1', 'kkkkkkkkkkkkkkkkkkkkkkkk'], 'allowed', 'completed', 1);
     $last = json_decode(trim(array_slice(explode("\n", trim((string)file_get_contents($audit))), -1)[0]), true);
-    auth_check(($last['form'] ?? '') === 'contact', 'a 2-character access token does not mangle "contact" in the audit log');
-    auth_check(($last['submission_ids'] ?? []) === ['[redacted]-1', '[redacted]'], 'api_token and smoke_token (any length) are still redacted');
+    auth_check(($last['form'] ?? '') === 'contact', 'a 2-character access token or smoke_token ("nt") does not mangle "contact" in the audit log');
+    auth_check(($last['submission_ids'] ?? []) === ['smoke-token-long-0123-1', '[redacted]'], 'api_token is still redacted');
+    $rc['smoke_token'] = 'smoke-token-long-0123';
+    bbf_audit_write($rc, $principal, 'viewer_list', 'contact', ['smoke-token-long-0123-1'], 'allowed', 'completed', 1);
+    $last = json_decode(trim(array_slice(explode("\n", trim((string)file_get_contents($audit))), -1)[0]), true);
+    auth_check(($last['submission_ids'] ?? []) === ['[redacted]-1'], 'a usable smoke_token (16+ characters) is redacted');
+    auth_check(bbf_smoke_token(['smoke_token' => 'nt']) === null && bbf_smoke_token(['smoke_token' => 'smoke-token-long-0123']) === 'smoke-token-long-0123'
+        && bbf_smoke_token(['smoke_token' => str_repeat('a', 15) . ' ']) === null, 'a smoke_token shorter than 16 printable characters is not a credential');
+    auth_check(str_contains(implode(' ', array_column(bbf_auth_config_problems(['api_token' => str_repeat('k', 24), 'smoke_token' => 'short']), 'message')), 'smoke_token'),
+        'check.php/selfcheck warn about an unusable smoke_token');
 } finally {
     foreach (["$logs/access-audit.php", "$logs/access-audit.php.1", "$logs/access-audit.1.php"] as $f) @unlink($f);
     @unlink("$logs/.auth_failures.json");

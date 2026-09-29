@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Kemajuan yang disimpan tidak ditemukan. Periksa kode lanjutan.',
     'draftTooLarge'         => 'Formulir terlalu besar untuk disimpan sebagai draf.',
     'draftQuota'            => 'Terlalu banyak draf yang disimpan saat ini. Coba lagi nanti.',
+    'requestTooLarge'       => 'Formulir terlalu besar untuk dikirim.',
+    'tooManyRequests'       => 'Terlalu banyak percobaan. Silakan tunggu satu menit lalu coba lagi.',
+    'submitAgain'           => 'Kiriman Anda tidak dapat diselesaikan. Silakan kirim lagi — tidak akan terduplikasi.',
+    'submitProcessing'      => 'Kiriman Anda masih diproses. Jangan isi formulir lagi — tekan Kirim sekali lagi dalam beberapa menit; tidak akan terjadi duplikat.',
+    'submitUnconfirmed'     => 'Kami tidak dapat mengonfirmasi kiriman Anda. Penyelenggara telah diberi tahu.',
 ];

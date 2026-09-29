@@ -1407,11 +1407,18 @@
                             let protocol = '';
                             try { protocol = new URL(result.redirect, 'https://relative.invalid/').protocol; } catch (e) { /* invalid URL: show success instead */ }
                             if (protocol === 'https:' || protocol === 'http:') {
-                                // "Back" from the thank-you page restores this page from the back/forward cache with the
-                                // button still disabled: re-enable it and say the submission went through.
+                                // "Back" from the thank-you page restores this page from the back/forward cache, still
+                                // filled in and with the button disabled. Clear the stored answers (one click would
+                                // otherwise store them again under the new key), re-enable it and say it went through.
                                 const restore = event => {
                                     if (!event.persisted) return;
                                     window.removeEventListener('pageshow', restore);
+                                    el.reset();
+                                    this._resetCustomFields(el);
+                                    this._stabilizeOptionConditions(el);
+                                    this._applyConditions(el, allFlat, false);
+                                    this._clearErrors(el);
+                                    el._bbfSubmitKey = newSubmitKey();
                                     el._bbfSubmitting = false;
                                     btn.disabled = false;
                                     btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);

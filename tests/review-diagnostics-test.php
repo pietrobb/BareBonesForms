@@ -470,7 +470,39 @@ PHP);
         ], JSON_THROW_ON_ERROR));
         [$exit, $output] = diagnostic_cli($root, ['pattern_diag'], $streams);
         diagnostic_check($exit === 0 && str_contains($output, '1/1 forms passed'), "$mode dry smoke builds values from field patterns, not only from placeholders");
+        // Review 2.1.4: live mode never makes up an address in a real domain ("a@firma.sk") for a pattern smoke_email does not match.
+        diagnostic_config($root, $config);
+        $before = diagnostic_count($root . '/logs/mock-requests');
+        [$exit, $output] = diagnostic_cli($root, ['pattern_diag', '--live'], $streams);
+        diagnostic_check($exit !== 0 && str_contains($output, 'smoke_email does not match') && !str_contains($output, '@firma.sk')
+            && diagnostic_count($root . '/logs/mock-requests') === $before, "$mode live smoke refuses to submit when smoke_email does not match an email pattern");
+        diagnostic_config($root, $local);
         unlink($root . '/forms/pattern_diag.json');
+        // Review 2.1.4: an extreme pattern or minlength cannot exhaust memory; a required field never gets "".
+        file_put_contents($root . '/forms/extreme_diag.json', json_encode([
+            'id' => 'extreme_diag', 'schema_version' => 1, 'name' => 'Extreme smoke form',
+            'fields' => [
+                ['name' => 'huge', 'type' => 'text', 'label' => 'Huge', 'required' => true, 'pattern' => '^((a{1000}){1000}){1000}$'],
+                ['name' => 'long', 'type' => 'textarea', 'label' => 'Long', 'required' => true, 'minlength' => 1000000000],
+            ],
+            'on_submit' => ['store' => false],
+        ], JSON_THROW_ON_ERROR));
+        [$exit, $output] = diagnostic_cli($root, ['extreme_diag'], $streams);
+        diagnostic_check(str_contains($output, 'extreme_diag') && !str_contains($output, 'Allowed memory size') && !str_contains($output, 'Fatal'),
+            "$mode extreme pattern/minlength is reported, memory is not exhausted");
+        unlink($root . '/forms/extreme_diag.json');
+        file_put_contents($root . '/forms/empty_diag.json', json_encode([
+            'id' => 'empty_diag', 'schema_version' => 1, 'name' => 'Empty-value smoke form',
+            'fields' => [
+                ['name' => 'star', 'type' => 'text', 'label' => 'Star', 'required' => true, 'pattern' => '^a*$'],
+                ['name' => 'pick', 'type' => 'select', 'label' => 'Pick', 'required' => true, 'options' => [['value' => '', 'label' => 'Choose…'], ['value' => 'x', 'label' => 'X']]],
+                ['name' => 'tick', 'type' => 'radio', 'label' => 'Tick', 'required' => true, 'options' => ['', 'yes']],
+            ],
+            'on_submit' => ['store' => false],
+        ], JSON_THROW_ON_ERROR));
+        [$exit, $output] = diagnostic_cli($root, ['empty_diag'], $streams);
+        diagnostic_check($exit === 0 && str_contains($output, '1/1 forms passed'), "$mode required fields never get an empty value (\"^a*\$\", \"Choose…\" option)");
+        unlink($root . '/forms/empty_diag.json');
 
         diagnostic_config($root, $config);
         $loads = diagnostic_count($root . '/logs/config-loads');

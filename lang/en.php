@@ -54,4 +54,9 @@ return [
     'draftNotFound'         => 'Saved progress was not found. Check the resume code.',
     'draftTooLarge'         => 'The form is too large to be saved as a draft.',
     'draftQuota'            => 'Too many saved drafts right now. Please try again later.',
+    'requestTooLarge'       => 'The form is too large to be sent.',
+    'tooManyRequests'       => 'Too many attempts. Please wait a minute and try again.',
+    'submitAgain'           => 'Your submission could not be completed. Please submit again — it will not be duplicated.',
+    'submitProcessing'      => 'Your submission is still being processed. Please don\'t fill in the form again — try Submit again in a few minutes; it will not create a duplicate.',
+    'submitUnconfirmed'     => 'We could not confirm your submission. The organiser has been notified.',
 ];

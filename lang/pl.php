@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Nie znaleziono zapisanego postępu. Sprawdź kod wznowienia.',
     'draftTooLarge'         => 'Formularz jest zbyt duży, aby zapisać go jako wersję roboczą.',
     'draftQuota'            => 'Obecnie zapisano zbyt wiele wersji roboczych. Spróbuj ponownie później.',
+    'requestTooLarge'       => 'Formularz jest zbyt duży, aby go wysłać.',
+    'tooManyRequests'       => 'Zbyt wiele prób. Odczekaj minutę i spróbuj ponownie.',
+    'submitAgain'           => 'Nie udało się ukończyć zgłoszenia. Wyślij ponownie — nie powstanie duplikat.',
+    'submitProcessing'      => 'Twoje zgłoszenie jest nadal przetwarzane. Nie wypełniaj formularza ponownie — za kilka minut kliknij Wyślij jeszcze raz; nie powstanie duplikat.',
+    'submitUnconfirmed'     => 'Nie udało się potwierdzić zgłoszenia. Organizator został powiadomiony.',
 ];

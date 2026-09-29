@@ -50,20 +50,38 @@ $insert = $pdo = null;
 // ─── Delivery retry scan reads only ledgers that can still retry ───
 $now = time();
 $job = ['key' => 'webhook:0', 'type' => 'webhook', 'payload_hash' => hash('sha256', 'x'), 'idempotency_key' => 'k', 'target' => 't', 'idempotent' => true];
-$ledgers = ['recent' => $now - 3600, 'fresh' => $now - 30, 'old' => $now - 8 * 86400];
+$ledgers = ['recent' => $now - 3600, 'fresh' => $now - 30, 'old' => $now - 8 * 86400, 'olddone' => $now - 9 * 86400];
 foreach ($ledgers as $id => $mtime) {
     $path = bbf_outbox_path(['submissions_dir' => $root . '/submissions'], 'contact', "bbf_$id");
     server_check(bbf_outbox_init($path, "contact:$id", [$job], 3, $now)['ok'] === true, "ledger $id created");
+    if ($id === 'olddone') {
+        $stored = json_decode(file_get_contents($path), true);
+        foreach ($stored['jobs'] as &$storedJob) $storedJob['state'] = 'succeeded';
+        unset($storedJob);
+        file_put_contents($path, json_encode($stored));
+    }
     touch($path, $mtime);
 }
 $report = bbf_delivery_retry_due(['submissions_dir' => $root . '/submissions', 'storage' => 'file'], 120, $now);
 server_check($report['ok'] === true && $report['checked'] === 1 && $report['attempted'] === 0,
-    'retry scan reads only the quiet ledger inside the 7-day horizon (skips in-flight and week-old ledgers by mtime)');
+    'retry scan retries only the quiet ledger inside the 7-day horizon (skips in-flight and week-old ledgers)');
 server_check($report['skipped_in_flight'] === 1 && $report['skipped_old'] === 1
-    && str_contains($report['note'] ?? '', '1 delivery record(s) untouched for more than 7 days were not checked'),
-    'the report counts skipped in-flight and week-old ledgers and says the old ones were not checked');
+    && str_contains($report['note'] ?? '', '1 delivery record(s) older than 7 days still have an undelivered delivery'),
+    'review 2.1.4: skipped_old counts only the old ledger with an undelivered job, not the delivered one');
+$doneOnly = bbf_outbox_path(['submissions_dir' => $root . '/submissions'], 'contact', 'bbf_old');
+$oldMtime = filemtime($doneOnly);
+$stored = json_decode(file_get_contents($doneOnly), true);
+foreach ($stored['jobs'] as &$storedJob) $storedJob['state'] = 'succeeded';
+unset($storedJob);
+file_put_contents($doneOnly, json_encode($stored));
+touch($doneOnly, $oldMtime + 1); // delivered by hand in the viewer: the mtime changes, the cached answer is refreshed
+$delivered = bbf_delivery_retry_due(['submissions_dir' => $root . '/submissions', 'storage' => 'file'], 120, $now);
+server_check($delivered['skipped_old'] === 0 && !isset($delivered['note']), 'once everything old is delivered, the note goes away');
+$cache = json_decode((string)file_get_contents($root . '/submissions/.delivery/.old-ledgers.json'), true);
+server_check(is_array($cache) && count($cache) === 2 && $cache['contact/bbf_old.json'] === [$oldMtime + 1, false],
+    'old ledgers are remembered by mtime, so they are read once, not on every cron run');
 $wide = bbf_delivery_retry_due(['submissions_dir' => $root . '/submissions', 'storage' => 'file'], 120, $now, 30 * 86400);
-server_check($wide['checked'] === 2 && $wide['skipped_old'] === 0 && !isset($wide['note']), 'a wider horizon includes the older ledger');
+server_check($wide['checked'] === 3 && $wide['skipped_old'] === 0 && !isset($wide['note']), 'a wider horizon includes the older ledgers');
 
 // ─── mail() envelope sender ───────────────────────────────────────
 $source = file_get_contents(dirname(__DIR__) . '/bbf_functions.php');
@@ -138,9 +156,18 @@ foreach (['javascript:alert(1)', ' JaVaScRiPt:alert(1)', 'java' . "\t" . 'script
 // add parameters, a fragment, a scheme or another host.
 server_check(bbf_redirect_url('/dakujeme?meno={{name}}', ['name' => 'Jana Nová']) === '/dakujeme?meno=Jana%20Nov%C3%A1', 'redirect value with a space is encoded, not dropped');
 server_check(bbf_redirect_url('/dakujeme?meno={{name}}', ['name' => 'A&admin=1#x']) === '/dakujeme?meno=A%26admin%3D1%23x', 'redirect value cannot add parameters or a fragment');
-server_check(bbf_redirect_url('{{name}}', ['name' => 'javascript:alert(1)']) === 'javascript%3Aalert%281%29', 'a whole-URL placeholder cannot supply a scheme');
-server_check(bbf_redirect_url('{{name}}', ['name' => '//evil.test/x']) === '%2F%2Fevil.test%2Fx', 'a whole-URL placeholder cannot supply another host');
+// 2.1.5: a target that is only a field is no redirect (the success message is shown), not a relative 404 or an open redirect.
+foreach (['{{name}}', ' {{ name }} ', '{{return-url}}'] as $tpl) {
+    foreach (['javascript:alert(1)', '//evil.test/x', 'https://example.test/back'] as $value) {
+        server_check(bbf_redirect_url($tpl, ['name' => $value, 'return-url' => $value]) === null, "whole-URL placeholder $tpl with $value is no redirect");
+    }
+}
+server_check(bbf_redirect_url('{{lang}}/thanks.html', ['lang' => 'sk']) === 'sk/thanks.html', 'a placeholder that is only part of the target still works');
 server_check(bbf_redirect_url('/t?n={{n}}', ['n' => 0]) === '/t?n=0', 'numeric zero is kept');
+// Checkbox values and missing values: never a literal "{{tags}}" in the URL.
+server_check(bbf_redirect_url('/t?tags={{tags}}&n={{name}}', ['tags' => ['a b', 'c&d'], 'name' => 'Ann']) === '/t?tags=a%20b%2Cc%26d&n=Ann', 'checkbox values are joined and encoded');
+server_check(bbf_redirect_url('/t?tags={{tags}}&x={{missing}}', ['tags' => []]) === '/t?tags=&x=', 'an empty checkbox or a missing field becomes empty');
+server_check(bbf_redirect_url('/t?ok={{ok}}', ['ok' => true]) === '/t?ok=1', 'a boolean becomes 1');
 
 // Cleanup.
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);

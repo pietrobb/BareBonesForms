@@ -209,7 +209,7 @@ $missionInventory = [
         'failure' => [['tests/review-drafts.test.js', 'newer resume response wins and stale callback cannot overwrite fields']],
     ],
     'G6.1 Nginx base path private files and sentinel verification' => [
-        'fixes' => [['.htaccess', '^/BBF_BASE/config'], ['README.md', 'does not replace these sentinel-file probes']],
+        'fixes' => [['.htaccess', 'location ^~ /BBF_BASE/config'], ['README.md', 'does not replace these sentinel-file probes']],
         'positive' => [['tests/review-acceptance-test.php', 'Nginx guidance protects config and backup variants']],
         'failure' => [['tests/review-acceptance-test.php', '(?:bak|swp|save|orig|old)']],
     ],
@@ -485,7 +485,7 @@ acceptance_check($schemaCode === 0 && $schemaError === ''
 
 $readme = acceptance_source($root, 'README.md'); $htaccess = acceptance_source($root, '.htaccess');
 acceptance_check(str_contains($htaccess, 'BBF_BASE/') && str_contains($htaccess, 'lang/.*\\.php$')
-    && str_contains($htaccess, '^/BBF_BASE/config') && str_contains($htaccess, '(?:bak|swp|save|orig|old)')
+    && str_contains($htaccess, 'location ^~ /BBF_BASE/config') && str_contains($htaccess, '(?:bak|swp|save|orig|old)')
     && str_contains($htaccess, 'Keep lang/*.js public') && str_contains($readme, 'every request must return 403 or 404')
     && str_contains($readme, 'does not replace these sentinel-file probes'),
     'Nginx guidance protects config and backup variants while preserving language JavaScript and requiring sentinel probes');
@@ -498,9 +498,17 @@ acceptance_check(preg_match('/<FilesMatch "\\\\\.md\$">\s*Require all denied\s*<
 // and the Nginx lines from the .htaccess comments and docs.html, for an installation under /bbf/.
 preg_match_all('/<FilesMatch "([^"]+)">\s*Require all denied/', $htaccess, $filesMatch);
 preg_match_all('/^RewriteRule (\S+) - \[F,L\]/m', $htaccess, $rewrite);
+// Nginx picks the longest ^~ prefix first (its nested "location ~ \.php$" applies inside it); otherwise the FIRST
+// matching regex wins. Review 2.1.4: simulate the worst paste position, the site's own "location ~ \.php$" (PHP runs)
+// before every BBF regex rule, so a .php path is protected only by a ^~ prefix.
 $nginxRules = static function (string $text): array {
+    preg_match_all('/^(?:# )?location \^~ (\S+) \{ (deny all;|location ~ \\\\\.php\$ \{ deny all; \}) \}/m', $text, $p);
     preg_match_all('/^(?:# )?location ~ "?(.+?)"? \{ deny all; \}/m', $text, $m);
-    return array_map(static fn(string $re): string => str_replace('BBF_BASE/', 'bbf/', $re), $m[1]);
+    return [
+        'prefix' => array_combine(array_map(static fn(string $s): string => str_replace('BBF_BASE/', 'bbf/', $s), $p[1]),
+            array_map(static fn(string $body): bool => $body !== 'deny all;', $p[2])), // true = deny only *.php inside
+        'regex' => array_merge(['\.php$' => false], array_fill_keys(array_map(static fn(string $re): string => str_replace('BBF_BASE/', 'bbf/', $re), $m[1]), true)),
+    ];
 };
 $apacheDenies = static function (string $path) use ($filesMatch, $rewrite): bool {
     foreach ($filesMatch[1] as $re) if (preg_match("%$re%", basename($path))) return true;
@@ -508,13 +516,19 @@ $apacheDenies = static function (string $path) use ($filesMatch, $rewrite): bool
     return false;
 };
 $nginxDenies = static function (array $rules, string $path): bool {
-    foreach ($rules as $re) if (preg_match("%$re%", "/bbf/$path")) return true;
+    $uri = "/bbf/$path";
+    $best = null;
+    foreach ($rules['prefix'] as $prefix => $phpOnly) if (str_starts_with($uri, $prefix) && ($best === null || strlen($prefix) > strlen($best))) $best = $prefix;
+    if ($best !== null) return !$rules['prefix'][$best] || str_ends_with($uri, '.php');
+    foreach ($rules['regex'] as $re => $deny) if (preg_match("%$re%", $uri)) return $deny;
     return false;
 };
 $libraries = array_map('basename', glob("$root/bbf_*.php"));
 $entryPoints = array_values(array_filter(array_map('basename', glob("$root/*.php")), static fn(string $f): bool => !str_starts_with($f, 'bbf_') && !str_starts_with($f, 'config')));
-$mustDeny = array_merge($libraries, ['config.php', 'config/google-ads-credentials.php', 'config/']);
-$mustServe = array_merge($entryPoints, ['bbf.js', 'lang/en.js']);
+$mustDeny = array_merge($libraries, ['config.php', 'config/google-ads-credentials.php', 'config/', 'config.example.php', 'lang/en.php',
+    'tests/review-ci-test.php', 'actions/example.php', 'submissions/contact/bbf_1.json', 'logs/access-audit.php', 'templates/notify.html',
+    'backups/x.zip', 'data/x.sqlite', 'forms/contact.json', 'README.md', 'bbf_functions.php.bak', '.env']);
+$mustServe = array_merge($entryPoints, ['bbf.js', 'bbf-analytics.js', 'lang/en.js', 'lang/sk.js']);
 foreach (['.htaccess' => null, 'Nginx in .htaccess' => $nginxRules($htaccess), 'Nginx in docs.html' => $nginxRules(acceptance_source($root, 'docs.html'))] as $label => $rules) {
     $denies = static fn(string $path): bool => $rules === null ? $apacheDenies($path) : $nginxDenies($rules, $path);
     $leaks = array_values(array_filter($mustDeny, static fn(string $path): bool => !$denies($path)));
@@ -536,8 +550,21 @@ $releaseYml = acceptance_source($root, '.github/workflows/release.yml');
 $releaseTop = strstr($releaseYml, "\njobs:", true);
 acceptance_check(str_contains($releaseTop, "permissions: {}") && !str_contains($releaseTop, 'write')
     && preg_match('/ci-gate:.*?permissions:\s*\n\s*actions: read\s*#[^\n]*\n\s*steps:/s', $releaseYml) === 1
-    && preg_match('/package:.*?needs: ci-gate.*?permissions:\s*\n\s*contents: write.*?id-token: write.*?attestations: write/s', $releaseYml) === 1,
-    'release.yml grants no workflow-wide token rights: the CI gate only reads Actions, only the package job can write');
+    && preg_match('/publish:.*?needs: package.*?permissions:\s*\n\s*contents: write.*?id-token: write.*?attestations: write/s', $releaseYml) === 1,
+    'release.yml grants no workflow-wide token rights: the CI gate only reads Actions, only the publish job can write');
+// Every job that holds a write permission may only use GitHub's own actions (third-party ones get github.token by default).
+$releaseJobs = array_values(array_filter(preg_split('/^  (?=[a-z][\w-]*:\s*$)/m', substr($releaseYml, strpos($releaseYml, "\njobs:") + 6)), 'trim'));
+$writerJobs = 0; $thirdPartyInWriter = [];
+foreach ($releaseJobs as $job) {
+    if (!preg_match('/^\s+[\w-]+: write\b/m', $job)) continue;
+    $writerJobs++;
+    preg_match_all('/uses:\s*([\w.-]+)\//', $job, $owners);
+    foreach ($owners[1] as $owner) if ($owner !== 'actions') $thirdPartyInWriter[] = $owner;
+}
+acceptance_check(count($releaseJobs) === 3 && $writerJobs === 1 && $thirdPartyInWriter === []
+    && preg_match('/package:.*?permissions:\s*\n\s*contents: read\s*\n\s*steps:.*?setup-php.*?upload-artifact/s', $releaseYml) === 1,
+    'release.yml: setup-php runs only in the read-only build job; the write-token job uses only actions/* ('
+        . implode(',', $thirdPartyInWriter) . ')');
 acceptance_check(str_contains($releaseYml, '$p !== "CHANGELOG.md"'), 'the upgrade ZIP keeps CHANGELOG.md, so the dry run still lists Breaking notes');
 acceptance_check(str_contains($workflow, 'run: php tools/release-history.php --check') && str_contains($workflow, 'fetch-depth: 0'),
     'CI fails while a published release is missing from tools/release-history.json');

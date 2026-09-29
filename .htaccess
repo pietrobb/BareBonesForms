@@ -3,12 +3,19 @@
 #
 # ─── Nginx equivalent (add to your server block) ──────────────
 # Replace BBF_BASE/ with the exact installation path relative to the domain root
-# (for /bbf use ^/bbf/; for a root install remove BBF_BASE/ and keep ^/).
-# location ~ ^/BBF_BASE/config { deny all; }
-# location ~ ^/BBF_BASE/bbf_[^/]*\.php$ { deny all; }
-# location ~ ^/BBF_BASE/(submissions|logs|templates|actions|backups|tests|data)/ { deny all; }
+# (for /bbf use bbf/; for a root install remove BBF_BASE/). The ^~ lines win over any
+# "location ~ \.php$" wherever you paste them; a plain regex rule placed after it would not.
+# location ^~ /BBF_BASE/config { deny all; }
+# location ^~ /BBF_BASE/bbf_ { deny all; }
+# location ^~ /BBF_BASE/submissions/ { deny all; }
+# location ^~ /BBF_BASE/logs/ { deny all; }
+# location ^~ /BBF_BASE/templates/ { deny all; }
+# location ^~ /BBF_BASE/actions/ { deny all; }
+# location ^~ /BBF_BASE/backups/ { deny all; }
+# location ^~ /BBF_BASE/tests/ { deny all; }
+# location ^~ /BBF_BASE/data/ { deny all; }
+# location ^~ /BBF_BASE/lang/ { location ~ \.php$ { deny all; } }
 # location ~ ^/BBF_BASE/forms/.*\.json$ { deny all; }
-# location ~ ^/BBF_BASE/lang/.*\.php$ { deny all; }
 # location ~ "(?:\.(?:bak|swp|save|orig|old)$|\.bak[-_]|~$|/#[^/]*#$)" { deny all; }
 # location ~ /\. { deny all; }
 # location ~ ^/BBF_BASE/.*\.md$ { deny all; }

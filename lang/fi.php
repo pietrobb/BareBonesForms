@@ -51,4 +51,9 @@ return [
     'draftNotFound'         => 'Tallennettua edistymistä ei löytynyt. Tarkista jatkamiskoodi.',
     'draftTooLarge'         => 'Lomake on liian suuri tallennettavaksi luonnoksena.',
     'draftQuota'            => 'Tallennettuja luonnoksia on juuri nyt liikaa. Yritä myöhemmin uudelleen.',
+    'requestTooLarge'       => 'Lomake on liian suuri lähetettäväksi.',
+    'tooManyRequests'       => 'Liian monta yritystä. Odota minuutti ja yritä uudelleen.',
+    'submitAgain'           => 'Lähetystäsi ei voitu viedä loppuun. Lähetä uudelleen — kaksoiskappaletta ei synny.',
+    'submitProcessing'      => 'Lähetystäsi käsitellään vielä. Älä täytä lomaketta uudelleen — napsauta Lähetä uudelleen muutaman minuutin kuluttua; kaksoiskappaletta ei synny.',
+    'submitUnconfirmed'     => 'Emme voineet vahvistaa lähetystäsi. Järjestäjälle on ilmoitettu.',
 ];

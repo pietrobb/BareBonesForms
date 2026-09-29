@@ -341,7 +341,8 @@ foreach ([
             same(true, $result['validation']['passed']);
             same([], $result['validation']['errors']);
             same(['choice' => $multi ? ['a', $resolved] : $resolved], $result['data']);
-            same('/preview/' . ($multi ? '{{choice}}' : $resolved), $result['on_submit_preview']['redirect']);
+            // 2.1.5: a multi-value answer is joined with "," and percent-encoded, never left as a literal {{choice}}.
+            same('/preview/' . ($multi ? 'a%2C' . $resolved : $resolved), $result['on_submit_preview']['redirect']);
         });
     }
 }
@@ -365,7 +366,7 @@ foreach ([
         same(false, $result['validation']['passed']);
         same([$field['name'] => $error], $result['validation']['errors']);
         same($data + ['choice' => ['a', 'Custom']], $result['data']);
-        same('/preview/{{choice}}', $result['on_submit_preview']['redirect']);
+        same('/preview/a%2CCustom', $result['on_submit_preview']['redirect']);
         same(['enabled' => true, 'backend' => 'file'], $result['on_submit_preview']['store']);
     });
 }
@@ -432,6 +433,50 @@ check('\s matches Unicode spaces like the browser (NBSP, U+2009, U+3000); \S exc
     rejects(['type' => 'text', 'pattern' => '^\w+$'], "a{$nbsp}b", 'invalidFormat');
     accepts(['type' => 'text', 'pattern' => '^a\\\\s$'], 'a\\s');
     same('/(*UTF)^\\\\s[\\/]$/', bbfFieldPatternRegex('^\\\\s[/]$'));
+});
+
+// ─── 2.1.5: review of 2.1.4 ─────────────────────────────────────
+check('\S inside a character class behaves like the browser ([^\S\r\n] = whitespace without line breaks, incl. NBSP)', function (): void {
+    $nbsp = "\u{00A0}";
+    foreach (["a{$nbsp}b", 'a b', "a\tb", "a\u{3000}b"] as $ok) accepts(['type' => 'text', 'pattern' => '^a[^\S\r\n]b$'], $ok);
+    foreach (["a\nb", "a\rb", 'axb'] as $bad) rejects(['type' => 'text', 'pattern' => '^a[^\S\r\n]b$'], $bad);
+    accepts(['type' => 'text', 'pattern' => '^[\S]+$'], 'Nová');
+    rejects(['type' => 'text', 'pattern' => '^[\S]+$'], "Jana{$nbsp}Nová");
+    accepts(['type' => 'text', 'pattern' => '^[\S ]+$'], 'Jana Nová');
+    rejects(['type' => 'text', 'pattern' => '^[\S ]+$'], "Jana{$nbsp}Nová");
+    rejects(['type' => 'text', 'pattern' => '^[^\S]$'], 'x');
+    accepts(['type' => 'text', 'pattern' => '^[^\S]$'], $nbsp);
+    accepts(['type' => 'text', 'pattern' => '^[a-c\S]{2}\d$'], 'a%1');
+});
+
+check('malformed show_if never breaks a submission and is reported by the definition check', function (): void {
+    $input = ['kind' => 'b', 'detail' => ''];
+    foreach ([['all' => ['field' => 'kind', 'value' => 'a']], ['any' => 'kind'], 'kind', 42, ['field' => ['kind']], ['field' => 'kind', 'op' => ['not']],
+              ['all' => ['x', null]], ['field' => 'kind', 'value' => [['a']]]] as $cond) {
+        same(true, is_bool(evalCondition($cond, $input)));
+        $fields = [['name' => 'kind', 'type' => 'text'], ['name' => 'detail', 'type' => 'text', 'required' => true, 'show_if' => $cond]];
+        same(true, is_array(validate(flattenFields($fields), $input))); // no TypeError (a 500 in 2.1.4)
+        same(true, is_array(resolveTemplates([['name' => 't', 'type' => 'text', 'use' => 'tpl', 'prefix' => 'p_']], ['tpl' => [['name' => 'x', 'show_if' => $cond]]])));
+    }
+    // Same result as bbf.js, which ignores all/any that are not a list: {"all": {...}} is a no-op there too.
+    same(true, evalCondition(['all' => ['field' => 'kind', 'value' => 'a']], $input));
+    same(false, evalCondition(['field' => 'kind', 'value' => 'a', 'op' => 'eq'], $input), 'an unknown op still means equals');
+    $errors = static fn($cond) => validateFormDefinition(['id' => 'f', 'fields' => [['name' => 'kind', 'type' => 'text'],
+        ['name' => 'detail', 'type' => 'select', 'show_if' => $cond, 'options' => ['a', ['value' => 'b', 'show_if' => $cond]]]]]);
+    same(['fields[1].show_if.all: Expected a list of conditions, e.g. "all": [{"field": "…", "value": "…"}].',
+        'fields[1].options[1].show_if.all: Expected a list of conditions, e.g. "all": [{"field": "…", "value": "…"}].'],
+        $errors(['all' => ['field' => 'kind', 'value' => 'a']]));
+    same(true, str_contains(implode(' ', $errors('kind')), 'fields[1].show_if: Expected an object'));
+    same(true, str_contains(implode(' ', $errors(['any' => [['field' => 'kind'], null]])), 'show_if.any[1]: Expected an object'));
+    same(true, str_contains(implode(' ', $errors(['field' => ['kind']])), 'show_if.field: Expected the name'));
+    same(true, str_contains(implode(' ', $errors(['field' => 'kind', 'op' => ['not']])), 'show_if.op: Expected a string'));
+    foreach ([null, false, [], ['field' => 'kind', 'value' => 'a', 'op' => 'eq'], ['all' => [], 'any' => [['field' => 'kind', 'op' => 'empty']]]] as $fine) {
+        same([], $errors($fine));
+    }
+    foreach (glob(dirname(__DIR__) . '/forms/*.json') as $file) {
+        $form = json_decode((string)file_get_contents($file), true);
+        if (is_array($form) && isset($form['fields'])) same([], array_values(array_filter(validateFormDefinition($form), static fn($e) => str_contains($e, 'show_if'))));
+    }
 });
 
 restore_error_handler();

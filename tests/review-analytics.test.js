@@ -72,7 +72,10 @@ test('redirect only follows http(s) or relative targets, never script URLs', asy
 });
 
 test('2.1.3 "Back" from the redirect target (bfcache) re-enables the submit button', async () => {
+    let resets = 0;
     const { context, form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/thanks' });
+    form.reset = () => { resets++; };
+    form._bbfSubmitKey = 'key-of-the-stored-submission';
     const btn = form.querySelector('.bbf-submit');
     assert.equal(context.window.location.href, '/thanks');
     assert.equal(btn.disabled, true, 'stays disabled while the browser navigates away');
@@ -84,7 +87,10 @@ test('2.1.3 "Back" from the redirect target (bfcache) re-enables the submit butt
     assert.equal(btn.textContent, 'Submit');
     assert.equal(form._bbfSubmitting, false);
     assert.match(form.querySelector('.bbf-message').className, /bbf-success/);
+    assert.equal(resets, 1, 'review 2.1.4: the restored page is cleared, so one click cannot store the same answers twice');
+    assert.notEqual(form._bbfSubmitKey, 'key-of-the-stored-submission', 'the next fill gets its own key');
     fire(true);
+    assert.equal(resets, 1);
     assert.equal((context.window.listeners.pageshow || []).length, 1, 'the one-shot restore listener removed itself');
 });
 

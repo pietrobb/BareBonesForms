@@ -79,13 +79,28 @@ try {
     core_check(core_http('tests/review-access-core-test.php')['code'] === 403, 'core test HTTP guard');
     foreach (['viewer.php?action=submissions&form=alpha', 'submissions.php?form=alpha'] as $path) {
         core_check(core_http($path, core_header('reader'))['code'] === 200, "valid header $path");
-        core_check(core_http($path . '&token=fixture-secret-reader-76543210')['code'] === 200, "valid query API $path");
+        $stateless = str_starts_with($path, 'submissions.php');
+        core_check(core_http($path . '&token=fixture-secret-reader-76543210')['code'] === ($stateless ? 200 : 403),
+            $stateless ? "valid query API $path" : "a session page never accepts ?token= ($path)");
         core_check(core_http($path . '&token=bad', core_header('reader'))['code'] === 200, 'header wins over bad query');
         core_check(core_http($path . '&token=fixture-secret-reader-76543210', ['headers' => ['X-BBF-Token' => 'bad']])['code'] === 403, 'bad header wins over good query');
     }
+    // Review 2.1.4: ?token= never signs a browser in (login CSRF through a link) and never sets a session cookie.
     $q = core_http('viewer.php?token=fixture-secret-reader-76543210&form=alpha');
-    core_check($q['code'] === 303 && str_contains($q['headers'], "Location: viewer.php\r\n"), 'HTML query clean redirect without following it');
-    core_check(!str_contains($q['body'] . $q['headers'], 'fixture-secret'), 'query exchange never echoes token'); $smuggled = core_http('viewer.php?token=fixture-secret-reader-76543210&lang=fixture-secret-reader-76543210'); core_check(!str_contains($smuggled['body'] . $smuggled['headers'], 'fixture-secret'), 'query exchange drops credentials in redundant parameters');
+    core_check($q['code'] === 403 && str_contains($q['body'], 'Tokens in the address are not accepted') && !preg_match('/Location:/i', $q['headers']),
+        'HTML ?token= shows the sign-in form with a notice instead of signing in');
+    core_check(!str_contains($q['body'] . $q['headers'], 'fixture-secret'), 'ignored query token is never echoed');
+    $sandboxQuery = core_http('editor.php?token=' . $baseConfig['api_token']);
+    core_check($sandboxQuery['code'] === 403 && !str_contains($sandboxQuery['body'], 'const TOKEN'), 'editor ?token= with the admin token does not sign in');
+    // A cross-site request (an <img> on another site) cannot use ?token= at all, so it cannot spend the address's wrong-token budget.
+    for ($i = 0; $i < 12; $i++) $cross = core_http('submissions.php?form=alpha&token=cross-guess-' . $i, ['headers' => ['Sec-Fetch-Site' => 'cross-site']]);
+    core_check($cross['code'] === 403, 'cross-site ?token= is ignored (403, never 429)');
+    core_check(core_http('submissions.php?form=alpha&token=fixture-secret-reader-76543210', ['headers' => ['Sec-Fetch-Site' => 'cross-site']])['code'] === 403,
+        'even a right token is ignored on a cross-site request');
+    core_check(core_http('submissions.php?form=alpha&token=fixture-secret-reader-76543210', ['headers' => ['Sec-Fetch-Site' => 'none']])['code'] === 200,
+        'a typed URL / bookmark (Sec-Fetch-Site: none) still works');
+    core_check(core_http('viewer.php', core_header('admin'))['code'] === 200, 'cross-site attempts did not block the address');
+    core_config($baseConfig);
     $reader = core_login('reader');
     foreach (['</script><script>alert(1)</script>' => 'en', 'pt-BR' => 'pt-BR', 'zh-TW' => 'zh-TW', "sk'" => 'en'] as $lang => $expected) {
         $page = core_http('viewer.php?lang=' . rawurlencode($lang), ['cookie' => $reader['cookie']]);
@@ -134,6 +149,9 @@ try {
         core_check(core_mutate($action . '&form=alpha', $admin, ['id' => 'alpha'], 'GET', true, 'editor.php')['code'] === 405, "editor $action method guard");
         core_check(core_mutate($action . '&form=alpha', $admin, ['id' => 'alpha'], 'POST', false, 'editor.php')['code'] === 403, "editor $action CSRF guard");
     }
+    $arrayName = core_mutate('create', $admin, ['id' => 'arrname', 'name' => ['x']], 'POST', true, 'editor.php');
+    core_check($arrayName['code'] === 400 && !is_file("$root/forms/arrname.json"), 'editor create rejects a non-text name with 400, not a TypeError 500');
+    core_check(core_mutate('create', $admin, ['id' => ['alpha']], 'POST', true, 'editor.php')['code'] === 400, 'editor create rejects a non-text ID with 400');
     core_check(core_mutate('create', $admin, ['id' => 'created', 'name' => 'Created'], 'POST', true, 'editor.php')['code'] === 200, 'admin create succeeds');
     core_check(core_editor_save('created', $admin, ['id' => 'created', 'fields' => []])['code'] === 200, 'admin versioned draft save succeeds');
     core_check(core_mutate('delete', $admin, ['id' => 'created'], 'POST', true, 'editor.php')['code'] === 200, 'admin delete succeeds');
@@ -212,7 +230,7 @@ try {
         core_check(core_http('editor.php', ['cookie' => $s['cookie']])['code'] === 403, 'legacy session invalidated after removal/rotation');
     }
     core_config($baseConfig); $s = core_login('reader');
-    core_check(core_http('viewer.php?token=bad', ['cookie' => $s['cookie']])['code'] === 403, 'explicit bad credential does not fall back');
+    core_check(core_http('viewer.php', ['cookie' => $s['cookie'], 'headers' => ['X-BBF-Token' => 'bad']])['code'] === 403, 'explicit bad credential does not fall back');
     core_check(core_http('viewer.php', ['cookie' => $s['cookie']])['code'] === 403, 'bad credential clears previous management grant');
     foreach (['bad-date', 'invalid-calendar', 'missing-expiry', 'duplicate-id', 'duplicate-token', 'wrong-revoked', 'wrong-forms', 'wrong-permission', 'non-list', 'null-list'] as $case) {
         $config = $baseConfig;
@@ -233,22 +251,36 @@ try {
     // Token guessing: ten wrong tokens per address, then 429 for wrong tokens; the right token always works,
     // so nobody can lock the admin out by sending bad tokens from a shared address.
     core_config($baseConfig);
-    for ($i = 0; $i < 10; $i++) $guess = core_http('viewer.php?token=guess-' . $i);
+    $signedIn = core_login('reader');
+    $guessHeader = static fn(string $t): array => ['headers' => ['X-BBF-Token' => $t]];
+    for ($i = 0; $i < 10; $i++) $guess = core_http('submissions.php?form=alpha', $guessHeader('guess-' . $i));
     core_check($guess['code'] === 403, 'wrong tokens below the limit are plain denials');
-    // While blocked every token, right or wrong, waits for its turn (one check per 2 s), so 200 vs 429 is no fast oracle.
+    // Review 2.1.4: while blocked, one token (right or wrong) is checked per 2 s and PHP never sleeps: every other
+    // attempt gets 429 + Retry-After at once, so no worker or session lock is held and there is no queue to fill.
     $timed = static function (string $path, array $options = []): array {
         $start = microtime(true); $r = core_http($path, $options); $r['seconds'] = microtime(true) - $start; return $r;
     };
-    $blocked = $timed('viewer.php?token=guess-11');
-    core_check($blocked['code'] === 429 && str_contains($blocked['headers'], 'Retry-After: 900'), 'eleventh wrong token is throttled');
-    core_check($blocked['seconds'] >= 1.5, sprintf('a blocked wrong token is answered only after the wait (%.1f s)', $blocked['seconds']));
+    $start = microtime(true);
+    for ($i = 11; $i < 41; $i++) $burst[] = $timed('submissions.php?form=alpha', $guessHeader('guess-' . $i));
+    $burstSeconds = microtime(true) - $start;
+    core_check(array_unique(array_column($burst, 'code')) === [429], 'every wrong token while blocked is 429');
+    core_check($burstSeconds < 6, sprintf('30 blocked attempts are answered without waiting (%.1f s total)', $burstSeconds));
+    preg_match('/Retry-After: (\d+)/', $burst[29]['headers'], $retry);
+    core_check(isset($retry[1]) && (int)$retry[1] >= 1 && (int)$retry[1] <= 2, 'Retry-After names the seconds until the next check, not 15 minutes');
+    $html = $timed('viewer.php', $guessHeader('guess-html'));
+    core_check($html['code'] === 429 && str_contains($html['body'], 'Not checked.') && str_contains($html['body'], 'name="login_csrf"'),
+        'a blocked HTML sign-in shows the form with the wait, not JSON');
+    core_check(core_http('viewer.php', ['cookie' => $signedIn['cookie']])['code'] === 200, 'an already signed-in browser is not affected by the block');
+    usleep(2200000); // the burst stopped: the next check is free within 2 s, the right token gets in
     $right = $timed('viewer.php', core_header('admin'));
-    core_check($right['code'] === 200, 'the right admin token still works while wrong tokens are throttled');
-    core_check($right['seconds'] >= 1.5, sprintf('a blocked right token waits just as long, so the answer time reveals nothing (%.1f s)', $right['seconds']));
+    core_check($right['code'] === 200, 'the right admin token works at the next free check after a burst (no lockout)');
+    core_check($right['seconds'] < 1.5, sprintf('the right token is not delayed in PHP (%.1f s)', $right['seconds']));
+    usleep(2200000);
     core_check(core_http('submissions.php?form=alpha', core_header('reader'))['code'] === 200, 'API integrations with a valid token keep working too');
-    core_check(core_http('viewer.php?token=guess-12')['code'] === 429, 'a success does not reset the wrong-token limit');
+    usleep(2200000);
+    core_check(core_http('submissions.php?form=alpha', $guessHeader('guess-99'))['code'] === 429, 'a success does not reset the wrong-token limit');
     core_config(['api_token' => 'short'] + $baseConfig);
-    core_check(core_http('viewer.php?token=short')['code'] === 403, 'api_token shorter than 16 characters is never accepted');
+    core_check(core_http('viewer.php', $guessHeader('short'))['code'] === 403, 'api_token shorter than 16 characters is never accepted');
     core_check(core_http('viewer.php', core_header('reader'))['code'] === 200, 'a short api_token does not disable the access_tokens');
     // N4: one too-short access token is ignored on its own; it does not take api_token and the others down.
     $shortConfig = $baseConfig;
@@ -257,7 +289,7 @@ try {
     core_config($shortConfig);
     core_check(core_http('viewer.php', core_header('admin'))['code'] === 200, 'a short access_tokens entry does not lock out api_token');
     core_check(core_http('viewer.php', core_header('reader'))['code'] === 200, 'a short access_tokens entry does not lock out the other tokens');
-    core_check(core_http('viewer.php?token=fourteen-chars')['code'] === 403, 'the short token itself is never accepted');
+    core_check(core_http('viewer.php', ['headers' => ['X-BBF-Token' => 'fourteen-chars']])['code'] === 403, 'the short token itself is never accepted');
     core_config($baseConfig);
     // Install a request-local deterministic delivery effect through the copied
     // bbf_functions.php test hook. Native outbound functions remain disabled.
