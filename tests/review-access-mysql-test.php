@@ -602,7 +602,7 @@ PHP;
 
     $before = $snapshot();
     $r = $http('submit.php?form=persist', $post(['answer' => "\xff", 'new_field' => 'must not persist']));
-    mysql_access_check($r['code'] === 500 && ($r['json']['status'] ?? '') === 'error' && $snapshot() === $before,
+    mysql_access_check($r['code'] === 422 && ($r['json']['status'] ?? '') === 'error' && $snapshot() === $before,
         "G3 HTTP invalid UTF8 returns error and loses/adds no SQL data (HTTP {$r['code']})");
     // This action writes ONLY to the owned fixture; no payment creation, mail or webhook.
     file_put_contents("$root/actions/mysql-probe.php", '<?php file_put_contents(__DIR__ . "/../data/mysql-action.json", json_encode($submission, JSON_THROW_ON_ERROR));');
