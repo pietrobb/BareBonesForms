@@ -75,6 +75,7 @@ return [
     // Behind Cloudflare or a reverse proxy every visitor arrives from the proxy's address, so rate limits and
     // stored IPs would lump everyone together. List the proxy addresses / CIDR ranges here to use the visitor
     // address from X-Forwarded-For instead (only trusted when the request really comes from one of them).
+    // An invalid entry (e.g. "10.0.0.0/") is ignored and reported by check.php; it never widens to "everyone".
     // 'trusted_proxies' => ['173.245.48.0/20', '103.21.244.0/22', '2400:cb00::/32'],
 
     // Honeypot field name (anti-spam, hidden field)
@@ -150,6 +151,7 @@ return [
     // Optional per-form tokens with limited permissions (read, export, delete, review). Example:
     // ['id'=>'reader-1', 'token'=>'RANDOM_SECRET', 'forms'=>['contact'], 'permissions'=>['read'], 'expires_at'=>'2027-01-01T00:00:00Z', 'revoked'=>false]
     // read+export for CSV/forward, read+delete for deletion, read+review for inbox metadata; empty lists grant nothing.
+    // Every token needs at least 16 characters; a shorter one is ignored on its own (check.php names it).
     // A malformed or duplicate record disables ALL access, including api_token. The editor accepts only api_token.
     'access_tokens' => [],
 

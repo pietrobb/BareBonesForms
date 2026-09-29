@@ -98,6 +98,18 @@ if ($config) {
     check('Config', 'api_token configured', !empty($config['api_token']),
         'submissions.php is blocked until api_token is set.', 'warn');
 
+    $accessProblems = bbf_auth_config_problems($config);
+    if ($accessProblems === []) check('Config', 'Access tokens and trusted_proxies', true, 'Valid.');
+    foreach ($accessProblems as $problem) check('Config', 'Access tokens and trusted_proxies', false, $problem['message'], $problem['level']);
+
+    // A forwarding proxy in front of the site makes every visitor share one address unless it is trusted.
+    $viaProxy = !empty($_SERVER['HTTP_X_FORWARDED_FOR']) || !empty($_SERVER['HTTP_CF_CONNECTING_IP']);
+    check('Config', 'Proxy / Cloudflare client address', !$viaProxy || bbf_trusted_proxies($config) !== [],
+        $viaProxy ? (bbf_trusted_proxies($config) !== []
+            ? 'Requests arrive through a proxy; client address resolved as ' . bbf_client_ip($config) . '.'
+            : 'Requests arrive through a proxy (X-Forwarded-For / CF-Connecting-IP) but trusted_proxies is empty: rate limits and the sign-in limit see only the proxy address. List the proxy ranges in trusted_proxies.')
+            : 'No forwarding proxy detected.', 'warn');
+
     check('Config', 'webhook_secret configured', !empty($config['webhook_secret']),
         empty($config['webhook_secret'])
             ? 'Not set — only needed if forms use webhooks.'

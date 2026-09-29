@@ -31,6 +31,9 @@ function bbf_upgrade_manifest_valid(mixed $manifest): bool {
         if (!is_string($path) || !bbf_upgrade_safe_path($path) || !is_array($file)
             || !in_array($file['kind'] ?? null, ['code', 'seed', 'sample', 'extra'], true)
             || !is_string($file['sha256'] ?? null) || !preg_match('/\A[0-9a-f]{64}\z/D', $file['sha256'])) return false;
+        // Optional: checksums of the same file in earlier releases.
+        if (isset($file['history']) && (!is_array($file['history']) || !array_is_list($file['history'])
+            || array_filter($file['history'], static fn($h) => !is_string($h) || !preg_match('/\A[0-9a-f]{64}\z/D', $h)) !== [])) return false;
     }
     return true;
 }
@@ -98,6 +101,8 @@ function bbf_upgrade_stage(string $package): array {
         $present = [];
         foreach ($manifest['files'] as $path => $file) {
             $data = $read($path);
+            // The code-only ZIP ships .htaccess as .htaccess.dist, so an FTP upload never replaces host lines.
+            if ($data === null && $path === '.htaccess') $data = $read('.htaccess.dist');
             if ($data === null) {
                 if ($file['kind'] !== 'code') continue; // the -upgrade ZIP deliberately ships code only
                 throw new RuntimeException("Package is incomplete: $path is missing.");
@@ -186,6 +191,24 @@ function bbf_upgrade_lint(string $stageDir, array $paths): ?array {
     return $errors;
 }
 
+/**
+ * Access problems of config.php judged by the NEW code (a token too short for it, a malformed access_tokens
+ * record, bad trusted_proxies), so a dry run shows before the upgrade whether anyone would be locked out.
+ */
+function bbf_upgrade_access_warnings(string $stageDir, string $install): array {
+    if (!function_exists('proc_open') || PHP_BINARY === '' || !is_file("$stageDir/bbf_auth.php") || !is_file("$install/config.php")) return [];
+    $script = 'define("BBF_LOADED", true); require $argv[1]; $c = require $argv[2];'
+        . ' echo json_encode(is_array($c) && function_exists("bbf_auth_config_problems") ? array_column(bbf_auth_config_problems($c), "message") : []);';
+    $process = @proc_open([PHP_BINARY, '-r', $script, "$stageDir/bbf_auth.php", "$install/config.php"], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $install);
+    if (!is_resource($process)) return [];
+    $out = (string)stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    proc_close($process);
+    $warnings = json_decode($out, true);
+    return is_array($warnings) ? array_values(array_filter($warnings, 'is_string')) : [];
+}
+
 /** What an upgrade to the staged package would do. Nothing is changed. */
 function bbf_upgrade_plan(array $stage, string $install): array {
     $new = $stage['manifest'];
@@ -206,19 +229,22 @@ function bbf_upgrade_plan(array $stage, string $install): array {
         $current = is_file("$install/$path") ? hash_file('sha256', "$install/$path") : null;
         if ($current === $file['sha256']) continue;
         $recorded = $old['files'][$path]['sha256'] ?? null;
+        // Any published version of the file counts as ours, not only the recorded one: the 2.1.0 upgrader recorded
+        // new checksums for files a code-only package never wrote (README.md, docs.html, templates).
+        $ours = $current !== null && ($current === $recorded || in_array($current, $file['history'] ?? [], true));
         $kind = $file['kind'];
         // Sample forms and docs/demo pages you do not have stay absent: a live site does not grow new endpoints.
         if ($current === null && ($kind === 'sample' || $kind === 'extra')) continue;
-        if (($kind === 'seed' || $kind === 'sample') && $current !== null && $current !== $recorded) {
+        if (($kind === 'seed' || $kind === 'sample') && $current !== null && !$ours) {
             $files['keep_yours'][] = $path; // you changed it (or we cannot tell): yours stays
             continue;
         }
         $files[$current === null ? 'add' : 'replace'][] = $path;
-        if (($kind === 'code' || $kind === 'extra') && $current !== null && $recorded !== null && $current !== $recorded) $files['overwrite_local_edits'][] = $path;
+        if (($kind === 'code' || $kind === 'extra') && $current !== null && $recorded !== null && !$ours) $files['overwrite_local_edits'][] = $path;
     }
     foreach ($old['files'] ?? [] as $path => $file) {
         if (!in_array($file['kind'], ['code', 'extra'], true) || isset($new['files'][$path]) || !is_file("$install/$path")) continue;
-        $files[hash_file('sha256', "$install/$path") === $file['sha256'] ? 'remove' : 'keep_obsolete'][] = $path;
+        $files[in_array(hash_file('sha256', "$install/$path"), [$file['sha256'], ...($file['history'] ?? [])], true) ? 'remove' : 'keep_obsolete'][] = $path;
     }
 
     $lint = $problems === [] ? bbf_upgrade_lint($stage['dir'], array_merge($files['add'], $files['replace'])) : [];
@@ -253,6 +279,7 @@ function bbf_upgrade_plan(array $stage, string $install): array {
         'new_config_settings' => is_file("$install/config.example.php")
             ? array_values(array_diff(bbf_upgrade_config_keys("{$stage['dir']}/config.example.php"), bbf_upgrade_config_keys("$install/config.example.php"))) : [],
         'breaking' => bbf_upgrade_breaking((string)@file_get_contents("{$stage['dir']}/CHANGELOG.md"), $from, $to),
+        'access_warnings' => bbf_upgrade_access_warnings($stage['dir'], $install),
         'check' => $check,
         'problems' => $problems,
         'up_to_date' => $changes === 0 && $from === $to,
@@ -304,8 +331,6 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
         }
         bbf_upgrade_put("$install/" . BBF_MANIFEST, json_encode(bbf_upgrade_installed_manifest($stage['manifest'], bbf_upgrade_manifest($install), $install),
             JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
-        if (getenv('BBF_UPGRADE_TEST_FAIL') === '1') throw new RuntimeException('Injected upgrade failure.');
-        if (getenv('BBF_UPGRADE_TEST_FAIL') === 'kill') exit(9); // a process killed mid-upgrade
         $after = bbf_upgrade_smoke($install, $install);
         if ($after !== null) {
             $newFailures = array_diff($after['failing'], $plan['check']['already_failing'] ?? []);
@@ -371,11 +396,23 @@ function bbf_upgrade_restore(string $backup): array {
     foreach ($journal['written'] as $path) {
         if (!in_array($path, $journal['saved'], true) && is_file("$install/$path") && !@unlink("$install/$path")) $errors[] = "cannot remove $path";
     }
-    foreach ($journal['saved'] as $path) {
+    // The manifest goes back last and only after everything else did: while any file is still the new version,
+    // the installation keeps reporting that version, so a failed rollback can simply be run again.
+    $saved = array_values(array_diff($journal['saved'], [BBF_MANIFEST]));
+    foreach ($saved as $path) {
         try {
             $data = file_get_contents("$backup/files/$path.bak");
             if (!is_string($data)) throw new RuntimeException("backup copy of $path is missing");
             bbf_upgrade_put("$install/$path", $data);
+        } catch (Throwable $error) {
+            $errors[] = $error->getMessage();
+        }
+    }
+    if ($errors === [] && in_array(BBF_MANIFEST, $journal['saved'], true)) {
+        try {
+            $data = file_get_contents("$backup/files/" . BBF_MANIFEST . '.bak');
+            if (!is_string($data)) throw new RuntimeException('backup copy of ' . BBF_MANIFEST . ' is missing');
+            bbf_upgrade_put("$install/" . BBF_MANIFEST, $data);
         } catch (Throwable $error) {
             $errors[] = $error->getMessage();
         }
@@ -399,8 +436,10 @@ function bbf_upgrade_rollback(string $backup, ?string $confirm): array {
     if (isset($journal['rolled_back_at'])) return ['ok' => false, 'error' => 'This upgrade was already rolled back at ' . $journal['rolled_back_at'] . '.'];
     // An upgrade that never completed (killed mid-way, or its automatic rollback failed) may have stopped before
     // or after writing the new manifest; either version means the installation is still that upgrade's.
+    // A rollback that already failed part-way (2.1.1 put the old manifest back first) may also show the old version.
     $unfinished = !isset($journal['completed_at']);
-    if ($unfinished ? !in_array($installed, [$journal['from'], $journal['to']], true) : $installed !== $journal['to']) {
+    $either = $unfinished || isset($journal['rollback_errors']);
+    if ($either ? !in_array($installed, [$journal['from'], $journal['to']], true) : $installed !== $journal['to']) {
         return ['ok' => false, 'error' => "The installation is at $installed, but this backup undoes the upgrade to {$journal['to']}. Roll back the newer upgrade first."];
     }
     $plan = ['ok' => true, 'rollback' => "{$journal['to']} -> {$journal['from']}", 'install' => $journal['install'],

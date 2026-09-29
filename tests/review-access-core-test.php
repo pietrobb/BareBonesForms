@@ -225,13 +225,27 @@ try {
         core_config($config);
         core_check(core_http('viewer.php', core_header('reader'))['code'] === 403, "malformed registry closed: $case");
     }
-    // Token guessing: ten wrong tokens per address, then 429 even for the right one until the window passes.
+    // Token guessing: ten wrong tokens per address, then 429 for wrong tokens; the right token always works,
+    // so nobody can lock the admin out by sending bad tokens from a shared address.
     core_config($baseConfig);
     for ($i = 0; $i < 10; $i++) $guess = core_http('viewer.php?token=guess-' . $i);
     core_check($guess['code'] === 403, 'wrong tokens below the limit are plain denials');
-    core_check(core_http('viewer.php', core_header('admin'))['code'] === 429, 'eleventh attempt is throttled even with the right token');
+    $blocked = core_http('viewer.php?token=guess-11');
+    core_check($blocked['code'] === 429 && str_contains($blocked['headers'], 'Retry-After: 900'), 'eleventh wrong token is throttled');
+    core_check(core_http('viewer.php', core_header('admin'))['code'] === 200, 'the right admin token still works while wrong tokens are throttled');
+    core_check(core_http('submissions.php?form=alpha', core_header('reader'))['code'] === 200, 'API integrations with a valid token keep working too');
+    core_check(core_http('viewer.php?token=guess-12')['code'] === 429, 'a success does not reset the wrong-token limit');
     core_config(['api_token' => 'short'] + $baseConfig);
     core_check(core_http('viewer.php?token=short')['code'] === 403, 'api_token shorter than 16 characters is never accepted');
+    core_check(core_http('viewer.php', core_header('reader'))['code'] === 200, 'a short api_token does not disable the access_tokens');
+    // N4: one too-short access token is ignored on its own; it does not take api_token and the others down.
+    $shortConfig = $baseConfig;
+    $shortConfig['access_tokens'][] = ['id' => 'tiny', 'token' => 'fourteen-chars', 'forms' => ['alpha'], 'permissions' => ['read'],
+        'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false];
+    core_config($shortConfig);
+    core_check(core_http('viewer.php', core_header('admin'))['code'] === 200, 'a short access_tokens entry does not lock out api_token');
+    core_check(core_http('viewer.php', core_header('reader'))['code'] === 200, 'a short access_tokens entry does not lock out the other tokens');
+    core_check(core_http('viewer.php?token=fourteen-chars')['code'] === 403, 'the short token itself is never accepted');
     core_config($baseConfig);
     // Install a request-local deterministic delivery effect through the copied
     // bbf_functions.php test hook. Native outbound functions remain disabled.

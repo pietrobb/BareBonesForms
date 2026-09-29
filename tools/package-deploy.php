@@ -143,11 +143,16 @@ function bbf_deploy_manifest(string $root, string $version = 'dev'): array
         + array_fill_keys(array_merge(['README.md', 'LICENSE', 'docs.html', 'index.html', 'demo.css', 'actions/README.md',
             'check.php', 'api-psc.php', 'data/city-to-psc.json', 'data/psc-to-city.json'],
             array_values(array_filter($topLevel, static fn($path) => (bool)preg_match('/^demo\d*\.html$/', $path)))), 'extra');
+    // Checksums of earlier published releases (tools/release-history.php): any of them counts as unmodified.
+    $history = json_decode((string)@file_get_contents($root . '/tools/release-history.json'), true);
+    $history = is_array($history) ? $history : [];
     $files = [];
     foreach ($manifest as $path => $entry) {
         if ($path === '.bbf-package') continue;
         $hash = isset($entry['source']) ? hash_file('sha256', $entry['source']) : hash('sha256', $entry['content']);
         $files[$path] = ['sha256' => $hash === false ? '' : $hash, 'kind' => $kinds[$path] ?? 'code'];
+        $older = array_values(array_diff(is_array($history[$path] ?? null) ? $history[$path] : [], [$hash]));
+        if ($older !== []) $files[$path]['history'] = $older;
     }
     ksort($files, SORT_STRING);
     $manifest['.bbf-manifest.json'] = ['content' => json_encode(

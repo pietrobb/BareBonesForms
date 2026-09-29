@@ -33,8 +33,12 @@ function bbf_backup_access_policy(array $config, string $formId): array {
     $registry = bbf_auth_registry($config);
     $legacy = $config['api_token'] ?? '';
     $records = $config['access_tokens'] ?? [];
-    $expected = ($legacy === '' ? 0 : 1) + (is_array($records) ? count($records) : 0);
-    if (!is_string($legacy) || !is_array($records) || count($registry) !== $expected) {
+    if (!is_string($legacy) || !is_array($records)) throw new RuntimeException('Invalid access policy cannot be backed up or restored.');
+    // Too-short tokens are never accepted, so they are not part of the effective policy either.
+    if (strlen($legacy) < BBF_AUTH_MIN_TOKEN) $legacy = '';
+    $short = bbf_auth_short_records($config);
+    $records = array_values(array_filter($records, static fn($r): bool => !in_array($r, $short, true)));
+    if (count($registry) !== ($legacy === '' ? 0 : 1) + count($records)) {
         throw new RuntimeException('Invalid access policy cannot be backed up or restored.');
     }
     $principals = [];

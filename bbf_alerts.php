@@ -275,6 +275,12 @@ function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null, ?callab
         }
     }
 
+    if (function_exists('bbf_auth_config_problems')) {
+        foreach (bbf_auth_config_problems($config) as $problem) {
+            if ($problem['level'] === 'error') $problems[] = ['-', 'Access configuration problem', 'Self-check: ' . $problem['message']];
+        }
+    }
+
     $mail = is_array($config['mail'] ?? null) ? $config['mail'] : [];
     if (($mail['method'] ?? 'mail') === 'smtp') {
         $smtpProbe ??= static fn(array $mailConfig): array => bbf_delivery_smtp(['probe' => true], $mailConfig);

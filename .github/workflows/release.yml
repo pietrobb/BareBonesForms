@@ -8,15 +8,35 @@ permissions:
   contents: write
   id-token: write      # signed build provenance (gh attestation verify)
   attestations: write
+  actions: read        # read the CI result of the tagged commit
 
 jobs:
   package:
     name: Build upload-ready ZIP
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-      - uses: shivammathur/setup-php@v2
+      - name: Require a green CI run for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # CI (lint.yml) runs on the push to main; wait for it, then publish only if it passed.
+          for attempt in $(seq 1 50); do
+            result=$(gh run list -R "$GITHUB_REPOSITORY" --workflow lint.yml --commit "$GITHUB_SHA" --json status,conclusion \
+              --jq 'map(select(.status == "completed")) | if any(.conclusion == "success") then "success" elif length > 0 then "failure" else "pending" end')
+            echo "CI for $GITHUB_SHA: $result"
+            [ "$result" = "success" ] && exit 0
+            [ "$result" = "failure" ] && { echo "CI failed for this commit; no release is built."; exit 1; }
+            sleep 60
+          done
+          echo "No completed CI run for this commit after 50 minutes; no release is built."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: '8.2'
       - name: Build package from the closed allowlist
@@ -29,14 +49,16 @@ jobs:
           php tools/package-deploy.php --version "$version" --check --destination "$out"
           rm "$out/.bbf-package"
           (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}.zip" barebonesforms)
-          # Upgrade ZIP: code only. Uploading it over FTP never overwrites your templates or sample forms.
-          php -r '$m = json_decode(file_get_contents($argv[1]), true); foreach ($m["files"] as $p => $f) if ($f["kind"] !== "code") unlink($argv[2] . "/" . $p);' \
+          # Upgrade ZIP: code only (plus check.php). Uploading it over FTP never overwrites your templates, sample
+          # forms or .htaccess; the new .htaccess rules come as .htaccess.dist (maintenance.php upgrade uses it).
+          cp "$out/.htaccess" "$out/.htaccess.dist"
+          php -r '$m = json_decode(file_get_contents($argv[1]), true); foreach ($m["files"] as $p => $f) if ($f["kind"] !== "code" && $p !== "check.php") unlink($argv[2] . "/" . $p);' \
             "$out/.bbf-manifest.json" "$out"
           (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" barebonesforms)
           # Checksums outside the ZIPs (the manifest inside only detects damage, not a substituted package).
           (cd "$RUNNER_TEMP" && sha256sum "barebonesforms-${GITHUB_REF_NAME}.zip" "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" > SHA256SUMS)
       - name: Sign build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: |
             ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}.zip

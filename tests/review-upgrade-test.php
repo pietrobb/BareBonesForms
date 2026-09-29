@@ -133,7 +133,14 @@ try {
     $wrong = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . str_repeat('0', 64)], "$tmp/site");
     check_upgrade($wrong['code'] === 1 && upgrade_snapshot("$tmp/site") === $before, 'a wrong digest is refused without changes');
 
-    $injected = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . $plan['confirm']], "$tmp/site", ['BBF_UPGRADE_TEST_FAIL' => '1']);
+    check_upgrade(!str_contains((string)file_get_contents("$repo/bbf_upgrade.php"), 'getenv('), 'the upgrader has no environment-controlled test hooks');
+
+    // A package whose smoke test passes when staged but fails once installed: the real post-upgrade check trips.
+    upgrade_copy("$tmp/new", "$tmp/postfail");
+    file_put_contents("$tmp/postfail/smoketest.php", "<?php\nif (basename(__DIR__) !== 'site') { echo \"1/1 forms passed\\n\"; exit(0); }\necho \"  \u{2717} kontakt (3 fields)\\n\";\nexit(1);\n");
+    upgrade_remanifest("$tmp/postfail", '2.2.0', ['newfile.php']);
+    $pfPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/postfail"], "$tmp/site")['json'] ?? [];
+    $injected = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/postfail", '--apply', '--confirm=' . ($pfPlan['confirm'] ?? '')], "$tmp/site");
     check_upgrade($injected['code'] === 1 && ($injected['json']['rolled_back'] ?? false) === true, 'a failure after writing files is rolled back');
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'rollback restores every byte and removes added files');
 
@@ -141,8 +148,11 @@ try {
     upgrade_copy("$tmp/site", "$tmp/killed");
     upgrade_rmtree("$tmp/killed/logs/upgrades");
     $killedPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/killed")['json'] ?? [];
-    upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . ($killedPlan['confirm'] ?? '')], "$tmp/killed", ['BBF_UPGRADE_TEST_FAIL' => 'kill']);
+    upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . ($killedPlan['confirm'] ?? '')], "$tmp/killed");
     $killedBackup = glob("$tmp/killed/logs/upgrades/*", GLOB_ONLYDIR)[0] ?? '';
+    $killedJournal = json_decode((string)file_get_contents("$killedBackup/upgrade.json"), true);
+    unset($killedJournal['completed_at']); // what a process killed after its last write leaves behind
+    file_put_contents("$killedBackup/upgrade.json", json_encode($killedJournal, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     $killedRollback = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$killedBackup"], "$tmp/killed")['json'] ?? [];
     check_upgrade(($killedRollback['unfinished_upgrade'] ?? false) === true, 'an interrupted upgrade can be rolled back');
     $killedApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$killedBackup", '--apply', '--confirm=' . ($killedRollback['confirm'] ?? '')], "$tmp/killed");
@@ -164,6 +174,23 @@ try {
         'backup and journal are kept in logs_dir/upgrades');
     $again = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/site");
     check_upgrade(($again['json']['up_to_date'] ?? false) === true && !isset($again['json']['next']), 're-running the same package reports up to date');
+
+    // ─── A rollback that fails part-way can be run again ─────────────
+    upgrade_copy("$tmp/site", "$tmp/retry");
+    $retryBackup = "$tmp/retry/logs/upgrades/" . basename($backup);
+    $retryJournal = json_decode((string)file_get_contents("$retryBackup/upgrade.json"), true);
+    $retryJournal['install'] = "$tmp/retry";
+    file_put_contents("$retryBackup/upgrade.json", json_encode($retryJournal, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    rename("$retryBackup/files/bbf.js.bak", "$tmp/bbf.js.bak.hidden");
+    $retryPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup"], "$tmp/retry")['json'] ?? [];
+    $retryFail = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup", '--apply', '--confirm=' . ($retryPlan['confirm'] ?? '')], "$tmp/retry");
+    $retryVersion = trim(upgrade_run([PHP_BINARY, 'maintenance.php', 'version'], "$tmp/retry")['out']);
+    check_upgrade($retryFail['code'] === 1 && $retryVersion === 'BareBonesForms 2.2.0', 'a failed rollback leaves the new manifest in place');
+    rename("$tmp/bbf.js.bak.hidden", "$retryBackup/files/bbf.js.bak");
+    $retryPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup"], "$tmp/retry")['json'] ?? [];
+    $retryOk = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup", '--apply', '--confirm=' . ($retryPlan['confirm'] ?? '')], "$tmp/retry");
+    $retrySnap = upgrade_snapshot("$tmp/retry");
+    check_upgrade($retryOk['code'] === 0 && $retrySnap === $before, 'the rollback can be repeated and then restores the exact pre-upgrade state');
 
     // ─── Manual rollback ─────────────────────────────────────────────
     $rollbackPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$backup"], "$tmp/site");
@@ -226,6 +253,51 @@ try {
     foreach (['demo1.html', 'README.md', 'forms/newsletter.json'] as $path) unlink("$tmp/lean/$path");
     $lean = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/lean");
     check_upgrade(($lean['json']['ok'] ?? false) && ($lean['json']['files']['add'] ?? -1) === 1, 'missing demo pages, docs and sample forms are not added back');
+
+    // ─── Release history: a file the 2.1.0 upgrader mis-recorded is still recognised as ours ─
+    upgrade_copy("$tmp/site", "$tmp/hsite");
+    $hManifest = json_decode((string)file_get_contents("$tmp/hsite/.bbf-manifest.json"), true);
+    foreach (['README.md', 'templates/notify.html'] as $path) $hManifest['files'][$path]['sha256'] = str_repeat('e', 64); // recorded, never on disk
+    file_put_contents("$tmp/hsite/.bbf-manifest.json", json_encode($hManifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    upgrade_copy("$tmp/new", "$tmp/hist");
+    file_put_contents("$tmp/hist/README.md", "\n2.2.0 docs\n", FILE_APPEND);
+    upgrade_remanifest("$tmp/hist", '2.2.0', ['newfile.php']);
+    $noHistory = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/hist"], "$tmp/hsite")['json'] ?? [];
+    check_upgrade(in_array('README.md', $noHistory['files']['overwrite_local_edits'] ?? [], true)
+        && in_array('templates/notify.html', $noHistory['files']['keep_yours'] ?? [], true), 'without history a mis-recorded checksum looks like a local edit');
+    $histManifest = json_decode((string)file_get_contents("$tmp/hist/.bbf-manifest.json"), true);
+    foreach (['README.md', 'templates/notify.html'] as $path) $histManifest['files'][$path]['history'] = [hash_file('sha256', "$tmp/old/$path")];
+    file_put_contents("$tmp/hist/.bbf-manifest.json", json_encode($histManifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    $withHistory = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/hist"], "$tmp/hsite")['json'] ?? [];
+    check_upgrade(($withHistory['ok'] ?? false) && !in_array('README.md', $withHistory['files']['overwrite_local_edits'] ?? [], true)
+        && in_array('templates/notify.html', $withHistory['replaced'] ?? [], true)
+        && ($withHistory['files']['keep_yours'] ?? []) === ['templates/confirm.html'],
+        'a file matching an earlier published release is ours: updated, not reported as locally edited');
+    $packaged = json_decode((string)file_get_contents("$tmp/old/.bbf-manifest.json"), true);
+    $historyFile = json_decode((string)@file_get_contents("$repo/tools/release-history.json"), true) ?: [];
+    check_upgrade(isset($historyFile['README.md']) && array_values(array_diff($historyFile['README.md'], [$packaged['files']['README.md']['sha256']])) === ($packaged['files']['README.md']['history'] ?? []),
+        'the packager copies tools/release-history.json into the manifest');
+
+    // ─── Code-only ZIP: .htaccess arrives as .htaccess.dist ──────────
+    upgrade_copy("$tmp/codeonly", "$tmp/codeonly2");
+    file_put_contents("$tmp/codeonly2/.htaccess.dist", file_get_contents("$tmp/new/.htaccess") . "\n# 2.2.0 rule\n");
+    $coManifest2 = json_decode((string)file_get_contents("$tmp/codeonly2/.bbf-manifest.json"), true);
+    $coManifest2['files']['.htaccess']['sha256'] = hash_file('sha256', "$tmp/codeonly2/.htaccess.dist");
+    file_put_contents("$tmp/codeonly2/.bbf-manifest.json", json_encode($coManifest2, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    $dist = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly2"], "$tmp/site")['json'] ?? [];
+    check_upgrade(($dist['ok'] ?? false) && in_array('.htaccess', $dist['replaced'] ?? [], true), 'an unchanged .htaccess is updated from .htaccess.dist of the code-only ZIP');
+    upgrade_copy("$tmp/site", "$tmp/hta");
+    file_put_contents("$tmp/hta/.htaccess", "AddHandler application/x-httpd-php84 .php\n", FILE_APPEND);
+    $distYours = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly2"], "$tmp/hta")['json'] ?? [];
+    check_upgrade(in_array('.htaccess', $distYours['files']['keep_yours'] ?? [], true), 'an .htaccess with your own lines is kept');
+
+    // ─── Dry run warns when the new code would ignore a token ────────
+    upgrade_copy("$tmp/site", "$tmp/tokens");
+    file_put_contents("$tmp/tokens/config.php", preg_replace("/'access_tokens' => \[\],/", "'access_tokens' => [['id' => 'short-one', 'token' => 'abc', 'forms' => [], 'permissions' => ['read'], 'revoked' => false, 'expires_at' => '2030-01-01T00:00:00Z']],",
+        str_replace("'api_token' => '',", "'api_token' => 'a-long-enough-admin-token-0123',", file_get_contents("$tmp/tokens/config.php"))));
+    $tokenPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/tokens")['json'] ?? [];
+    check_upgrade(str_contains(implode(' ', $tokenPlan['access_warnings'] ?? []), 'short-one') && !str_contains(json_encode($tokenPlan), "'abc'"),
+        'the dry run names a token the new version will ignore');
 
     // ─── First upgrade of a pre-2.1 installation (no manifest), run from the unpacked release ─
     upgrade_copy("$tmp/site", "$tmp/legacy");
