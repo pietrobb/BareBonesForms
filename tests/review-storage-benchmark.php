@@ -234,6 +234,11 @@ function bench_validate(string $root, string $storage, int $n, string $day, stri
         $fp = fopen($root . '/response.out', 'rb');
         try {
             $header = fgetcsv($fp, 0, ',', '"', '');
+            if ($endpoint === 'viewer.php' && is_array($header)) {
+                // The viewer CSV starts with a UTF-8 BOM for Excel; the API CSV does not.
+                bench_equal(str_starts_with($header[0], "\u{FEFF}"), true, "$tag viewer CSV starts with a UTF-8 BOM");
+                $header[0] = preg_replace('/^\x{FEFF}/u', '', $header[0]);
+            }
             $keys = array_merge(bench_keys(), ($storage === 'csv' || $case === 'export') ? ['retired', 'keyneedle'] : []);
             bench_equal($header, array_merge(['id', 'submitted'], $keys), "$tag exact expanded/history header");
             $count = 0; $bad = 0; $firstBad = '';
@@ -433,6 +438,7 @@ function bench_csv_edges(string $root, string $key): void {
             $count++;
         }
         fclose($fp);
+        if ($endpoint === 'viewer.php' && is_array($header)) $header[0] = preg_replace('/^\x{FEFF}/u', '', $header[0]); // Excel BOM
         bench_equal($header, ['id', 'submitted', 'message'], "$endpoint uncapped10001 header");
         bench_equal($count, 10001, "$endpoint uncapped10001 full export count");
         bench_equal($bad, 0, "$endpoint uncapped10001 all IDs/order/cells");

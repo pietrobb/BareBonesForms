@@ -1,6 +1,6 @@
 <?php
 /**
- * BareBonesForms — Shared Functions  v1.0.1
+ * BareBonesForms — Shared Functions
  *
  * Used by submit.php (form processing) and payment.php (webhook handler).
  * Not meant to be accessed directly via browser.
@@ -126,6 +126,30 @@ function evalCondition(array $cond, array $input): bool {
     return true;
 }
 
+/**
+ * Input as the respondent saw it: values of conditionally hidden fields are removed, and a hidden
+ * field counts as empty in every other condition, so chains (A → B → C) settle the same way as in
+ * bbf.js (_conditionalHidden). A spoofed value for a hidden field can therefore not hide or show
+ * anything else. $flatFields must come from flattenFields() (ancestor conditions propagated).
+ */
+function bbfVisibleInput(array $flatFields, array $input): array {
+    $conditional = array_values(array_filter($flatFields, static fn($field) => is_array($field)
+        && !empty($field['show_if']) && is_array($field['show_if']) && is_string($field['name'] ?? null)));
+    $hidden = [];
+    for ($pass = 0; $pass <= count($conditional); $pass++) {
+        $changed = false;
+        foreach ($conditional as $field) {
+            $visible = evalCondition($field['show_if'], array_diff_key($input, $hidden));
+            if ($visible === isset($hidden[$field['name']])) {
+                if ($visible) unset($hidden[$field['name']]); else $hidden[$field['name']] = true;
+                $changed = true;
+            }
+        }
+        if (!$changed) break;
+    }
+    return array_diff_key($input, $hidden);
+}
+
 function compareValues($currentVal, $targetVal, string $op): bool {
     if ($op === 'empty') {
         return is_array($currentVal) ? count($currentVal) === 0 : ($currentVal === '' || $currentVal === null);
@@ -185,6 +209,30 @@ function compareValues($currentVal, $targetVal, string $op): bool {
 
 // ─── Email ───────────────────────────────────────────────────────
 
+/** RFC 5322 "Name <address>": non-ASCII names are RFC 2047 encoded, names with specials ("Firma, s.r.o.") quoted. */
+function bbf_mail_address_header(string $name, string $email): string {
+    $name = trim(str_replace(["\r", "\n", "\0"], '', $name));
+    $email = str_replace(["\r", "\n", "\0", '<', '>', ' '], '', $email);
+    if ($name === '') return "<$email>";
+    if (preg_match('/[^\x20-\x7E]/', $name)) {
+        $name = '=?UTF-8?B?' . base64_encode($name) . '?=';
+    } elseif (preg_match('/[()<>\[\]:;@\\\\,."]/', $name)) {
+        $name = '"' . addcslashes($name, '"\\') . '"';
+    }
+    return "$name <$email>";
+}
+
+/** Headers every outgoing message needs besides From/To/Subject; the body is sent quoted-printable (lines ≤ 76). */
+function bbf_mail_standard_headers(string $fromEmail): array {
+    $domain = strrpos($fromEmail, '@') !== false ? substr($fromEmail, strrpos($fromEmail, '@') + 1) : '';
+    $domain = preg_replace('/[^a-zA-Z0-9.-]/', '', $domain) ?: 'localhost';
+    return [
+        'Date' => date('r'),
+        'Message-ID' => '<' . bin2hex(random_bytes(16)) . '@' . $domain . '>',
+        'Content-Transfer-Encoding' => 'quoted-printable',
+    ];
+}
+
 function sendEmail(string $to, string $subject, string $body, array $mailConfig, string $replyTo = ''): array {
     $to = str_replace(["\r", "\n", "\0"], '', $to);
     $subject = str_replace(["\r", "\n", "\0"], '', $subject);
@@ -197,11 +245,12 @@ function sendEmail(string $to, string $subject, string $body, array $mailConfig,
     $replyTo = str_replace(["\r", "\n", "\0"], '', $replyTo);
     if ($replyTo === '' || !filter_var($replyTo, FILTER_VALIDATE_EMAIL)) $replyTo = $mailConfig['from_email'];
     $headers = [
-        'From' => $mailConfig['from_name'] . ' <' . $mailConfig['from_email'] . '>',
+        'From' => bbf_mail_address_header((string)($mailConfig['from_name'] ?? ''), (string)$mailConfig['from_email']),
         'Reply-To' => $replyTo,
         'MIME-Version' => '1.0',
         'Content-Type' => 'text/html; charset=UTF-8',
-    ];
+    ] + bbf_mail_standard_headers((string)$mailConfig['from_email']);
+    $body = quoted_printable_encode($body);
 
     if (($mailConfig['method'] ?? 'mail') === 'smtp') {
         $result = sendSmtp($to, $subject, $body, $headers, $mailConfig);
@@ -304,7 +353,7 @@ function interpolate(string $text, array $data): string {
 }
 
 function buildSummary(array $fields, array $data): string {
-    return "<table style='border-collapse:collapse'>" . buildSummaryRows($fields, $data) . "</table>";
+    return "<table style='border-collapse:collapse'>\n" . buildSummaryRows($fields, $data) . "\n</table>";
 }
 
 function buildSummaryRows(array $fields, array $data): string {
@@ -337,7 +386,7 @@ function buildSummaryRows(array $fields, array $data): string {
             . htmlspecialchars($label) . "</td><td style='padding:4px 0'>"
             . htmlspecialchars($value) . "</td></tr>";
     }
-    return implode('', $lines);
+    return implode("\n", $lines); // one row per line keeps e-mail lines short
 }
 
 // ─── Durable delivery plans ─────────────────────────────────────
@@ -895,6 +944,42 @@ function bbf_delivery_run_job(string $path, string $jobKey, array $config, array
         'reason' => (string)($completed['job']['state'] ?? 'failed'),
         'job' => $completed['job'],
     ];
+}
+
+/**
+ * Cron worker: run every delivery job whose automatic retry is due (failed with a retryable
+ * result, attempts left, next_retry reached). Ambiguous and terminal jobs stay manual.
+ * Ledgers touched in the last $quietSeconds are skipped so a submit still in flight owns its jobs.
+ */
+function bbf_delivery_retry_due(array $config, int $quietSeconds = 120, ?int $now = null): array {
+    $now ??= time();
+    $report = ['ok' => true, 'checked' => 0, 'attempted' => 0, 'succeeded' => 0, 'failed' => 0];
+    $root = rtrim((string)($config['submissions_dir'] ?? __DIR__ . '/submissions'), '/\\') . '/.delivery';
+    foreach (glob($root . '/*/*.json') ?: [] as $path) {
+        if ((int)@filemtime($path) > $now - $quietSeconds) continue;
+        $formId = basename(dirname($path));
+        if (!preg_match('/\A[a-zA-Z0-9_-]+\z/', $formId)) continue;
+        $read = bbf_outbox_read($path);
+        $ledger = $read['ledger'] ?? null;
+        if (!($read['ok'] ?? false) || !is_array($ledger['jobs'] ?? null) || ($ledger['deleted'] ?? false) === true) continue;
+        $report['checked']++;
+        try {
+            $deliveryConfig = bbf_effective_storage_config($config, $formId);
+        } catch (Throwable $error) {
+            $report['ok'] = false;
+            continue;
+        }
+        foreach ($ledger['jobs'] as $key => $job) {
+            if (!is_array($job) || ($job['state'] ?? '') !== 'failed' || ($job['last_result']['retryable'] ?? false) !== true
+                || (int)($job['attempts'] ?? 0) >= (int)($job['max_attempts'] ?? 1) || (int)($job['next_retry'] ?? 0) > $now) continue;
+            $actionResponse = [];
+            $run = bbf_delivery_run_job($path, (string)$key, $deliveryConfig, $actionResponse);
+            if (!($run['executed'] ?? false)) continue;
+            $report['attempted']++;
+            $report[($run['ok'] ?? false) ? 'succeeded' : 'failed']++;
+        }
+    }
+    return $report;
 }
 
 // ─── Trusted payment pricing ─────────────────────────────────────
@@ -1650,11 +1735,35 @@ function validateFieldList(array $fields, string $path, array &$errors, array &$
 
         // Validate regex patterns
         if (!empty($field['pattern'])) {
-            if (@preg_match('/' . $field['pattern'] . '/', '') === false) {
+            if (!is_string($field['pattern']) || bbfFieldPatternRegex($field['pattern']) === null) {
                 $errors[] = "$prefix: Invalid regex pattern: {$field['pattern']}";
             }
         }
     }
+}
+
+/** True when every string key and value (recursively) is valid UTF-8. */
+function bbfValidUtf8Deep(mixed $value): bool {
+    if (is_string($value)) return preg_match('//u', $value) === 1;
+    if (!is_array($value)) return true;
+    foreach ($value as $key => $item) {
+        if ((is_string($key) && preg_match('//u', $key) !== 1) || !bbfValidUtf8Deep($item)) return false;
+    }
+    return true;
+}
+
+/**
+ * Compile a field "pattern" (written like a JS RegExp source) into a delimited PCRE.
+ * Unescaped "/" is escaped so it cannot end the pattern early; the u flag matches the
+ * client's RegExp(pattern, 'u'). Returns null when the pattern is not a valid regex.
+ */
+function bbfFieldPatternRegex(string $pattern): ?string {
+    $body = preg_replace('~(?<!\\\\)((?:\\\\\\\\)*)/~', '$1\\/', $pattern);
+    foreach (['u', ''] as $flags) {
+        $regex = '/' . $body . '/' . $flags;
+        if (@preg_match($regex, '') !== false) return $regex;
+    }
+    return null;
 }
 
 function bbfRepeatableRowInput(array $fields, array $input, array $row): array {
@@ -1735,6 +1844,7 @@ function validate(array $fields, array $input): array {
     // Check all data shapes before conditions, casts, or optional/hidden-field skips.
     $errors = validateFieldShapes($fields, $input);
     if ($errors) return $errors;
+    $input = bbfVisibleInput($fields, $input);
     foreach ($fields as $field) {
         $type = $field['type'] ?? 'text';
 
@@ -1803,7 +1913,9 @@ function validate(array $fields, array $input): array {
         if (!is_array($value)) {
             switch ($type) {
                 case 'email':
-                    if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                    // Quoted local parts ("a,b@x,c"@example.com) are valid RFC 5322 but would be split
+                    // into several recipients when used as an address list; no real respondent needs them.
+                    if (!filter_var($value, FILTER_VALIDATE_EMAIL) || preg_match('/[",;<>\s]/', $value)) {
                         $errors[$name] = msg('invalidEmail', ['label' => $label]);
                     }
                     // Email confirmation
@@ -1857,7 +1969,7 @@ function validate(array $fields, array $input): array {
             }
 
             // Pattern (regex)
-            if (!empty($field['pattern']) && !preg_match('/' . $field['pattern'] . '/', $value)) {
+            if (!empty($field['pattern']) && preg_match((string)bbfFieldPatternRegex((string)$field['pattern']), $value) !== 1) {
                 $errors[$name] = $field['pattern_message'] ?? msg('invalidFormat', ['label' => $label]);
             }
 

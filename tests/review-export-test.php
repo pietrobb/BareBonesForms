@@ -40,8 +40,15 @@ function export_http(array $server, string $path, string $token = 'export-fixtur
     $exportRequest = ['root' => $root, 'endpoint' => $path, 'pid' => $server['pid'],
         'port' => $server['port'], 'started_at' => microtime(true), 'audit_offset' => $before];
     try {
-        return $exportRequest['response'] = bbf_test_http($server,
+        $response = bbf_test_http($server,
             'http://127.0.0.1:' . $server['port'] . '/' . $path, null, ['headers' => ['X-BBF-Token' => $token]]);
+        // The viewer's CSV starts with a UTF-8 BOM for Excel; compare the CSV itself with the API's.
+        $response['bom'] = str_starts_with((string)($response['body'] ?? ''), "\xEF\xBB\xBF");
+        if ($response['bom']) $response['body'] = substr($response['body'], 3);
+        if (str_starts_with($path, 'viewer.php?action=export') && ($response['code'] ?? 0) === 200) {
+            export_check($response['bom'], "viewer CSV starts with a UTF-8 BOM $path");
+        }
+        return $exportRequest['response'] = $response;
     } catch (Throwable $error) {
         $exportRequest['transport_exception'] = (string)$error;
         throw $error;

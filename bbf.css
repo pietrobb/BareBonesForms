@@ -32,7 +32,7 @@
     /* ── Colors: text ───────────────── */
     --bbf-text: #1a1a1a;         /* main text */
     --bbf-text-muted: #666;      /* descriptions, labels */
-    --bbf-text-light: #888;      /* hints, placeholders */
+    --bbf-text-light: #6b6b6b;      /* hints, placeholders */
 
     /* ── Colors: backgrounds ────────── */
     --bbf-bg: #fff;              /* input backgrounds */

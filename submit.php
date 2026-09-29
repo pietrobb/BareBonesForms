@@ -1,6 +1,6 @@
 <?php
 /**
- * BareBonesForms — Submission Handler  v1.0.1
+ * BareBonesForms — Submission Handler
  *
  * Receives POST data, validates, stores, emails, webhooks.
  * That's it. Nothing else.
@@ -32,6 +32,16 @@ if (!empty($missing)) {
     echo json_encode(['status' => 'error', 'message' => 'Missing PHP extensions: ' . implode(', ', $missing)]);
     exit;
 }
+// Query parameters are plain strings; ?form[]=x is a malformed request, not a server fault worth an alert.
+foreach (['form', 'action', 'lang', 'field'] as $_bbfParam) {
+    if (isset($_GET[$_bbfParam]) && !is_string($_GET[$_bbfParam])) {
+        http_response_code(400);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['status' => 'error', 'message' => 'Invalid request.']);
+        exit;
+    }
+}
+unset($_bbfParam);
 
 require_once __DIR__ . '/bbf_functions.php';
 require_once __DIR__ . '/bbf_versions.php';
@@ -194,6 +204,8 @@ if (stripos($contentType, 'application/json') !== false) {
     $input = $_POST;
 }
 if (!is_array($input)) $input = [];
+// Storage, e-mail and JSON all need UTF-8; broken bytes are the client's error (422), not a server crash.
+if (!bbfValidUtf8Deep($input)) respond(422, 'Submitted text is not valid UTF-8.');
 
 // ─── Submit transaction: step 0 and step A (no definition, no CSRF, no session) ─
 $rawInput = $input;
@@ -243,7 +255,7 @@ $isCorsRequest = !empty($origin) && !empty($config['allowed_origins'])
     && in_array($origin, $config['allowed_origins'], true);
 if (!$isSandbox && ($config['csrf'] ?? true) && !$isCorsRequest && !$_smokeAuth) {
     ensureSession();
-    $csrfToken = $input['_bbf_csrf'] ?? '';
+    $csrfToken = is_string($input['_bbf_csrf'] ?? null) ? $input['_bbf_csrf'] : '';
     if (empty($_SESSION['bbf_secret'])
         || !hash_equals(hash_hmac('sha256', $formId, $_SESSION['bbf_secret']), $csrfToken)) {
         respond(403, 'Invalid or missing CSRF token.');
@@ -252,7 +264,7 @@ if (!$isSandbox && ($config['csrf'] ?? true) && !$isCorsRequest && !$_smokeAuth)
 unset($input['_bbf_csrf']);
 
 // ─── Rate limiting (file-based, with locking) ───────────────────
-$ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+$ip = bbf_client_ip($config);
 $rateLimitOk = $isSandbox || checkRateLimit($ip, $config['rate_limit'], $config['logs_dir']);
 if (!$rateLimitOk) {
     respond(429, 'Too many submissions. Try again later.');
@@ -822,7 +834,7 @@ function bbf_submit_upload(array $config, string $formId, bool $isSandbox): neve
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, 'Method not allowed.');
     $root = bbf_uploads_root($config, !$isSandbox);
     if (!$root['ok']) respond($root['code'], $root['error']);
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $ip = bbf_client_ip($config);
     // Every request counts, including ones rejected below.
     if (!$isSandbox && !bbf_uploads_rate_limit($config, $ip)) respond(429, msg('uploadRateLimit'), ['retry_after' => 60]);
     $postMax = bbf_uploads_ini_bytes(ini_get('post_max_size'));
@@ -977,6 +989,7 @@ function bbf_submit_replay(array $config, string $formId, array $state, array $h
 
 function collectData(array $fields, array $input): array {
     $data = [];
+    $input = bbfVisibleInput($fields, $input);
     foreach ($fields as $field) {
         $type = $field['type'] ?? 'text';
         // Skip non-data fields; repeatable groups preserve structured rows.

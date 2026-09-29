@@ -1,5 +1,5 @@
 /**
- * BareBonesForms — Renderer  v1.0.1
+ * BareBonesForms — Renderer
  *
  * Zero dependencies. Fetches form JSON, renders HTML form, validates, submits.
  *
@@ -190,6 +190,10 @@
             try {
                 const baseUrl = options.baseUrl || this.baseUrl;
                 const isSameOrigin = new URL(baseUrl, location.href).origin === location.origin;
+                // data-lang="sk" alone is enough: the pack is fetched like bbf.css unless the page already loaded it.
+                if (langCode && !this.langs[langCode] && langCode !== 'en' && /^[a-z]{2,3}(?:-[a-z]{2})?$/.test(langCode)) {
+                    await this._loadClientScript(`${baseUrl}lang/${langCode}.js`);
+                }
 
                 // Load form definition (always via submit.php — it strips
                 // server-side config and works with .htaccess protection)
@@ -258,10 +262,18 @@
             return pages;
         },
 
-        _showPage: function(formEl, pageIndex, totalPages, langCode) {
+        _showPage: function(formEl, pageIndex, totalPages, langCode, moveFocus) {
+            let shown = null;
             formEl.querySelectorAll('.bbf-page').forEach((p, i) => {
                 p.style.display = i === pageIndex ? '' : 'none';
+                if (i === pageIndex) shown = p;
             });
+            // Next/Back hides the focused button's page context; start keyboard and screen-reader users on the new page.
+            if (moveFocus && shown) {
+                const first = Array.from(shown.querySelectorAll('input, select, textarea, button'))
+                    .find(node => node.type !== 'hidden' && !node.disabled && !this._isHidden(node));
+                if (first) first.focus();
+            }
             const nav = formEl.querySelector('.bbf-page-nav');
             if (nav) {
                 nav.querySelector('.bbf-prev').style.display = pageIndex > 0 ? '' : 'none';
@@ -445,21 +457,63 @@
         },
 
         // Recursively evaluate a condition (supports all/any nesting)
-        _evalCondition: function(cond, formEl) {
+        // A conditionally hidden field counts as empty (same rule as bbfVisibleInput on the server).
+        // With a `hidden` state from _conditionalHidden, that state decides; otherwise the DOM does.
+        _evalCondition: function(cond, formEl, hidden) {
             // all: every sub-condition must be true
             if (cond.all) {
-                return cond.all.every(c => this._evalCondition(c, formEl));
+                return cond.all.every(c => this._evalCondition(c, formEl, hidden));
             }
             // any: at least one sub-condition must be true
             if (cond.any) {
-                return cond.any.some(c => this._evalCondition(c, formEl));
+                return cond.any.some(c => this._evalCondition(c, formEl, hidden));
             }
             // Simple condition: { field, value, op }
             if (cond.field) {
-                const val = this._getFieldValue(formEl, cond.field);
+                const val = hidden
+                    ? (this._hiddenInState(formEl, cond.field, hidden) ? '' : this._getFieldValue(formEl, cond.field))
+                    : this._getFieldValue(formEl, cond.field, true);
                 return this._compareValues(val, cond.value, cond.op);
             }
             return true;
+        },
+
+        // Is the field (or a group around it) hidden, judged by `hidden.names` for the conditional
+        // fields being settled (`hidden.managed`) and by the DOM for everything else?
+        _hiddenInState: function(formEl, name, hidden) {
+            let el = formEl.querySelector(`[data-field="${name}"]`);
+            if (!el) {
+                const input = formEl.querySelector(`[name="${name}"]`);
+                return input ? this._isHidden(input) : false;
+            }
+            while (el && !(el.classList && el.classList.contains('bbf-form'))) {
+                const fieldName = el.getAttribute && el.getAttribute('data-field');
+                if (fieldName && hidden.managed.has(fieldName)) {
+                    if (hidden.names.has(fieldName)) return true;
+                } else if (el.getAttribute && el.getAttribute('data-conditional-hidden') === 'true') {
+                    return true;
+                }
+                el = el.parentElement;
+            }
+            return false;
+        },
+
+        // Settle show_if visibility for `fields`: passes until stable, so chains resolve regardless of order.
+        _conditionalHidden: function(fieldRoot, fields, valueRoot) {
+            const conditional = fields.filter(f => f.show_if && fieldRoot.querySelector(`[data-field="${f.name}"]`));
+            const hidden = { managed: new Set(conditional.map(f => f.name)), names: new Set() };
+            for (let pass = 0; pass <= conditional.length; pass++) {
+                let changed = false;
+                conditional.forEach(f => {
+                    const visible = this._evalCondition(f.show_if, valueRoot, hidden);
+                    if (visible === hidden.names.has(f.name)) {
+                        if (visible) hidden.names.delete(f.name); else hidden.names.add(f.name);
+                        changed = true;
+                    }
+                });
+                if (!changed) break;
+            }
+            return hidden.names;
         },
 
         // Apply show_if on individual options within radio/checkbox/select
@@ -745,16 +799,19 @@
 
         _applyConditions: function(fieldRoot, fields, animate, valueRoot) {
             valueRoot = valueRoot || fieldRoot;
+            const hiddenNames = this._conditionalHidden(fieldRoot, fields, valueRoot);
             fields.forEach(field => {
                 if (!field.show_if) return;
                 const wrap = fieldRoot.querySelector(`[data-field="${field.name}"]`);
                 if (!wrap) return;
 
+                const visible = !hiddenNames.has(field.name);
+                const wasHidden = wrap.getAttribute('data-conditional-hidden') === 'true';
+                // Unchanged while animating: leave a running transition alone.
+                if (animate && visible === !wasHidden) return;
                 const generation = (wrap._bbfConditionGeneration || 0) + 1;
                 wrap._bbfConditionGeneration = generation;
                 const isCurrent = () => wrap._bbfConditionGeneration === generation;
-                const visible = this._evalCondition(field.show_if, valueRoot);
-                const wasHidden = wrap.getAttribute('data-conditional-hidden') === 'true';
 
                 if (!animate || (visible && !wasHidden) || (!visible && wasHidden)) {
                     // No animation: instant show/hide (initial state or no change)
@@ -830,6 +887,8 @@
             var handler = function() {
                 self._stabilizeOptionConditions(fieldRoot, valueRoot);
                 self._applyConditions(fieldRoot, fields, animate, valueRoot);
+                // Option conditions see a newly hidden source field as empty only after the pass above.
+                self._stabilizeOptionConditions(fieldRoot, valueRoot);
             };
             const boundInputs = [];
             sources.forEach(srcName => {
@@ -843,6 +902,7 @@
             // Initial state (always instant, no animation)
             this._stabilizeOptionConditions(fieldRoot, valueRoot);
             this._applyConditions(fieldRoot, fields, false, valueRoot);
+            this._stabilizeOptionConditions(fieldRoot, valueRoot);
             return function() {
                 boundInputs.forEach(inp => {
                     inp.removeEventListener('change', handler);
@@ -1176,11 +1236,11 @@
                     if (Object.keys(errors).length > 0) return;
 
                     currentPage.value++;
-                    self._showPage(el, currentPage.value, pages.length, langCode);
+                    self._showPage(el, currentPage.value, pages.length, langCode, true);
                 });
                 prevBtn.addEventListener('click', () => {
                     currentPage.value--;
-                    self._showPage(el, currentPage.value, pages.length, langCode);
+                    self._showPage(el, currentPage.value, pages.length, langCode, true);
                 });
             } else {
                 const btnWrap = document.createElement('div');
@@ -1205,6 +1265,12 @@
             // Submit handler
             el.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                // Enter in a field on a non-final page means "next page", never "submit everything".
+                if (hasPages && currentPage.value < pages.length - 1) {
+                    const next = el.querySelector('.bbf-next');
+                    if (next) next.click();
+                    return;
+                }
                 const btn = el.querySelector('.bbf-submit');
 
                 // Validate ALL data fields (flatten groups, skip non-data types)
@@ -1333,8 +1399,12 @@
                         if (result.errors) {
                             this._showErrors(el, result.errors);
                         }
+                        // Cross-field rule messages have no field to sit under; they are the useful message here.
+                        const crossMessages = Object.entries(result.errors || {})
+                            .filter(([key]) => key.startsWith('_cross_') || key.startsWith('_validation_'))
+                            .map(([, text]) => text);
                         msg.className = 'bbf-message bbf-error';
-                        msg.textContent = result.message || this._t('errorDefault', {}, langCode);
+                        msg.textContent = crossMessages.length ? crossMessages.join(' ') : (result.message || this._t('errorDefault', {}, langCode));
                         msg.style.display = 'block';
                     }
                 } catch (err) {
@@ -1554,10 +1624,16 @@
                 remove.className = 'bbf-repeatable-remove';
                 remove.textContent = field.remove_label || this._t('repeatableRemove', {}, langCode);
                 remove.addEventListener('click', () => {
-                    if (this._repeatableRows(group).length <= min) return;
+                    const siblings = this._repeatableRows(group);
+                    if (siblings.length <= min) return;
+                    // Keep keyboard focus nearby (the neighbouring row, else "Add"), not lost on <body>.
+                    const index = siblings.indexOf(row);
+                    const neighbour = siblings[index + 1] || siblings[index - 1];
                     if (row._bbfConditionCleanup) row._bbfConditionCleanup();
                     row.remove();
                     update(true);
+                    const target = neighbour && neighbour.querySelector('.bbf-repeatable-remove');
+                    if (target && !target.disabled) target.focus(); else add.focus();
                 });
                 row.appendChild(remove);
                 rows.appendChild(row);
@@ -1793,7 +1869,14 @@
             if (field.max !== undefined) input.max = field.max;
             if (field.pattern) input.pattern = field.pattern;
             if (field.autocomplete) input.autocomplete = field.autocomplete;
-            if (field.value !== undefined) input.value = field.value;
+            // Set defaults, not just current values, so form.reset() after a successful submit restores them.
+            if (field.value !== undefined && input.tagName === 'SELECT') {
+                const wanted = [].concat(field.value).map(String);
+                Array.from(input.options).forEach(o => { o.defaultSelected = o.selected = wanted.includes(o.value); });
+            } else if (field.value !== undefined) {
+                input.defaultValue = String(field.value);
+                input.value = String(field.value);
+            }
 
             // Accessibility: link input to description and error
             const ariaDesc = [];
@@ -2115,14 +2198,15 @@
                 inp.id = fieldId + '-' + i;
                 inp.value = typeof o === 'object' ? o.value : o;
                 // Default checked: field.value (string or array) or option-level checked
+                // defaultChecked too, so form.reset() after a successful submit restores the default.
                 if (typeof o === 'object' && o.checked) {
-                    inp.checked = true;
+                    inp.checked = inp.defaultChecked = true;
                 } else if (field.value !== undefined) {
                     var fv = field.value;
                     // Normalize: checkbox accepts both string and array
                     if (type === 'checkbox' && !Array.isArray(fv)) fv = [String(fv)];
-                    if (type === 'radio' && String(fv) === inp.value) inp.checked = true;
-                    else if (type === 'checkbox' && Array.isArray(fv) && fv.map(String).includes(inp.value)) inp.checked = true;
+                    if (type === 'radio' && String(fv) === inp.value) inp.checked = inp.defaultChecked = true;
+                    else if (type === 'checkbox' && Array.isArray(fv) && fv.map(String).includes(inp.value)) inp.checked = inp.defaultChecked = true;
                 }
                 const span = document.createElement('span');
                 span.textContent = typeof o === 'object' ? o.label : o;
@@ -2374,7 +2458,8 @@
                     errors[name] = t('invalidUrl', { label });
                     return;
                 }
-                if (type === 'tel' && !/^[+\d][\d\s\-().]{5,}$/.test(value)) {
+                // Same rule as the server (bbf_functions.php validate()).
+                if (type === 'tel' && !/^[+]?[0-9\s\-().]{6,20}$/.test(String(value).trim())) {
                     errors[name] = t('invalidTel', { label });
                     return;
                 }
@@ -2429,7 +2514,10 @@
                 // Pattern validation
                 if (field.pattern) {
                     try {
-                        if (!new RegExp(field.pattern).test(value)) {
+                        // Same semantics as the server: Unicode mode, plain mode only when the pattern is not valid in Unicode mode.
+                        let re;
+                        try { re = new RegExp(field.pattern, 'u'); } catch (unicodeError) { re = new RegExp(field.pattern); }
+                        if (!re.test(value)) {
                             errors[name] = field.pattern_message || t('invalidFormat', { label });
                         }
                     } catch (e) {
@@ -2506,8 +2594,8 @@
                         (ratingGroup || inp).setAttribute('aria-invalid', 'true');
                         if (!firstInput) firstInput = inp;
                     }
-                } else if (name.startsWith('_validation_')) {
-                    // Cross-field error — show in form message area
+                } else if (name.startsWith('_validation_') || name.startsWith('_cross_')) {
+                    // Cross-field error (client key _validation_*, server key _cross_*) — show in form message area
                     const msgEl = formEl.querySelector('.bbf-message');
                     if (msgEl) {
                         msgEl.className = 'bbf-message bbf-error';

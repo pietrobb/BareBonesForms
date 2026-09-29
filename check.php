@@ -1,6 +1,6 @@
 <?php
 /**
- * BareBonesForms — Installation Check  v1.0.1
+ * BareBonesForms — Installation Check
  *
  * Open this file in your browser to verify your installation.
  * DELETE THIS FILE after verification — it exposes server details.
@@ -405,18 +405,19 @@ if ($config) {
 
         check('Storage', 'SQLite directory writable', is_dir($dbDir) && is_writable($dbDir), $dbDir);
 
-        if (extension_loaded('pdo_sqlite')) {
+        if (extension_loaded('pdo_sqlite') && !file_exists($dbFile)) {
+            // Opening a missing SQLite file would create an empty database; leave that to the first submission.
+            check('Storage', 'SQLite database', true, basename($dbFile) . ' will be created on first submission.');
+        } elseif (extension_loaded('pdo_sqlite')) {
             try {
                 $pdo = new PDO("sqlite:$dbFile", null, null, [
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 ]);
                 check('Storage', 'SQLite connection', true, basename($dbFile));
 
-                if (file_exists($dbFile)) {
-                    $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='bbf_submissions'")->fetchAll();
-                    check('Storage', 'bbf_submissions table', count($tables) > 0,
-                        count($tables) > 0 ? 'Table exists.' : 'Will be auto-created.', 'warn');
-                }
+                $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='bbf_submissions'")->fetchAll();
+                check('Storage', 'bbf_submissions table', count($tables) > 0,
+                    count($tables) > 0 ? 'Table exists.' : 'Will be auto-created.', 'warn');
             } catch (PDOException $e) {
                 check('Storage', 'SQLite connection', false, $e->getMessage());
             }

@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write      # signed build provenance (gh attestation verify)
+  attestations: write
 
 jobs:
   package:
@@ -31,6 +33,14 @@ jobs:
           php -r '$m = json_decode(file_get_contents($argv[1]), true); foreach ($m["files"] as $p => $f) if ($f["kind"] !== "code") unlink($argv[2] . "/" . $p);' \
             "$out/.bbf-manifest.json" "$out"
           (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" barebonesforms)
+          # Checksums outside the ZIPs (the manifest inside only detects damage, not a substituted package).
+          (cd "$RUNNER_TEMP" && sha256sum "barebonesforms-${GITHUB_REF_NAME}.zip" "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" > SHA256SUMS)
+      - name: Sign build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}.zip
+            ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}-upgrade.zip
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,5 +55,5 @@ jobs:
           ' CHANGELOG.md > "$notes"
           [ -s "$notes" ] || echo "See CHANGELOG.md." > "$notes"
           gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}.zip" \
-            "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" \
+            "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" "$RUNNER_TEMP/SHA256SUMS" \
             --title "$GITHUB_REF_NAME" --notes-file "$notes"

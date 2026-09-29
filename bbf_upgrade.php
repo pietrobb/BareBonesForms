@@ -248,6 +248,8 @@ function bbf_upgrade_plan(array $stage, string $install): array {
         'install' => $install,
         'files' => ['add' => count($files['add']), 'replace' => count($files['replace'])]
             + array_filter(array_diff_key($files, ['add' => 1, 'replace' => 1])),
+        'added' => $files['add'],
+        'replaced' => $files['replace'],
         'new_config_settings' => is_file("$install/config.example.php")
             ? array_values(array_diff(bbf_upgrade_config_keys("{$stage['dir']}/config.example.php"), bbf_upgrade_config_keys("$install/config.example.php"))) : [],
         'breaking' => bbf_upgrade_breaking((string)@file_get_contents("{$stage['dir']}/CHANGELOG.md"), $from, $to),
@@ -300,8 +302,10 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
         foreach ($files['remove'] as $path) {
             if (!@unlink("$install/$path")) throw new RuntimeException("Cannot remove obsolete $path");
         }
-        bbf_upgrade_put("$install/" . BBF_MANIFEST, json_encode($stage['manifest'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+        bbf_upgrade_put("$install/" . BBF_MANIFEST, json_encode(bbf_upgrade_installed_manifest($stage['manifest'], bbf_upgrade_manifest($install), $install),
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
         if (getenv('BBF_UPGRADE_TEST_FAIL') === '1') throw new RuntimeException('Injected upgrade failure.');
+        if (getenv('BBF_UPGRADE_TEST_FAIL') === 'kill') exit(9); // a process killed mid-upgrade
         $after = bbf_upgrade_smoke($install, $install);
         if ($after !== null) {
             $newFailures = array_diff($after['failing'], $plan['check']['already_failing'] ?? []);
@@ -326,6 +330,24 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
         'backup' => $backup,
         'undo' => "php maintenance.php upgrade-rollback --backup=$backup",
     ];
+}
+
+/**
+ * The manifest to record: what is actually on disk. A file the upgrade did not write (not in a code-only package,
+ * kept because you edited it, a sample you do not have) keeps its previous checksum, so the next upgrade still
+ * recognises an unchanged template as ours and updates it.
+ */
+function bbf_upgrade_installed_manifest(array $new, ?array $old, string $install): array {
+    $files = [];
+    foreach ($new['files'] as $path => $file) {
+        if (is_file("$install/$path") && hash_file('sha256', "$install/$path") === $file['sha256']) {
+            $files[$path] = $file;
+        } elseif (isset($old['files'][$path])) {
+            $files[$path] = ['sha256' => $old['files'][$path]['sha256'], 'kind' => $file['kind']];
+        }
+    }
+    $new['files'] = $files;
+    return $new;
 }
 
 function bbf_upgrade_journal(string $backup): array {
@@ -358,7 +380,13 @@ function bbf_upgrade_restore(string $backup): array {
             $errors[] = $error->getMessage();
         }
     }
-    $journal['rolled_back_at'] = date('c');
+    // A rollback that failed part-way stays retryable: only a clean one is recorded as done.
+    if ($errors === []) {
+        $journal['rolled_back_at'] = date('c');
+        unset($journal['rollback_errors']);
+    } else {
+        $journal['rollback_errors'] = $errors;
+    }
     @file_put_contents("$backup/upgrade.json", json_encode($journal, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     return ['ok' => $errors === [], 'errors' => $errors];
 }
@@ -369,10 +397,14 @@ function bbf_upgrade_rollback(string $backup, ?string $confirm): array {
     $journal = bbf_upgrade_journal($backup);
     $installed = bbf_upgrade_manifest($journal['install'])['version'] ?? 'unknown';
     if (isset($journal['rolled_back_at'])) return ['ok' => false, 'error' => 'This upgrade was already rolled back at ' . $journal['rolled_back_at'] . '.'];
-    if ($installed !== $journal['to']) {
+    // An upgrade that never completed (killed mid-way, or its automatic rollback failed) may have stopped before
+    // or after writing the new manifest; either version means the installation is still that upgrade's.
+    $unfinished = !isset($journal['completed_at']);
+    if ($unfinished ? !in_array($installed, [$journal['from'], $journal['to']], true) : $installed !== $journal['to']) {
         return ['ok' => false, 'error' => "The installation is at $installed, but this backup undoes the upgrade to {$journal['to']}. Roll back the newer upgrade first."];
     }
     $plan = ['ok' => true, 'rollback' => "{$journal['to']} -> {$journal['from']}", 'install' => $journal['install'],
+        'unfinished_upgrade' => $unfinished,
         'restore' => count($journal['saved']), 'delete' => count(array_diff($journal['written'], $journal['saved'])),
         'confirm' => hash('sha256', (string)file_get_contents("$backup/upgrade.json"))];
     if ($confirm === null) return $plan;

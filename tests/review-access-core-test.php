@@ -27,6 +27,7 @@ try {
     function core_config(array $config): void {
         global $root;
         file_put_contents("$root/config.php", '<?php defined("BBF_LOADED") || exit; return ' . var_export($config, true) . ';');
+        @unlink("$root/logs/.auth_failures.json"); // each scenario starts with a clean wrong-token counter
         clearstatcache();
     }
     function core_seed(string $form, string $id = 'bbf_one'): void {
@@ -224,6 +225,14 @@ try {
         core_config($config);
         core_check(core_http('viewer.php', core_header('reader'))['code'] === 403, "malformed registry closed: $case");
     }
+    // Token guessing: ten wrong tokens per address, then 429 even for the right one until the window passes.
+    core_config($baseConfig);
+    for ($i = 0; $i < 10; $i++) $guess = core_http('viewer.php?token=guess-' . $i);
+    core_check($guess['code'] === 403, 'wrong tokens below the limit are plain denials');
+    core_check(core_http('viewer.php', core_header('admin'))['code'] === 429, 'eleventh attempt is throttled even with the right token');
+    core_config(['api_token' => 'short'] + $baseConfig);
+    core_check(core_http('viewer.php?token=short')['code'] === 403, 'api_token shorter than 16 characters is never accepted');
+    core_config($baseConfig);
     // Install a request-local deterministic delivery effect through the copied
     // bbf_functions.php test hook. Native outbound functions remain disabled.
     file_put_contents("$root/tests/retry-delivery-fixture.php", <<<'PHP'
@@ -614,7 +623,10 @@ PHP
             && str_contains($captured['additional_headers'], "Reply-To: sender@example.invalid\r\n")
             && str_contains($captured['additional_headers'], "Content-Type: text/html; charset=UTF-8\r\n"), "forward $mode real sendEmail recipient/header construction");
         core_check($captured['subject'] === '=?UTF-8?B?' . base64_encode($forwardDef['name'] . ' — bbf_forward') . '?=', "forward $mode actual encoded subject");
-        $html = $captured['message'];
+        // Bodies are quoted-printable (RFC 5322 998-char line limit); check the decoded HTML.
+        core_check(str_contains($captured['additional_headers'], "Content-Transfer-Encoding: quoted-printable\r\n")
+            && max(array_map('strlen', explode("\r\n", $captured['message']))) <= 76, "forward $mode body is quoted-printable with short lines");
+        $html = quoted_printable_decode($captured['message']);
         core_check(str_starts_with($html, '<!DOCTYPE html><html><body') && str_ends_with($html, '</table></body></html>')
             && str_contains($html, 'Forward &lt;title&gt; &amp; fixture') && str_contains($html, 'Answer &lt;label&gt; &amp; fixture')
             && str_contains($html, 'bbf_forward') && str_contains($html, '2026-09-08T10:00:00Z')

@@ -14,7 +14,7 @@ function inbox_check(bool $ok, string $label): void {
 }
 
 $auth = bbf_auth_registry(['api_token' => '', 'access_tokens' => [[
-    'id' => 'reviewer', 'token' => 'reviewer-secret', 'forms' => ['alpha'],
+    'id' => 'reviewer', 'token' => 'reviewer-secret-000001', 'forms' => ['alpha'],
     'permissions' => ['read', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false,
 ], [
     'id' => '0', 'token' => 'zero-principal-secret', 'forms' => ['0'],

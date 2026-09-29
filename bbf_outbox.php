@@ -411,10 +411,16 @@ function bbf_outbox_settlement(string $path): array {
             return ['result' => ['ok' => false, 'reason' => 'missing']];
         }
         $unsettled = [];
+        $retryable = false; // could another automatic attempt still change the outcome?
         foreach ($ledger['jobs'] as $key => $job) {
-            if (($job['state'] ?? null) !== 'succeeded') $unsettled[] = (string)$key;
+            $state = is_array($job) ? ($job['state'] ?? null) : null;
+            if ($state === 'succeeded') continue;
+            $unsettled[] = (string)$key;
+            if (in_array($state, ['pending', 'running'], true)
+                || ($state === 'failed' && ($job['last_result']['retryable'] ?? false) === true
+                    && (int)($job['attempts'] ?? 0) < (int)($job['max_attempts'] ?? 1))) $retryable = true;
         }
-        return ['result' => ['ok' => true, 'settled' => $unsettled === [], 'unsettled' => $unsettled]];
+        return ['result' => ['ok' => true, 'settled' => $unsettled === [], 'unsettled' => $unsettled, 'retryable' => $retryable]];
     });
 }
 

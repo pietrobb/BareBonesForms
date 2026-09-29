@@ -22,12 +22,21 @@ set_exception_handler(static function (Throwable $error): void { error_log('Bare
 // Shared access is required on every host, including loopback.
 require_once __DIR__ . '/bbf_auth.php';
 $viewerActions = ['', 'list_forms', 'dashboard', 'submissions', 'detail', 'stats', 'export', 'print', 'delete',
-    'bulk_delete', 'forward', 'retry_delivery', 'review_filters', 'review_update', 'review_filter_save', 'review_filter_delete', 'file'];
+    'bulk_delete', 'forward', 'retry_delivery', 'review_filters', 'review_update', 'review_filter_save', 'review_filter_delete', 'file', 'logout'];
 $action = is_string($_GET['action'] ?? '') && in_array($_GET['action'] ?? '', $viewerActions, true) ? ($_GET['action'] ?? '') : 'invalid';
 // A download is a hidden form POST (no custom headers possible): IDs and the viewer token travel in its body, never the URL.
 $fileDownload = $action === 'file';
-if ($fileDownload && !array_key_exists('HTTP_X_BBF_CSRF', $_SERVER) && is_string($_POST['csrf'] ?? null)) $_SERVER['HTTP_X_BBF_CSRF'] = $_POST['csrf'];
+if (($fileDownload || $action === 'logout') && !array_key_exists('HTTP_X_BBF_CSRF', $_SERVER) && is_string($_POST['csrf'] ?? null)) $_SERVER['HTTP_X_BBF_CSRF'] = $_POST['csrf'];
 $principal = bbf_authenticate($config, true, $action === '');
+if ($action === 'logout') {
+    // Sign-out is a CSRF-checked POST, so a foreign page cannot log the operator out.
+    if ($principal && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && bbf_auth_csrf_valid()) {
+        unset($_SESSION['bbf_access']);
+        session_regenerate_id(true);
+    }
+    header('Location: viewer.php', true, 303);
+    exit;
+}
 $reviewActions = ['review_filters', 'review_update', 'review_filter_save', 'review_filter_delete'];
 $mutation = in_array($action, ['delete', 'bulk_delete', 'forward', 'retry_delivery', 'review_update', 'review_filter_save', 'review_filter_delete'], true);
 if (($mutation || $fileDownload) && (!$principal || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !bbf_auth_csrf_valid())) {
@@ -154,7 +163,7 @@ function getDbConnection(array $config): ?PDO {
         }
         if ($s === 'sqlite') {
             $dbFile = $config['sqlite']['path'] ?? ($config['submissions_dir'] ?? __DIR__ . '/submissions') . '/bbf.sqlite';
-            if (!file_exists($dbFile)) return null;
+            if (!file_exists($dbFile) || filesize($dbFile) === 0) return null;
             return new (class_exists('Pdo\\Sqlite') ? 'Pdo\\Sqlite' : 'PDO')("sqlite:$dbFile", null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         }
     } catch (PDOException $e) { error_log("BareBonesForms viewer DB: " . $e->getMessage()); throw $e; }
@@ -710,6 +719,7 @@ if ($action === 'export') {
         bbf_access_finish($prepared['count']);
         header('Content-Type: text/csv; charset=utf-8');
         header("Content-Disposition: attachment; filename={$formId}_submissions.csv");
+        echo "\xEF\xBB\xBF"; // UTF-8 BOM: Excel otherwise opens the file as ANSI and breaks diacritics
         // Completion records successful preparation, not client receipt.
         while (!feof($out)) { $chunk = fread($out, 8192); if ($chunk === false) { error_log('BareBonesForms: Failed to transfer prepared CSV export.'); break; } echo $chunk; }
     } finally {
@@ -1079,6 +1089,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     <h1 id="header-title"><?= htmlspecialchars($siteName) ?></h1>
     <span class="header-spacer"></span>
     <span class="header-status" id="header-status" role="status" aria-live="polite"></span>
+    <form method="post" action="viewer.php?action=logout" style="margin:0"><input type="hidden" name="csrf" value="<?= htmlspecialchars(bbf_auth_csrf()) ?>"><button type="submit" class="btn-back" id="btn-logout"><?= htmlspecialchars($viewerLang === 'sk' ? 'Odhlásiť' : ($viewerLang === 'de' ? 'Abmelden' : 'Sign out')) ?></button></form>
 </header>
 
 <div class="viewer-layout">

@@ -72,6 +72,10 @@ return [
 
     // Rate limiting: max submissions per IP per minute
     'rate_limit' => 10,
+    // Behind Cloudflare or a reverse proxy every visitor arrives from the proxy's address, so rate limits and
+    // stored IPs would lump everyone together. List the proxy addresses / CIDR ranges here to use the visitor
+    // address from X-Forwarded-For instead (only trusted when the request really comes from one of them).
+    // 'trusted_proxies' => ['173.245.48.0/20', '103.21.244.0/22', '2400:cb00::/32'],
 
     // Honeypot field name (anti-spam, hidden field)
     'honeypot_field' => '_bbf_hp',

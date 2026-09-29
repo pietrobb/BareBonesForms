@@ -3,6 +3,38 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.1] — 2026-09-29
+
+Fixes from an independent code review of 2.1.0.
+
+### Breaking
+- **Access tokens shorter than 16 characters are no longer accepted** (`api_token` and `access_tokens`). A guessable token such as `admin123` was a working admin credential. If you cannot sign in after upgrading, set a long random token: `php -r "echo bin2hex(random_bytes(32));"`. A short entry in `access_tokens` disables the whole list, like any other malformed entry.
+
+### Fixed
+- **Enter on page 1 of a multi-page form submitted the whole form**, skipping the remaining pages. Enter now moves to the next page; only the last page submits.
+- **A `pattern` containing `/` (e.g. `^\d{2}/\d{2}/\d{4}$`) made every submission fail with 500 "Invalid form definition".** Patterns are now compiled safely on the server and use Unicode mode on both sides, so diacritics count the same in the browser and on the server.
+- **Opening `check.php` on a new SQLite installation broke the viewer** ("Cannot read submissions.") until the first submission: it created an empty `bbf.sqlite`. It no longer creates the file, and the viewer treats an empty file as "no submissions yet".
+- **`submit.php?form[]=x` and an array `_bbf_csrf` caused a PHP fatal error** and a false incident email to the admin. Malformed parameters now get 400; text that is not valid UTF-8 gets 422 instead of 500.
+- **The Stripe webhook could answer 503 forever** once one confirmation email or webhook failed permanently (for example a typo in the customer's domain), so Stripe would eventually disable the endpoint and stop marking payments as paid. It now asks Stripe to retry only while a retry can still help; permanent failures are alerted and visible in the viewer.
+- **Chained `show_if` (A → B → C) was evaluated differently in the browser and on the server**, so the server could demand a hidden required field, and a forged value in a hidden field could satisfy a condition. Both sides now treat hidden fields as empty and settle the chain the same way; values of hidden fields are neither validated nor stored.
+- **Cross-field rules (`min_sum`, `min_filled`) rejected by the server showed only a generic error.** Their message is now shown.
+- **Phone validation differed:** `(555) 123-4567` was refused in the browser but accepted by the server. Both use the same rule now.
+- **Resetting a form after a successful submit cleared default values.** Defaults are restored.
+- **An email address like `"a,b@evil.test,c"@example.com` passed validation** and was then split into several recipients, so the confirmation also went to a foreign address. Quoted local parts and separators are refused.
+- **Emails were not fully RFC 5322 compliant:** `Date` and `Message-ID` headers were missing, bodies are now quoted-printable (the summary of a long form exceeded the 998-character line limit), and a sender name with a comma ("Firma, s.r.o.") is quoted instead of turning into two addresses.
+- **Upgrades:** the dry run now names the files it adds and replaces. `check.php`, `api-psc.php` and `data/`, which README tells you to delete, are no longer put back. `.htaccess` is kept when you added lines to it (e.g. cPanel `AddHandler` for the PHP version). An upgrade from the code-only `-upgrade.zip` no longer records templates it did not install, which kept them from ever being updated. An upgrade killed half-way can be undone with `upgrade-rollback`, and a rollback that failed can be run again.
+- **Viewer:** a Sign out button; management pages can no longer be framed by other sites (clickjacking); the CSV export starts with a UTF-8 BOM so Excel shows diacritics correctly.
+- **Sign-in:** after 10 wrong tokens from one address in 15 minutes, further attempts get 429 until the window passes.
+- **Accessibility:** Next/Back in multi-page forms moves focus to the first field of the new page, removing a repeatable row keeps focus next to it, and hint text has WCAG AA contrast (`--bbf-text-light` is now `#6b6b6b`).
+- **Schema:** field-level `suffix`, `label_position` and a display `prefix` such as `"€"` are documented and now accepted by `form.schema.json`.
+
+### Added
+- **`php maintenance.php deliveries-retry`** runs failed emails, webhooks and actions whose automatic retry is due (the retry time was computed, but nothing ran it). Run it from cron every few minutes.
+- **Language packs load themselves.** `data-lang="sk"` is enough; `bbf.js` fetches `lang/sk.js` like it fetches `bbf.css` unless the page already loaded it.
+- **`trusted_proxies`** in `config.php`: behind Cloudflare or a reverse proxy, rate limits and stored IPs use the visitor's address from `X-Forwarded-For` instead of lumping everyone together under the proxy's address.
+- **Verifiable releases.** Each release publishes `SHA256SUMS` and signed build provenance (`gh attestation verify barebonesforms-vX.Y.Z.zip -R pietrobb/BareBonesForms`). `php maintenance.php upgrade --package=<zip> --checksum=<sha256>` refuses a ZIP that is not the published one.
+- CI runs the regression suite on PHP 8.2, 8.3 and 8.4 (plus the 8.1 minimum-version gate) and now includes the `error_notify` alert tests.
+
 ## [2.1.0] — 2026-09-29
 
 ### Added

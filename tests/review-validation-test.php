@@ -370,6 +370,50 @@ foreach ([
     });
 }
 
+// ─── 2.1.1 review findings ─────────────────────────────────────
+check('pattern containing / validates instead of breaking the definition', function (): void {
+    $field = ['type' => 'text', 'pattern' => '^\d{2}/\d{2}/\d{4}$'];
+    accepts($field, '01/02/2026');
+    rejects($field, '01-02-2026');
+    $errors = [];
+    $names = [];
+    validateFieldList([$field + ['name' => 'd']], 'fields', $errors, $names);
+    same([], $errors);
+});
+check('pattern with an escaped slash and Unicode letters matches like the browser', function (): void {
+    accepts(['type' => 'text', 'pattern' => '^a\/b$'], 'a/b');
+    accepts(['type' => 'text', 'pattern' => '^.{3}$'], 'čšž');
+});
+check('quoted local parts that would split into several recipients are refused', function (): void {
+    rejects(['type' => 'email'], '"a,b@evil.test,c"@example.com', 'invalidEmail');
+    accepts(['type' => 'email'], 'jana.novak@example.com');
+});
+check('phone rule matches the browser', function (): void {
+    accepts(['type' => 'tel'], '(555) 123-4567');
+    rejects(['type' => 'tel'], 'call me', 'invalidTel');
+});
+check('show_if chain A -> B -> C: a hidden B hides C, and its forged value counts as empty', function (): void {
+    $fields = [
+        ['name' => 'a', 'type' => 'text'],
+        ['name' => 'b', 'type' => 'text', 'show_if' => ['field' => 'a', 'value' => 'yes']],
+        ['name' => 'c', 'type' => 'text', 'label' => 'C', 'required' => true, 'show_if' => ['field' => 'b', 'value' => 'go']],
+    ];
+    same([], validate($fields, ['a' => 'no', 'b' => 'go']));
+    same(['a' => 'no'], bbfVisibleInput($fields, ['a' => 'no', 'b' => 'go', 'c' => 'x']));
+    same(['c' => 'required:C'], validate($fields, ['a' => 'yes', 'b' => 'go']));
+});
+check('invalid UTF-8 is detected before storage', function (): void {
+    same(true, bbfValidUtf8Deep(['name' => 'Žofia', 'list' => ['ok']]));
+    same(false, bbfValidUtf8Deep(['name' => "bad\xC3"]));
+    same(false, bbfValidUtf8Deep(["bad\xFF" => 'key']));
+});
+check('mail headers: quoted display names and RFC 5322 Date/Message-ID', function (): void {
+    same('"Firma, s.r.o." <info@example.com>', bbf_mail_address_header('Firma, s.r.o.', 'info@example.com'));
+    same('=?UTF-8?B?' . base64_encode('Žofia') . '?= <z@example.com>', bbf_mail_address_header('Žofia', 'z@example.com'));
+    $headers = bbf_mail_standard_headers('noreply@example.com');
+    same(true, (bool)preg_match('/\A<[0-9a-f]{32}@example\.com>\z/', $headers['Message-ID']) && strtotime($headers['Date']) > 0);
+});
+
 restore_error_handler();
 printf("Typed validation regression tests: %d passed, %d failed.\n", $passed, $failed);
 exit($failed === 0 ? 0 : 1);

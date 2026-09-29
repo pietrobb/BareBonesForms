@@ -257,7 +257,7 @@ details summary:hover { text-decoration: underline; }
 
 <h3>One command (SSH)</h3>
 <p>Every release from 2.1.0 on knows its version (<code>php maintenance.php version</code>, also shown in <code>check.php</code> and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:</p>
-<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php upgrade --package=../barebonesforms-v2.1.0.zip</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php upgrade --package=../barebonesforms-v2.1.1.zip</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 <p>This is a dry run &mdash; nothing changes. It verifies every file of the package, runs the new version's smoke test against <strong>your</strong> forms and templates, checks the new PHP files for syntax errors, and prints:</p>
 <ul>
     <li>the installed and the new version, how many files will be added or replaced, and which obsolete files will be removed;</li>
@@ -270,7 +270,7 @@ details summary:hover { text-decoration: underline; }
 <p>If it looks right, run the printed command with <code>--apply --confirm=&lt;digest&gt;</code>. The upgrade saves every file it overwrites or deletes to <code>logs_dir/upgrades/&lt;date&gt;-&lt;from&gt;-to-&lt;to&gt;-&hellip;/</code>, swaps files one by one (each file atomically), runs the smoke test again, and <strong>rolls itself back</strong> if anything fails. <code>config.php</code>, your own forms, templates, submissions, uploads and logs are never touched &mdash; the manifest lists only the files the release owns. Demo pages, docs and sample forms are updated where you have them, but never added to an installation that left them out, so a live site does not grow demo form endpoints.</p>
 <p>To undo a finished upgrade later: <code>php maintenance.php upgrade-rollback --backup=&lt;folder printed by the upgrade&gt;</code> (dry run first, then <code>--apply --confirm=&hellip;</code>).</p>
 <p><strong>Upgrading from a version before 2.1.0</strong> (its <code>maintenance.php</code> does not know <code>upgrade</code> yet): unzip the new release next to the installation and let the new code do it &mdash; same checks, backup and rollback:</p>
-<div class="code-block"><span class="lang">bash</span><pre>unzip barebonesforms-v2.1.0.zip            # creates ./barebonesforms
+<div class="code-block"><span class="lang">bash</span><pre>unzip barebonesforms-v2.1.1.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 <p>Without a manifest from the old version it cannot tell which sample forms and templates you edited, so it keeps every one that differs from the new release and removes nothing.</p>
 <p>Needs the PHP <code>zip</code> extension to read the ZIP; without it, unzip the package and pass the folder: <code>--package=../barebonesforms</code>. On hosts where PHP cannot start child processes, the smoke tests are skipped &mdash; run <code>php smoketest.php</code> yourself afterwards.</p>
@@ -1158,7 +1158,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
     <tr><td><code>--bbf-spacing</code></td><td>16px</td><td>Gap between fields</td></tr>
     <tr><td><code>--bbf-text</code></td><td>#1a1a1a</td><td>Main text color</td></tr>
     <tr><td><code>--bbf-text-muted</code></td><td>#666</td><td>Descriptions, secondary text</td></tr>
-    <tr><td><code>--bbf-text-light</code></td><td>#888</td><td>Hints, placeholders</td></tr>
+    <tr><td><code>--bbf-text-light</code></td><td>#6b6b6b</td><td>Hints, placeholders</td></tr>
     <tr><td><code>--bbf-bg</code></td><td>#fff</td><td>Input backgrounds</td></tr>
     <tr><td><code>--bbf-bg-alt</code></td><td>#f0f0f0</td><td>Prefix/suffix, nav buttons</td></tr>
     <tr><td><code>--bbf-border</code></td><td>#d0d0d0</td><td>Input borders</td></tr>
@@ -1509,7 +1509,7 @@ $actionResponse['redirect'] = '/thank-you?order=' . $orderId;</pre><button class
 <p><code>viewer.php</code> is a built-in dashboard for browsing, searching, and exporting form submissions. It reads directly from your configured storage backend &mdash; no extra setup needed.</p>
 
 <h3>Access</h3>
-<p>Required on every host, including localhost. Open <code>viewer.php</code> and sign in with your <code>api_token</code> (or a scoped token). Authentication persists in the session &mdash; AJAX calls work without repeating the token. Scripts can send the <code>X-BBF-Token</code> header instead.</p>
+<p>Required on every host, including localhost. Open <code>viewer.php</code> and sign in with your <code>api_token</code> (or a scoped token). Authentication persists in the session &mdash; AJAX calls work without repeating the token. Scripts can send the <code>X-BBF-Token</code> header instead. Tokens shorter than 16 characters are never accepted, and after 10 wrong tokens from one address within 15 minutes further attempts get HTTP 429. Behind Cloudflare or a reverse proxy, list the proxy ranges in <code>trusted_proxies</code> so limits and stored IPs use the visitor's address.</p>
 
 <h3>Features</h3>
 <table>
@@ -2013,6 +2013,9 @@ php maintenance.php restore-abort --form=application --apply --confirm=ABORT_CON
 
 <div class="code-block"><span class="lang">bash</span><pre>php maintenance.php selfcheck     # forms, writable folders, SMTP login, deliveries stuck in the last 7 days, new release
 php maintenance.php alerts-test   # confirm the alert email reaches you</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>A failed email, webhook or action is retried automatically with a growing delay. Run the retries from cron every few minutes (e.g. <code>*/5 * * * *</code>); without it they only run when you press Retry in the viewer:</p>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php deliveries-retry   # failed deliveries whose retry is due</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p><code>selfcheck</code> also tells you once when a newer BareBonesForms release is out (see <a href="#upgrading">Upgrading</a>; <code>'update_check' =&gt; false</code> turns it off).</p>
 

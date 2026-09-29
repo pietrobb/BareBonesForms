@@ -290,7 +290,7 @@ $httpConfig = [
     'mail' => ['method' => 'mail', 'from_email' => 'noreply@example.invalid', 'from_name' => 'BBF'],
     'delivery' => ['max_attempts' => 3, 'retry_delay' => 60, 'lease_seconds' => 300],
     'webhook_secret' => '', 'stripe' => ['secret_key' => '', 'webhook_secret' => ''], 'error_notify' => '',
-    'api_token' => 'fixture-token', 'access_tokens' => [], 'store_ip' => false, 'store_user_agent' => false,
+    'api_token' => 'fixture-token-0123456', 'access_tokens' => [], 'store_ip' => false, 'store_user_agent' => false,
     'sandbox' => false, 'lang' => 'en',
 ];
 file_put_contents($httpRoot . '/config.php', "<?php defined('BBF_LOADED') || exit; return " . var_export($httpConfig, true) . ";\n");

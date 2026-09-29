@@ -195,7 +195,7 @@ function smokeTextValue(array $field): string {
     foreach ($candidates as $value) {
         $length = function_exists('mb_strlen') ? mb_strlen($value) : strlen($value);
         if ($length < $min || ($max > 0 && $length > $max)) continue;
-        if (!empty($field['pattern']) && @preg_match('/' . $field['pattern'] . '/', $value) !== 1) continue;
+        if (!empty($field['pattern']) && @preg_match((string)bbfFieldPatternRegex((string)$field['pattern']), $value) !== 1) continue;
         return $value;
     }
     return 'Test Value';

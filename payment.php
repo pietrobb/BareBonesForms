@@ -1,6 +1,6 @@
 <?php
 /**
- * BareBonesForms — Payment Webhook Handler  v1.0.1
+ * BareBonesForms — Payment Webhook Handler
  *
  * Receives Stripe webhook events (checkout.session.completed),
  * updates submission payment_status, and triggers deferred
@@ -238,7 +238,14 @@ if (in_array($event['type'], $paymentEventTypes, true)) {
     // Provider acknowledgement depends only on the durable ledger, never on an
     // in-memory adapter return that may disagree with its persisted completion.
     $settlement = bbf_outbox_settlement($outboxPath);
-    $retryableFailure = !($settlement['ok'] ?? false) || !($settlement['settled'] ?? false);
+    // 503 asks Stripe to redeliver, which only helps while a delivery can still succeed on retry.
+    // A terminal failure (bad recipient domain, exhausted attempts, ambiguous webhook) is already
+    // alerted and visible in the viewer; answering 503 for it would make Stripe disable the endpoint.
+    $retryableFailure = !($settlement['ok'] ?? false)
+        || (!($settlement['settled'] ?? false) && ($settlement['retryable'] ?? true));
+    if (($settlement['ok'] ?? false) && !($settlement['settled'] ?? false) && !$retryableFailure) {
+        error_log("BareBonesForms: Payment confirmed for $submissionId (form: $formId); delivery needs attention");
+    }
     if ($retryableFailure) {
         http_response_code(503);
         echo json_encode(['received' => false, 'error' => 'delivery remains unsettled']);

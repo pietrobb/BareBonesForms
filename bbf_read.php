@@ -360,6 +360,9 @@ function bbf_read_export(string $formId, array $config, int $limit, int $offset,
     if ($storage === 'file') $rows = bbf_read_files($formId, $dir, $from, $to, $q, $strict);
     elseif ($storage === 'csv') $rows = bbf_read_csv($formId, $dir, $from, $to, $q, null, $strict);
     else {
+        // A zero-byte SQLite file nobody has written yet (e.g. created by an older check.php) holds no submissions.
+        $sqlitePath = $config['sqlite']['path'] ?? $dir . '/bbf.sqlite';
+        if ($storage === 'sqlite' && is_file($sqlitePath) && filesize($sqlitePath) === 0) return;
         $pdo = bbf_read_db_connect($config);
         if (!$pdo) return;
         $rows = bbf_read_db($pdo, $formId, $from, $to, $q, null, null, 0, $strict);

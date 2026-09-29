@@ -235,8 +235,14 @@ function bbf_alert_send(string $to, string $subject, string $body, array $config
     $from = (string)($mail['from_email'] ?? 'noreply@example.com');
     $fromName = str_replace(["\r", "\n", "\0"], '', (string)($mail['from_name'] ?? 'BareBonesForms'));
     $encodedSubject = preg_match('/[^\x20-\x7E]/', $subject) ? '=?UTF-8?B?' . base64_encode($subject) . '?=' : $subject;
-    $headers = "From: $fromName <" . str_replace(["\r", "\n", "\0"], '', $from) . ">\r\n"
+    $fromHeader = function_exists('bbf_mail_address_header') ? bbf_mail_address_header($fromName, $from)
+        : "$fromName <" . str_replace(["\r", "\n", "\0"], '', $from) . '>';
+    $headers = "From: $fromHeader\r\n"
         . "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n";
+    if (function_exists('bbf_mail_standard_headers')) {
+        foreach (bbf_mail_standard_headers($from) as $name => $value) $headers .= "$name: $value\r\n";
+        $body = quoted_printable_encode($body);
+    }
     // Envelope sender = From, so SPF/DMARC align with the site's domain instead of the hosting account's.
     // Plain characters only: FILTER_VALIDATE_EMAIL admits quotes and shell-special characters, and this goes to the sendmail command line.
     $params = preg_match('/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+$/', $from) ? '-f' . $from : '';

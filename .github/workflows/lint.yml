@@ -45,15 +45,19 @@ jobs:
           printf 'JavaScript syntax: %d files passed\n' "$count"
 
   g6:
-    name: G6 failure-propagating regression gate
+    name: G6 failure-propagating regression gate (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
     needs: syntax
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4']
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: ${{ matrix.php }}
           extensions: mbstring, pdo_sqlite, sqlite3
       - uses: actions/setup-node@v7
         with:

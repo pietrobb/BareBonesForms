@@ -134,12 +134,14 @@ function bbf_deploy_manifest(string $root, string $version = 'dev'): array
 
     // Release manifest for `maintenance.php upgrade` (see bbf_upgrade.php). code: always installed.
     // seed: yours after install; added when missing, updated only while unchanged. sample: like seed, but never
-    // added, so a live site does not grow demo form endpoints. extra: docs and demo pages; updated, never added.
-    // The -upgrade ZIP carries code only.
-    $kinds = array_fill_keys(['.gitignore', 'logs/.gitkeep', 'submissions/.gitkeep'], 'seed')
+    // added, so a live site does not grow demo form endpoints. extra: docs, demo pages and the tools README tells
+    // you to delete (check.php, api-psc.php + data/); updated, never added back. .htaccess is a seed because hosts
+    // add their own lines (AddHandler for the PHP version). The -upgrade ZIP carries code only.
+    $kinds = array_fill_keys(['.gitignore', '.htaccess', 'logs/.gitkeep', 'submissions/.gitkeep'], 'seed')
         + array_fill_keys(array_map(static fn($name) => "templates/$name", $templates), 'seed')
         + array_fill_keys(array_map(static fn($name) => "forms/$name", array_diff($stockForms, ['form.schema.json'])), 'sample')
-        + array_fill_keys(array_merge(['README.md', 'LICENSE', 'docs.html', 'index.html', 'demo.css', 'actions/README.md'],
+        + array_fill_keys(array_merge(['README.md', 'LICENSE', 'docs.html', 'index.html', 'demo.css', 'actions/README.md',
+            'check.php', 'api-psc.php', 'data/city-to-psc.json', 'data/psc-to-city.json'],
             array_values(array_filter($topLevel, static fn($path) => (bool)preg_match('/^demo\d*\.html$/', $path)))), 'extra');
     $files = [];
     foreach ($manifest as $path => $entry) {

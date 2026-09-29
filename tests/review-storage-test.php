@@ -40,7 +40,7 @@ try {
     require "$root/tests/storage-functions.php";
     $config = ['storage' => 'file', 'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions",
         'logs_dir' => "$root/logs", 'templates_dir' => "$root/templates", 'sqlite' => ['path' => "$root/data/bbf.sqlite"],
-        'csrf' => false, 'honeypot_field' => '_hp', 'rate_limit' => 1000, 'lang' => 'en', 'api_token' => 'fixture-only',
+        'csrf' => false, 'honeypot_field' => '_hp', 'rate_limit' => 1000, 'lang' => 'en', 'api_token' => 'fixture-only-token-0123',
         'error_notify' => '', 'stripe' => ['secret_key' => 'sk_test_never_used', 'webhook_secret' => 'fixture-webhook-secret']];
     storage_config($root, $config);
     storage_check(in_array('sqlite', PDO::getAvailableDrivers(), true), 'SQLite driver required');
@@ -431,7 +431,7 @@ PHP;
         storage_check($r['code'] === 200 && !empty($r['json']['submission_id']), "$backend HTTP submit honors override (HTTP {$r['code']})");
         $id = $r['json']['submission_id'];
         $r = bbf_test_http($server, $base . "submit.php?form=http_$backend", ['answer' => "\xff"]);
-        storage_check($r['code'] === 500 && ($r['json']['status'] ?? '') === 'error', "$backend HTTP invalid encoding is not successful (HTTP {$r['code']}: {$r['body']})");
+        storage_check($r['code'] === 422 && ($r['json']['status'] ?? '') === 'error', "$backend HTTP invalid encoding is rejected as a client error (HTTP {$r['code']}: {$r['body']})");
         if ($backend === 'csv') continue;
         $form['on_submit']['actions'] = [['type' => 'probe']];
         file_put_contents("$root/forms/http_$backend.json", bbf_storage_json($form));

@@ -5,6 +5,10 @@
  * clean-URL exchange. Only the legacy nonempty api_token is an unrestricted admin.
  */
 defined('BBF_LOADED') || exit;
+const BBF_AUTH_MIN_TOKEN = 16;
+const BBF_AUTH_MAX_FAILURES = 10;   // wrong tokens per client address ...
+const BBF_AUTH_FAILURE_WINDOW = 900; // ... per 15 minutes, then 429 until the window passes
+
 function bbf_auth_load_config(string $path): array {
     ini_set('display_errors', '0');
     if (function_exists('opcache_invalidate')) opcache_invalidate($path, true);
@@ -18,6 +22,9 @@ function bbf_auth_headers(): void {
     header('Pragma: no-cache');
     header('Referrer-Policy: no-referrer');
     header('X-Content-Type-Options: nosniff');
+    // No clickjacking: management pages may only be framed by themselves (editor preview, viewer downloads).
+    header('X-Frame-Options: SAMEORIGIN');
+    header("Content-Security-Policy: frame-ancestors 'self'");
 }
 
 function bbf_auth_fail(int $code = 403): void {
@@ -28,7 +35,7 @@ function bbf_auth_fail(int $code = 403): void {
         header('Content-Type: text/html; charset=utf-8');
         $hint = $login['configured']
             ? 'Enter the <code>api_token</code> from <code>config.php</code>.'
-            : 'No valid access token is configured. Set a long random <code>api_token</code> in <code>config.php</code> '
+            : 'No valid access token is configured. Set a long random <code>api_token</code> (at least ' . BBF_AUTH_MIN_TOKEN . ' characters) in <code>config.php</code> '
                 . '(a malformed <code>access_tokens</code> list disables all tokens).';
         echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<title>BareBonesForms: sign in</title><style>body{font-family:system-ui,sans-serif;max-width:420px;margin:12vh auto;padding:0 20px;color:#1a1a2e}'
@@ -46,6 +53,73 @@ function bbf_auth_fail(int $code = 403): void {
     exit;
 }
 
+/**
+ * The visitor's address. Behind a reverse proxy or Cloudflare every request comes from the proxy, so list the
+ * proxy addresses/CIDR ranges in 'trusted_proxies'; X-Forwarded-For is then read right to left and the first
+ * address that is not a trusted proxy wins. Without trusted_proxies the header is ignored (it is forgeable).
+ */
+function bbf_client_ip(array $config): string {
+    $remote = (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+    $trusted = array_filter((array)($config['trusted_proxies'] ?? []), 'is_string');
+    if ($trusted === [] || !bbf_ip_in_list($remote, $trusted)) return $remote;
+    $chain = array_reverse(array_map('trim', explode(',', (string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''))));
+    foreach ($chain as $hop) {
+        if (filter_var($hop, FILTER_VALIDATE_IP) === false) break;
+        if (!bbf_ip_in_list($hop, $trusted)) return $hop;
+    }
+    return $remote;
+}
+
+function bbf_ip_in_list(string $ip, array $list): bool {
+    $packed = @inet_pton($ip);
+    if ($packed === false) return false;
+    foreach ($list as $entry) {
+        [$net, $bits] = str_contains($entry, '/') ? explode('/', $entry, 2) : [$entry, null];
+        $netPacked = @inet_pton(trim($net));
+        if ($netPacked === false || strlen($netPacked) !== strlen($packed)) continue;
+        $bits = $bits === null ? strlen($packed) * 8 : max(0, min(strlen($packed) * 8, (int)$bits));
+        $bytes = intdiv($bits, 8);
+        if (substr($packed, 0, $bytes) !== substr($netPacked, 0, $bytes)) continue;
+        $rest = $bits % 8;
+        if ($rest === 0 || ((ord($packed[$bytes]) ^ ord($netPacked[$bytes])) & (0xFF << (8 - $rest)) & 0xFF) === 0) return true;
+    }
+    return false;
+}
+
+/**
+ * Wrong-token counter per client address. $failed=false: may this client try (false once
+ * BBF_AUTH_MAX_FAILURES failures fall inside the window)? $failed=true: record one failure.
+ */
+function bbf_auth_throttle(array $config, bool $failed): bool {
+    $dir = rtrim((string)($config['logs_dir'] ?? __DIR__ . '/logs'), '/\\');
+    if (!is_dir($dir)) return true;
+    $fp = @fopen($dir . '/.auth_failures.json', 'c+');
+    if (!$fp) return true; // an unwritable log folder must not lock the operator out
+    try {
+        flock($fp, LOCK_EX);
+        $now = time();
+        $state = json_decode((string)stream_get_contents($fp), true);
+        $state = is_array($state) ? $state : [];
+        $key = hash('sha256', bbf_client_ip($config));
+        foreach ($state as $client => $times) {
+            $state[$client] = array_values(array_filter(is_array($times) ? $times : [], static fn($t) => is_int($t) && $t > $now - BBF_AUTH_FAILURE_WINDOW));
+            if ($state[$client] === []) unset($state[$client]);
+        }
+        $allowed = count($state[$key] ?? []) < BBF_AUTH_MAX_FAILURES;
+        if ($failed) {
+            $state[$key][] = $now;
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($state));
+            fflush($fp);
+        }
+        return $allowed;
+    } finally {
+        flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+}
+
 function bbf_auth_id($value): string {
     return is_string($value) && preg_match('/\A[a-zA-Z0-9_-]{1,128}\z/D', $value) ? $value : '';
 }
@@ -57,7 +131,8 @@ function bbf_auth_registry(array $config): array {
     $registry = []; $secrets = [];
     $legacy = $config['api_token'] ?? '';
     if (!is_string($legacy)) return [];
-    if ($legacy !== '') {
+    // A guessable token ("admin123") is not a credential: shorter than BBF_AUTH_MIN_TOKEN it is never accepted.
+    if ($legacy !== '' && strlen($legacy) >= BBF_AUTH_MIN_TOKEN) {
         $fp = hash('sha256', $legacy);
         $registry['legacy-admin'] = ['id' => 'legacy-admin', 'fingerprint' => $fp, 'admin' => true,
             'forms' => [], 'permissions' => [], 'expires' => PHP_INT_MAX, 'revoked' => false];
@@ -65,7 +140,7 @@ function bbf_auth_registry(array $config): array {
     }
     foreach ($records as $r) {
         if (!is_array($r) || bbf_auth_id($r['id'] ?? null) === '' || ($r['id'] ?? '') === 'legacy-admin'
-            || !is_string($r['token'] ?? null) || $r['token'] === ''
+            || !is_string($r['token'] ?? null) || strlen($r['token']) < BBF_AUTH_MIN_TOKEN
             || !is_array($r['forms'] ?? null) || !array_is_list($r['forms'])
             || !is_array($r['permissions'] ?? null) || !array_is_list($r['permissions'])
             || !is_bool($r['revoked'] ?? null) || !is_string($r['expires_at'] ?? null)) return [];
@@ -116,10 +191,19 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
     $provided = $_SERVER['HTTP_X_BBF_TOKEN'] ?? ($_GET['token'] ?? ($formLogin ? $_POST['token'] : null));
     $principal = null; $now = time();
     if ($explicit) {
+        // Guessing is capped per client address; a blocked client is not even checked.
+        if (!bbf_auth_throttle($config, false)) {
+            http_response_code(429);
+            header('Retry-After: ' . BBF_AUTH_FAILURE_WINDOW);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => 'Too many failed sign-in attempts. Try again in 15 minutes.']);
+            exit;
+        }
         if (is_string($provided) && $provided !== '') {
             $fp = hash('sha256', $provided);
             foreach ($registry as $r) if (hash_equals($r['fingerprint'], $fp)) $principal = $r;
         }
+        if (!$principal) bbf_auth_throttle($config, true);
     } elseif ($session) {
         $s = $_SESSION['bbf_access'] ?? [];
         $idle = max(1, min(86400, (int)($config['auth_session_idle'] ?? 1800)));

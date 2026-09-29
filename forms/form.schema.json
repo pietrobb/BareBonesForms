@@ -423,12 +423,24 @@
                 },
                 "prefix": {
                     "type": "string",
-                    "pattern": "^[a-zA-Z0-9_]+$",
-                    "description": "Prefix applied to all template field names (used with \"use\")."
+                    "description": "Input fields: text shown before the input (e.g. \"€\"). With \"use\": prefix applied to all template field names."
+                },
+                "suffix": {
+                    "type": "string",
+                    "description": "Text shown after the input (e.g. \"kg\", \"ks\")."
+                },
+                "label_position": {
+                    "type": "string",
+                    "enum": ["top", "left"],
+                    "description": "\"left\" puts this field's label beside the input (overrides the form-level setting)."
                 }
             },
             "additionalProperties": false,
             "allOf": [
+                {
+                    "if": { "required": ["use"] },
+                    "then": { "properties": { "prefix": { "pattern": "^[a-zA-Z0-9_]+$" } } }
+                },
                 {
                     "if": {
                         "properties": { "type": { "const": "checkbox" } },

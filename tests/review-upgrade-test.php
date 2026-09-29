@@ -78,6 +78,9 @@ try {
         && ($kinds['payment.php'] ?? '') === 'code', 'demo forms are samples; docs and demo pages are extras; endpoints are code');
     check_upgrade(($kinds['bbf.js'] ?? '') === 'code' && ($kinds['forms/form.schema.json'] ?? '') === 'code' && ($kinds['config.example.php'] ?? '') === 'code',
         'code, schema and config example are code');
+    check_upgrade(($kinds['.htaccess'] ?? '') === 'seed', '.htaccess is a seed: host lines such as AddHandler survive upgrades');
+    check_upgrade(($kinds['check.php'] ?? '') === 'extra' && ($kinds['api-psc.php'] ?? '') === 'extra' && ($kinds['data/psc-to-city.json'] ?? '') === 'extra',
+        'files README tells you to delete are extras, never added back');
     check_upgrade(!isset($kinds['config.php']) && !isset($kinds['.bbf-package']) && !isset($kinds['.bbf-manifest.json']), 'manifest never lists config.php, the marker or itself');
     $sameHashes = true;
     foreach ($manifest['files'] ?? [] as $path => $file) $sameHashes = $sameHashes && hash_file('sha256', "$tmp/old/$path") === $file['sha256'];
@@ -114,10 +117,16 @@ try {
     $plan = $dry['json'] ?? [];
     check_upgrade($dry['code'] === 0 && ($plan['ok'] ?? false) && $plan['from'] === '2.1.0' && $plan['to'] === '2.2.0', 'dry run plans 2.1.0 -> 2.2.0');
     check_upgrade(($plan['files']['add'] ?? 0) === 1 && ($plan['files']['replace'] ?? 0) === 4, 'adds the new file; replaces bbf.js, config example, CHANGELOG, untouched notify.html and nothing else');
+    check_upgrade(($plan['added'] ?? []) === ['newfile.php'] && in_array('bbf.js', $plan['replaced'] ?? [], true), 'dry run names the files it adds and replaces');
     check_upgrade(($plan['files']['remove'] ?? []) === ['demo10.html'], 'an unchanged file dropped from the release is removed');
     check_upgrade(($plan['files']['keep_yours'] ?? []) === ['templates/confirm.html'], 'your edited template is kept');
     check_upgrade(($plan['new_config_settings'] ?? []) === ['brand_new_setting'], 'new config settings are listed');
-    check_upgrade(count($plan['breaking'] ?? []) === 1 && str_starts_with($plan['breaking'][0], '2.2.0: **Renamed'), 'Breaking items since the installed version are listed');
+    // The fixture reuses the real CHANGELOG, so releases after 2.1.0 contribute their own Breaking items too.
+    $breaking = $plan['breaking'] ?? [];
+    $breakingVersions = array_map(static fn($item) => strstr((string)$item, ':', true), $breaking);
+    check_upgrade(str_starts_with($breaking[0] ?? '', '2.2.0: **Renamed') && count(array_keys($breakingVersions, '2.2.0', true)) === 1
+        && array_filter($breakingVersions, static fn($v) => !is_string($v) || version_compare($v, '2.1.0', '<=')) === [],
+        'Breaking items since the installed version are listed');
     check_upgrade(($plan['check']['status'] ?? '') === 'passed', 'new code passes the smoke test against the live forms');
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'dry run changes nothing');
 
@@ -127,6 +136,17 @@ try {
     $injected = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . $plan['confirm']], "$tmp/site", ['BBF_UPGRADE_TEST_FAIL' => '1']);
     check_upgrade($injected['code'] === 1 && ($injected['json']['rolled_back'] ?? false) === true, 'a failure after writing files is rolled back');
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'rollback restores every byte and removes added files');
+
+    // A process killed mid-upgrade leaves a journal without completed_at; upgrade-rollback still undoes it.
+    upgrade_copy("$tmp/site", "$tmp/killed");
+    upgrade_rmtree("$tmp/killed/logs/upgrades");
+    $killedPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/killed")['json'] ?? [];
+    upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . ($killedPlan['confirm'] ?? '')], "$tmp/killed", ['BBF_UPGRADE_TEST_FAIL' => 'kill']);
+    $killedBackup = glob("$tmp/killed/logs/upgrades/*", GLOB_ONLYDIR)[0] ?? '';
+    $killedRollback = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$killedBackup"], "$tmp/killed")['json'] ?? [];
+    check_upgrade(($killedRollback['unfinished_upgrade'] ?? false) === true, 'an interrupted upgrade can be rolled back');
+    $killedApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$killedBackup", '--apply', '--confirm=' . ($killedRollback['confirm'] ?? '')], "$tmp/killed");
+    check_upgrade($killedApply['code'] === 0 && upgrade_snapshot("$tmp/killed") === $before, 'the interrupted upgrade is fully undone');
 
     $apply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new", '--apply', '--confirm=' . $plan['confirm']], "$tmp/site");
     check_upgrade($apply['code'] === 0 && ($apply['json']['ok'] ?? false), 'upgrade applies' . ($apply['code'] === 0 ? '' : ': ' . $apply['out'] . $apply['err']));
@@ -154,6 +174,12 @@ try {
     check_upgrade($twice['code'] === 1 && str_contains($twice['json']['error'] ?? '', 'already rolled back'), 'a backup cannot be rolled back twice');
 
     // ─── Refusals ────────────────────────────────────────────────────
+    $sums = "$tmp/pkg.zip";
+    file_put_contents($sums, 'not really a zip');
+    $mismatch = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$sums", '--checksum=' . str_repeat('a', 64)], "$tmp/site");
+    check_upgrade($mismatch['code'] === 1 && str_contains($mismatch['err'], 'does not match --checksum'), 'a package that does not match the published SHA-256 is refused');
+    $matched = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$sums", '--checksum=' . hash_file('sha256', $sums)], "$tmp/site");
+    check_upgrade(!str_contains($matched['err'], '--checksum'), 'a matching --checksum passes on to the package checks');
     upgrade_copy("$tmp/new", "$tmp/damaged");
     file_put_contents("$tmp/damaged/bbf.js", "tampered\n", FILE_APPEND);
     $damaged = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/damaged"], "$tmp/site");
@@ -183,6 +209,17 @@ try {
     $codeOnly = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly"], "$tmp/site");
     check_upgrade(($codeOnly['json']['ok'] ?? false) && !isset($codeOnly['json']['files']['keep_yours']) && ($codeOnly['json']['files']['remove'] ?? []) === ['demo10.html'],
         'the code-only upgrade package works; only files dropped from the release are removed');
+    // Applied, it records only what it installed: the untouched 2.1.0 notify.html stays recognisably ours.
+    upgrade_copy("$tmp/site", "$tmp/cosite");
+    $coPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly"], "$tmp/cosite")['json'] ?? [];
+    $coApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/codeonly", '--apply', '--confirm=' . ($coPlan['confirm'] ?? '')], "$tmp/cosite");
+    $coManifest = json_decode((string)file_get_contents("$tmp/cosite/.bbf-manifest.json"), true);
+    check_upgrade($coApply['code'] === 0 && ($coManifest['version'] ?? '') === '2.2.0'
+        && ($coManifest['files']['templates/notify.html']['sha256'] ?? '') === hash_file('sha256', "$tmp/cosite/templates/notify.html"),
+        'a code-only upgrade keeps the checksum of templates it did not install');
+    $coNext = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/cosite")['json'] ?? [];
+    check_upgrade(in_array('templates/notify.html', $coNext['replaced'] ?? [], true) && ($coNext['files']['keep_yours'] ?? []) === ['templates/confirm.html'],
+        'the next full package still updates the untouched template and keeps yours');
 
     // A lean live site without demo pages, docs and sample forms does not get them back.
     upgrade_copy("$tmp/site", "$tmp/lean");

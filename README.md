@@ -180,7 +180,7 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Upload the release ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.0.zip
+php maintenance.php upgrade --package=../barebonesforms-v2.1.1.zip
 ```
 
 This is a dry run — nothing changes. It verifies every file of the package, runs the new version's smoke test against **your** forms and templates, checks the new PHP files for syntax errors, and prints:
@@ -199,7 +199,7 @@ To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup
 **Upgrading from a version before 2.1.0** (its `maintenance.php` does not know `upgrade` yet): unzip the new release next to the installation and let the new code do it — same checks, backup and rollback:
 
 ```bash
-unzip barebonesforms-v2.1.0.zip            # creates ./barebonesforms
+unzip barebonesforms-v2.1.1.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 
@@ -899,7 +899,7 @@ Run `check.php` after installation to verify your setup. It tests:
 - Sandbox mode state
 - Leftover diagnostic files (`phpinfo.php`, `test.php`, etc.)
 
-Access control: `api_token` is required everywhere, including localhost. `check.php`, `viewer.php` and `editor.php` show a sign-in form; scripts can send the `X-BBF-Token` header instead.
+Access control: `api_token` is required everywhere, including localhost. `check.php`, `viewer.php` and `editor.php` show a sign-in form; scripts can send the `X-BBF-Token` header instead. Tokens shorter than 16 characters are never accepted, and after 10 wrong tokens from one address within 15 minutes further attempts get HTTP 429 until the window passes. Behind Cloudflare or a reverse proxy, list the proxy ranges in `trusted_proxies` so that this limit, the submission rate limit and stored IPs use the visitor's address.
 
 **Delete `check.php` after verification** — it exposes PHP version, extensions, directory paths, storage details, and form structure.
 
@@ -930,6 +930,12 @@ Some problems happen while nobody submits anything. Add a daily cron job:
 ```bash
 php maintenance.php selfcheck     # every form definition, writable data folders, SMTP login, deliveries stuck in the last 7 days, new release
 php maintenance.php alerts-test   # once, to confirm the alert email reaches you
+```
+
+A failed email, webhook or action is retried automatically with a growing delay. Run the retries from cron every few minutes (for example `*/5 * * * *`); without it they only run when you press Retry in the viewer:
+
+```bash
+php maintenance.php deliveries-retry   # failed deliveries whose retry is due
 ```
 
 `selfcheck` also tells you once when a newer BareBonesForms release is out ([details](#upgrading); `'update_check' => false` turns it off).
