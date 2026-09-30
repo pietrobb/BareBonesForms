@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Não foi possível concluir seu envio. Envie novamente — não haverá duplicata.',
     'submitProcessing'      => 'Seu envio ainda está sendo processado. Não preencha o formulário novamente — clique em Enviar outra vez em alguns minutos; não será criada uma duplicata.',
     'submitUnconfirmed'     => 'Não foi possível confirmar seu envio. O organizador foi notificado.',
+    'paymentFailed'         => 'Não foi possível iniciar o pagamento. Tente novamente mais tarde.',
+    'draftDisabled'         => 'O salvamento do progresso está desativado para este formulário.',
+    'uploadDisabled'        => 'O envio de arquivos está desativado para este formulário.',
 ];

@@ -33,7 +33,7 @@ function export_evidence_write(string $path, string $bytes): void {
 }
 // Capture BEFORE any assertions or the next request can overwrite the fault trace.
 // Only fixture data is retained; no request token, operator config, or live data.
-function export_http(array $server, string $path, string $token = 'export-fixture-admin'): array {
+function export_http(array $server, string $path, string $token = '3e36c137fae82e07b343926fc07668c06df1b6a38666ec4d5af353f9d3d904fc'): array {
     global $exportRequest;
     $root = $server['root'];
     $before = strlen(export_log("$root/logs/access-audit.php"));
@@ -137,10 +137,10 @@ foreach (['file', 'csv', 'sqlite'] as $storage) {
         bbf_test_copy(__FILE__, "$root/tests/review-export-test.php");
         bbf_test_remove_dir("$root/forms");
         mkdir("$root/forms", 0700);
-        $config = ['api_token' => 'export-fixture-admin', 'storage' => $storage,
+        $config = ['api_token' => '3e36c137fae82e07b343926fc07668c06df1b6a38666ec4d5af353f9d3d904fc', 'storage' => $storage,
             'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions", 'logs_dir' => "$root/logs",
             'sqlite' => ['path' => "$root/submissions/bbf.sqlite"], 'lang' => 'en',
-            'access_tokens' => [['id' => 'reader', 'token' => 'export-fixture-reader', 'forms' => ['alpha'],
+            'access_tokens' => [['id' => 'reader', 'token' => hash('sha256', 'export-fixture-reader'), 'forms' => ['alpha'],
                 'permissions' => ['read'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]]];
         file_put_contents("$root/config.php", '<?php defined("BBF_LOADED") || exit; return ' . var_export($config, true) . ';');
         $form = ['id' => 'alpha', 'name' => 'Export fixture', 'templates' => [
@@ -203,11 +203,11 @@ foreach (['file', 'csv', 'sqlite'] as $storage) {
         if ($csv) fclose($csv);
         $pdo = null;
         $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
-        $http = static fn(string $path, string $token = 'export-fixture-admin') => export_http($server, $path, $token);
+        $http = static fn(string $path, string $token = '3e36c137fae82e07b343926fc07668c06df1b6a38666ec4d5af353f9d3d904fc') => export_http($server, $path, $token);
         export_check($http('tests/review-export-test.php')['code'] === 403, "$storage CLI guard");
         foreach (['viewer.php?action=export&form=alpha', 'submissions.php?format=csv&form=alpha'] as $endpoint) {
             $tag = "$storage $endpoint";
-            export_check($http($endpoint, 'export-fixture-reader')['code'] === 403, "$tag read-only cannot export");
+            export_check($http($endpoint, hash('sha256', 'export-fixture-reader'))['code'] === 403, "$tag read-only cannot export");
             $logBefore = [];
             foreach (['php-error', 'server-error', 'server-output'] as $log) $logBefore[$log] = strlen(export_log("$root/logs/$log.log"));
             $r = $http($endpoint);

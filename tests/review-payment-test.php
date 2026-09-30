@@ -533,6 +533,28 @@ PHP);
     $sqliteStatement = null;
     $sqlite = null;
 
+    $proxyForm = $demo;
+    $proxyForm['on_submit']['payment']['success_url'] = '/done';
+    $proxyForm['on_submit']['payment']['cancel_url'] = '/cancel';
+    file_put_contents("$root/forms/demo-order.json", json_encode($proxyForm, JSON_THROW_ON_ERROR));
+    foreach ([false, true] as $trusted) {
+        $proxyConfig = $trusted ? str_replace("'csrf'=>false", "'trusted_proxies'=>['127.0.0.1'],'csrf'=>false", $configPhp) : $configPhp;
+        file_put_contents("$root/config.php", $proxyConfig);
+        $proxyResponse = bbf_test_http($server, $base . 'submit.php?form=demo-order', $validData,
+            ['headers' => ['X-Forwarded-Proto' => 'https']]);
+        $proxyCheckout = json_decode(file_get_contents("$root/data/checkout.json"), true);
+        $expectedBase = ($trusted ? 'https' : 'http') . '://127.0.0.1:' . $server['port'];
+        payment_check($proxyResponse['code'] === 200
+            && ($proxyCheckout['fields']['success_url'] ?? '') === $expectedBase . '/done'
+            && ($proxyCheckout['fields']['cancel_url'] ?? '') === $expectedBase . '/cancel',
+            ($trusted ? 'trusted' : 'untrusted') . ' TLS proxy controls the Stripe return URL scheme correctly');
+    }
+    file_put_contents("$root/config.php", str_replace("'sk_test_local_only'", "''", $configPhp));
+    $failedPayment = bbf_test_http($server, $base . 'submit.php?form=demo-order&lang=sk', $validData);
+    $skMessages = require "$root/lang/sk.php";
+    payment_check($failedPayment['code'] === 502
+        && ($failedPayment['json']['message'] ?? '') === $skMessages['paymentFailed'],
+        'payment gateway failure is translated into the selected server language');
     print "Payment regression: $checks checks, $failures failures.\n";
 } finally {
     bbf_test_stop_server($server);

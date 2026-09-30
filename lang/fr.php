@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Votre envoi n\'a pas pu aboutir. Veuillez l\'envoyer à nouveau — aucun doublon ne sera créé.',
     'submitProcessing'      => 'Votre envoi est encore en cours de traitement. Ne remplissez pas à nouveau le formulaire — cliquez de nouveau sur Envoyer dans quelques minutes ; aucun doublon ne sera créé.',
     'submitUnconfirmed'     => 'Nous n\'avons pas pu confirmer votre envoi. L\'organisateur a été prévenu.',
+    'paymentFailed'         => 'Le paiement n\'a pas pu être lancé. Veuillez réessayer plus tard.',
+    'draftDisabled'         => 'L\'enregistrement de la progression est désactivé pour ce formulaire.',
+    'uploadDisabled'        => 'Le téléversement de fichiers est désactivé pour ce formulaire.',
 ];

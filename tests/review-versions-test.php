@@ -39,7 +39,7 @@ function versions_config(string $root): array {
         'csrf' => false, 'allowed_origins' => [], 'rate_limit' => 1000, 'honeypot_field' => '_bbf_hp',
         'webhook_secret' => '', 'delivery' => ['max_attempts' => 3, 'retry_delay' => 60, 'lease_seconds' => 300],
         'stripe' => ['secret_key' => '', 'webhook_secret' => ''], 'error_notify' => '',
-        'api_token' => 'fixture-admin-token', 'access_tokens' => [], 'auth_session_idle' => 1800, 'auth_session_absolute' => 28800,
+        'api_token' => hash('sha256', 'fixture-admin-token'), 'access_tokens' => [], 'auth_session_idle' => 1800, 'auth_session_absolute' => 28800,
         'diagnostic_base_url' => '', 'smoke_token' => '', 'smoke_email' => '', 'smoke_notify' => '',
         'store_ip' => false, 'store_user_agent' => false, 'sandbox' => false, 'lang' => 'en',
         'viewer' => ['site_name' => 'Test', 'logo_url' => ''],

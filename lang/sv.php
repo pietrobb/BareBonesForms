@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Formuläret kunde inte skickas klart. Skicka igen — det dubbleras inte.',
     'submitProcessing'      => 'Ditt formulär behandlas fortfarande. Fyll inte i formuläret igen — klicka på Skicka igen om några minuter; det skapas ingen dubblett.',
     'submitUnconfirmed'     => 'Vi kunde inte bekräfta att formuläret skickades. Arrangören har meddelats.',
+    'paymentFailed'         => 'Betalningen kunde inte startas. Försök igen senare.',
+    'draftDisabled'         => 'Att spara framsteg är inaktiverat för det här formuläret.',
+    'uploadDisabled'        => 'Filuppladdningar är inaktiverade för det här formuläret.',
 ];

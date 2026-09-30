@@ -60,4 +60,7 @@ return [
     'submitAgain'           => 'Your submission could not be completed. Please submit again — it will not be duplicated.',
     'submitProcessing'      => 'Your submission is still being processed. Please don\'t fill in the form again — try Submit again in a few minutes; it will not create a duplicate.',
     'submitUnconfirmed'     => 'We could not confirm your submission. The organiser has been notified.',
+    'paymentFailed'         => 'The payment could not be started. Please try again later.',
+    'draftDisabled'         => 'Saving progress is disabled for this form.',
+    'uploadDisabled'        => 'File uploads are disabled for this form.',
 ];

@@ -128,12 +128,12 @@ function httpPost(string $url, array $data): array {
 
 function httpGet(string $url): array {
     global $serverProc;
-    return bbf_test_http($serverProc, $url);
+    return bbf_test_http($serverProc, $url, null, ['headers' => ['X-BBF-Token' => '7ac50d09d63a81e8a4ea9aa59faa28a916d36fca358932b5c674ff6091bbb146']]);
 }
 
 function getSubmissions(string $formId): ?array {
     global $baseUrl;
-    $url = "$baseUrl/submissions.php?form=$formId&token=fixture-7Qm2xK9pLw4Zr8Tn";
+    $url = "$baseUrl/submissions.php?form=$formId";
     $result = httpGet($url);
     if ($result['code'] === 0) {
         warn("server unresponsive on GET, restarting...");
@@ -198,7 +198,7 @@ function writeConfig(): void {
         . "        'from_name'  => 'Test',\n"
         . "    ],\n"
         . "    'webhook_secret' => 'test-secret',\n"
-        . "    'api_token'      => 'fixture-7Qm2xK9pLw4Zr8Tn',\n"
+        . "    'api_token'      => '7ac50d09d63a81e8a4ea9aa59faa28a916d36fca358932b5c674ff6091bbb146',\n"
         . "    'forms_dir'      => '" . addslashes($projectDir) . "/forms',\n"
         . "    'submissions_dir' => '" . addslashes($testSubmissionsDir) . "',\n"
         . "    'templates_dir'  => '" . addslashes($projectDir) . "/templates',\n"
@@ -1011,7 +1011,7 @@ $quizSubs = getSubmissions('demo-quiz');
 
 if ($quizSubs === null) {
     // Debug: try raw fetch to see what API returns
-    $debugUrl = "$baseUrl/submissions.php?form=demo-quiz&token=fixture-7Qm2xK9pLw4Zr8Tn";
+    $debugUrl = "$baseUrl/submissions.php?form=demo-quiz";
     $debugResp = httpGet($debugUrl)['body'];
     fail("demo-quiz: cannot read submissions via API", "raw response: " . substr($debugResp ?: 'FALSE', 0, 300));
 } else {

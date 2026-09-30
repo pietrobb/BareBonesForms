@@ -723,7 +723,7 @@ function bbf_delivery_prepare_jobs(array $form, array $submission, array $config
     if (!empty($form['templates'])) $fields = resolveTemplates($fields, (array)$form['templates']);
     $templateData = bbf_delivery_template_data(array_replace($form, ['fields' => $fields]), $submission, $templateData);
     $timestamp = (string)($submission['meta']['submitted'] ?? date('c'));
-    $templateVars = array_merge($templateData, [
+    $templateVars = array_replace($templateData, [
         '_form' => (string)($form['name'] ?? $formId),
         '_id' => $submissionId,
         '_time' => $timestamp,

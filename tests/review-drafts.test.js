@@ -186,6 +186,45 @@ test('review 2.1.6: a draft request answered 403 refreshes the CSRF token once a
     assert.match(h.byClass('bbf-draft-status').textContent, /still forbidden/);
 });
 
+test('concurrent draft 403s share one refresh and late stale responses reuse its token', async () => {
+    const h = harness();
+    const hidden = h.form.appendChild(new Element('input'));
+    hidden.name = '_bbf_csrf'; hidden.value = 'old';
+    const waitFor = async count => {
+        for (let i = 0; i < 50 && h.requests.length < count; i++) await new Promise(r => setImmediate(r));
+        assert.equal(h.requests.length, count);
+    };
+    const request = () => h.BBF._draftRequest('./', 'consultation', 'draft_load', { _bbf_csrf: 'old' }, true, 'en', h.form);
+    const first = request(), second = request(), late = request();
+    h.respond(0, {}, false, 403); h.respond(1, {}, false, 403);
+    await waitFor(4);
+    assert.match(h.requests[3].url, /action=csrf/);
+    h.respond(3, { csrf_token: 'fresh' });
+    await waitFor(6);
+    h.respond(2, {}, false, 403);
+    await waitFor(7);
+    assert.equal(h.requests.filter(r => r.url.includes('action=csrf')).length, 1);
+    for (let i = 4; i < 7; i++) {
+        assert.equal(JSON.parse(h.requests[i].options.body)._bbf_csrf, 'fresh');
+        h.respond(i, { status: 'ok' });
+    }
+    await Promise.all([first, second, late]);
+    assert.equal(hidden.value, 'fresh');
+});
+
+test('failed shared refresh settles all callers and a later attempt can refresh again', async () => {
+    const h = harness();
+    const first = h.BBF._refreshCsrf('./', 'consultation', h.form, 'old');
+    const second = h.BBF._refreshCsrf('./', 'consultation', h.form, 'old');
+    assert.equal(h.requests.length, 1);
+    h.respond(0, {}, false, 503);
+    assert.deepEqual(await Promise.all([first, second]), [null, null]);
+    const retry = h.BBF._refreshCsrf('./', 'consultation', h.form, 'old');
+    assert.equal(h.requests.length, 2);
+    h.respond(1, { csrf_token: 'fresh' });
+    assert.equal(await retry, 'fresh');
+});
+
 test('6129-F07 draft restore follows the main Other selection and clears stale companion text', () => {
     const h = harness();
     h.BBF._draftApply(h.form, h.fields, { choices: ['__other__'], choices_other: 'restored choice' }, ['choices']);

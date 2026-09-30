@@ -229,16 +229,42 @@ function bbf_upgrade_lint(string $stageDir, array $paths): ?array {
  * record, bad trusted_proxies), so a dry run shows before the upgrade whether anyone would be locked out.
  */
 function bbf_upgrade_access_warnings(string $stageDir, string $install): array {
-    if (!function_exists('proc_open') || PHP_BINARY === '' || !is_file("$stageDir/bbf_auth.php") || !is_file("$install/config.php")) return [];
+    return bbf_upgrade_access_state($stageDir, $install)['warnings'];
+}
+
+/** Use the installed/package auth policy, never duplicate its token-strength rules here. */
+function bbf_upgrade_access_state(string $stageDir, string $install): array {
+    $unknown = ['warnings' => [], 'blocked' => false];
+    if (!function_exists('proc_open') || PHP_BINARY === '' || !is_file("$stageDir/bbf_auth.php") || !is_file("$install/config.php")) return $unknown;
     $script = 'ini_set("display_errors", "stderr"); define("BBF_LOADED", true); require $argv[1]; $c = require $argv[2];'
-        . ' echo json_encode(is_array($c) && function_exists("bbf_auth_config_problems") ? array_column(bbf_auth_config_problems($c), "message") : []);';
+        . ' $warnings = is_array($c) && function_exists("bbf_auth_config_problems") ? array_column(bbf_auth_config_problems($c), "message") : [];'
+        . ' $admin = false; if (is_array($c) && function_exists("bbf_auth_registry")) foreach (bbf_auth_registry($c) as $r)'
+        . ' if (!empty($r["admin"]) && empty($r["revoked"]) && ($r["expires"] ?? 0) > time()) $admin = true;'
+        . ' echo json_encode(["warnings" => $warnings, "blocked" => is_array($c) && !empty($c["api_token"]) && !$admin]);';
     $run = bbf_upgrade_run([PHP_BINARY, '-r', $script, "$stageDir/bbf_auth.php", "$install/config.php"], $install);
-    if ($run === null) return [];
-    $warnings = json_decode($run['out'], true);
-    if ($run['exit'] !== 0 || !is_array($warnings)) {
+    if ($run === null) return $unknown;
+    $state = json_decode($run['out'], true);
+    if ($run['exit'] !== 0 || !is_array($state) || !is_array($state['warnings'] ?? null)) {
         $why = trim(strtok(trim($run['err'] . "\n" . $run['out']), "\n") ?: '');
-        return ["The access tokens in config.php could not be checked (exit code {$run['exit']}" . ($why !== '' ? ": $why" : '') . '). Run php check.php after the upgrade.'];
+        return ['warnings' => ["The access tokens in config.php could not be checked (exit code {$run['exit']}" . ($why !== '' ? ": $why" : '') . '). Run php check.php after the upgrade.'], 'blocked' => false];
     }
+    return ['warnings' => array_values(array_filter($state['warnings'], 'is_string')), 'blocked' => ($state['blocked'] ?? false) === true];
+}
+
+/** Validate live definitions with the new version's existing validator, separately from generated smoke data. */
+function bbf_upgrade_form_warnings(string $codeDir, string $install): array {
+    if (!function_exists('proc_open') || PHP_BINARY === '' || !is_file("$codeDir/bbf_functions.php")) return ['Form definitions could not be checked; run php smoketest.php after the upgrade.'];
+    $script = 'ini_set("display_errors", "stderr"); define("BBF_LOADED", true); require $argv[1]; $c = require $argv[2];'
+        . ' $out = []; foreach (glob(rtrim($c["forms_dir"] ?? $argv[3] . "/forms", "/\\\\") . "/*.json") ?: [] as $file) {'
+        . ' if (basename($file) === "form.schema.json" || str_ends_with($file, ".map.json")) continue;'
+        . ' try { $form = json_decode(file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);'
+        . ' $errors = is_array($form) ? validateFormDefinition($form) : ["Expected a form object."]; }'
+        . ' catch (Throwable $e) { $errors = [$e->getMessage()]; }'
+        . ' foreach ($errors as $error) $out[] = "Form " . basename($file) . ": " . $error . " Fix this definition in forms_dir before accepting submissions; see the Breaking release notes."; }'
+        . ' echo json_encode($out, JSON_INVALID_UTF8_SUBSTITUTE);';
+    $run = bbf_upgrade_run([PHP_BINARY, '-r', $script, "$codeDir/bbf_functions.php", "$install/config.php", $install], $install);
+    $warnings = $run === null ? null : json_decode($run['out'], true);
+    if ($run === null || $run['exit'] !== 0 || !is_array($warnings)) return ['Form definitions could not be checked' . ($run === null ? '' : " (exit code {$run['exit']})") . '; run php smoketest.php and validate the definitions after the upgrade.'];
     return array_values(array_filter($warnings, 'is_string'));
 }
 
@@ -287,16 +313,21 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
     $lacking = array_diff(bbf_htaccess_rule_lines((string)@file_get_contents("{$stage['dir']}/.htaccess")),
         bbf_htaccess_rule_lines((string)@file_get_contents("$install/.htaccess")));
     $dist = is_file("$install/.htaccess.dist") ? hash_file('sha256', "$install/.htaccess.dist") : null;
-    if (in_array('.htaccess', $files['keep_yours'], true) && $htaccess !== null && $htaccess !== ($old['files']['.htaccess']['sha256'] ?? null)
-        && ($lacking !== [] || ($dist !== null && $dist !== $htaccess))) {
-        // An .htaccess.dist already there is always brought up to this release, even when only comments changed;
-        // otherwise selfcheck would take it for an earlier release's file (review 2.1.6).
-        if ($dist !== $htaccess) {
-            if (!copy("{$stage['dir']}/.htaccess", "{$stage['dir']}/.htaccess.dist")) throw new RuntimeException('Cannot stage .htaccess.dist');
-            $files[$dist === null ? 'add' : 'replace'][] = '.htaccess.dist';
-        }
-        if ($lacking !== []) $notices[] = 'Your .htaccess has lines of your own, so it is kept. This release changed its security rules: compare .htaccess with .htaccess.dist and copy the new rules over (selfcheck reports rules still missing).';
+    $keptHtaccess = in_array('.htaccess', $files['keep_yours'], true);
+    $knownHtaccess = array_filter([$htaccess, $old['files']['.htaccess']['sha256'] ?? null,
+        $old['files']['.htaccess']['release_sha256'] ?? null, ...($new['files']['.htaccess']['history'] ?? []), ...($old['files']['.htaccess']['history'] ?? [])], 'is_string');
+    $distText = (string)@file_get_contents("$install/.htaccess.dist");
+    $distLf = str_replace("\r\n", "\n", $distText);
+    $stockDist = $dist !== null && array_intersect($knownHtaccess,
+        [$dist, hash('sha256', $distLf), hash('sha256', str_replace("\n", "\r\n", $distLf))]) !== [];
+    // Refresh every known stock dist independently of whether .htaccess itself needs changing (including 2.1.3).
+    if ($htaccess !== null && $dist !== $htaccess && ($stockDist || ($dist === null && $keptHtaccess && $lacking !== []))) {
+        if (!copy("{$stage['dir']}/.htaccess", "{$stage['dir']}/.htaccess.dist")) throw new RuntimeException('Cannot stage .htaccess.dist');
+        $files[$dist === null ? 'add' : 'replace'][] = '.htaccess.dist';
+    } elseif ($htaccess !== null && $dist !== null && $dist !== $htaccess && !$stockDist) {
+        $notices[] = 'Your edited or unrecognized .htaccess.dist is kept. Compare it and .htaccess with the current release ZIP security rules; replace the dist yourself after reviewing your edits.';
     }
+    if ($keptHtaccess && $lacking !== []) $notices[] = 'Your .htaccess has lines of your own, so it is kept. This release changed its security rules: compare .htaccess with .htaccess.dist (or the release ZIP if your dist was edited) and copy the new rules over (selfcheck reports rules still missing).';
 
     $lint = $problems === [] ? bbf_upgrade_lint($stage['dir'], array_merge($files['add'], $files['replace'])) : [];
     if ($lint) $problems[] = 'PHP syntax errors in the package: ' . implode('; ', $lint);
@@ -321,6 +352,7 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
         }
     }
 
+    if ($runPackageCode) array_push($notices, ...bbf_upgrade_form_warnings($stage['dir'], $install));
     $changes = array_sum(array_map('count', [$files['add'], $files['replace'], $files['remove']]));
     $plan = [
         'ok' => $problems === [],
@@ -366,7 +398,7 @@ function bbf_upgrade_delegate(string $package, ?string $confirm, string $install
             . ' $c = (static fn() => require $argv[2])();'
             . ' if (!is_array($c)) { fwrite(STDERR, "Cannot read config.php."); exit(1); }'
             . ' try { $r = bbf_upgrade($c, $argv[3], $argv[4] === "" ? null : $argv[4], $argv[5], true);'
-            . ' echo ' . var_export(BBF_UPGRADE_RESULT, true) . ', json_encode($r, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); }'
+            . ' echo ' . var_export(BBF_UPGRADE_RESULT, true) . ', json_encode($r, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); exit(($r["ok"] ?? false) ? 0 : 1); }'
             . ' catch (Throwable $e) { fwrite(STDERR, $e->getMessage()); exit(1); }';
         $run = bbf_upgrade_run([PHP_BINARY, '-r', $script, $new, "$install/config.php", $package, $confirm ?? '', $install], $install);
         if ($run === null) return null;
@@ -378,8 +410,13 @@ function bbf_upgrade_delegate(string $package, ?string $confirm, string $install
         $result['upgrader'] = 'package ' . $stage['manifest']['version'];
         // PHP notices printed along the way are shown, but they do not turn a finished upgrade into a failure.
         $messages = array_values(array_filter(array_map('trim', explode("\n", trim($err . "\n" . substr($out, 0, $at)))), 'strlen'));
-        // A crash after the result was printed (e.g. in a shutdown function) is reported, not hidden.
-        if ($run['exit'] !== 0) $messages[] = "The package upgrader ended with exit code {$run['exit']} after reporting its result: run php smoketest.php and php maintenance.php selfcheck.";
+        // Keep the exit code outside the capped notices, including a crash during shutdown after valid JSON.
+        $result['upgrader_exit_code'] = $run['exit'];
+        if ($run['exit'] !== 0) {
+            $result['ok'] = false;
+            $result['error'] = ($result['error'] ?? 'The package upgrader reported a result but did not exit successfully.') . " (exit code {$run['exit']})";
+            array_unshift($messages, "The package upgrader ended with exit code {$run['exit']} after reporting its result: run php smoketest.php and php maintenance.php selfcheck.");
+        }
         if ($messages !== []) $result['php_messages'] = array_slice($messages, 0, 20);
         return $result;
     } finally {
@@ -444,14 +481,19 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
     }
     $journal['completed_at'] = date('c');
     @file_put_contents("$backup/upgrade.json", json_encode($journal, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    $access = bbf_upgrade_access_state($install, $install);
+    $blocked = $access['blocked'];
     return [
-        'ok' => true,
+        'ok' => !$blocked,
+        'code_updated' => true,
+        'access_blocked' => $blocked,
+        ...($blocked ? ['error' => 'Code updated, but administrative access is blocked: the installed auth policy rejects the configured admin token or token registry. Set api_token in config.php to a random value of at least 32 hexadecimal characters (php maintenance.php new-token), fix any access_tokens errors, then run php maintenance.php selfcheck. The code was not rolled back.'] : []),
         'upgraded' => "{$plan['from']} -> {$plan['to']}",
         'files' => $plan['files'],
         'new_config_settings' => $plan['new_config_settings'],
         'breaking' => $plan['breaking'],
         // Judged by the code now installed, so a token it rejects is named again right after the upgrade.
-        'access_warnings' => bbf_upgrade_access_warnings($install, $install),
+        'access_warnings' => $access['warnings'],
         'notices' => $plan['notices'],
         'check' => $after === null ? 'skipped: run php smoketest.php' : $after['summary'],
         'backup' => $backup,
@@ -557,10 +599,30 @@ function bbf_upgrade_rollback(string $backup, ?string $confirm): array {
     return ['ok' => $result['ok'], 'rolled_back' => $plan['rollback'], 'errors' => $result['errors']];
 }
 
-/** Rule lines of an .htaccess text: whitespace-normalized, without blank lines and comments. */
+/** Security units, not unordered lines: a container includes its ordered body and rewrite conditions stay attached. */
 function bbf_htaccess_rule_lines(string $text): array {
-    $lines = array_map(static fn(string $line): string => (string)preg_replace('/\s+/', ' ', trim($line)), preg_split('/\R/', $text) ?: []);
-    return array_values(array_unique(array_filter($lines, static fn(string $line): bool => $line !== '' && $line[0] !== '#')));
+    $units = [];
+    $block = [];
+    $depth = 0;
+    $conditions = [];
+    foreach (preg_split('/\R/', $text) ?: [] as $raw) {
+        $line = (string)preg_replace('/\s+/', ' ', trim($raw));
+        if ($line === '' || $line[0] === '#') continue;
+        $open = preg_match('/^<[^\/!][^>]*>$/', $line) === 1;
+        $close = preg_match('/^<\/[^>]+>$/', $line) === 1;
+        if ($depth > 0 || $open) {
+            $block[] = $line;
+            if ($open) $depth++;
+            if ($close) $depth--;
+            if ($depth === 0) { $units[] = implode(' | ', $block); $block = []; }
+            continue;
+        }
+        if (preg_match('/^RewriteCond\s/i', $line)) { $conditions[] = $line; continue; }
+        $units[] = implode(' | ', [...$conditions, $line]);
+        $conditions = [];
+    }
+    if ($block !== [] || $conditions !== []) $units[] = 'Incomplete security block: ' . implode(' | ', [...$block, ...$conditions]);
+    return array_values(array_unique($units));
 }
 
 /**
@@ -573,8 +635,8 @@ function bbf_htaccess_missing_rules(string $install): array {
     if (!is_string($own)) return [];
     $have = array_flip(bbf_htaccess_rule_lines($own));
     $dist = @file_get_contents("$install/.htaccess.dist");
-    $essential = ['<FilesMatch "\.md$">', // README.md/CHANGELOG.md reveal the installed version
-        '<FilesMatch "^config|^bbf_.*\.php$">', 'RewriteRule ^config/ - [F,L]']; // libraries and credentials (2.1.4)
+    $essential = ['<FilesMatch "\.md$"> | Require all denied | </FilesMatch>', // docs reveal the installed version
+        '<FilesMatch "^config|^bbf_.*\.php$"> | Require all denied | </FilesMatch>', 'RewriteEngine On', 'RewriteRule ^config/ - [F,L]']; // libraries and credentials
     // An .htaccess.dist left by an earlier release (e.g. an older FTP upgrade) would recommend its older, weaker
     // rules: it is ignored and named. When the manifest knows this release's .htaccess, only that exact file (also
     // after an FTP transfer turned LF into CRLF) is current; otherwise it must at least carry every essential rule.

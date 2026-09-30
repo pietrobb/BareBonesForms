@@ -59,4 +59,7 @@ return [
     'submitAgain'           => 'Ihre Übermittlung konnte nicht abgeschlossen werden. Bitte senden Sie erneut — es entsteht kein Duplikat.',
     'submitProcessing'      => 'Ihre Übermittlung wird noch verarbeitet. Bitte füllen Sie das Formular nicht erneut aus — klicken Sie in ein paar Minuten noch einmal auf Senden; es entsteht kein Duplikat.',
     'submitUnconfirmed'     => 'Wir konnten Ihre Übermittlung nicht bestätigen. Der Veranstalter wurde benachrichtigt.',
+    'paymentFailed'         => 'Die Zahlung konnte nicht gestartet werden. Bitte versuchen Sie es später erneut.',
+    'draftDisabled'         => 'Das Speichern des Fortschritts ist für dieses Formular deaktiviert.',
+    'uploadDisabled'        => 'Datei-Uploads sind für dieses Formular deaktiviert.',
 ];

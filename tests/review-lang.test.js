@@ -127,6 +127,18 @@ test('review 2.1.5: draft, upload and cross-field answers are translated too', (
     }
 });
 
+test('review 2.1.7: disabled drafts/uploads and payment failures have translated server messages', () => {
+    const en = phpPack('en.php');
+    for (const lang of langs) {
+        const pack = phpPack(`${lang}.php`);
+        for (const key of ['paymentFailed', 'draftDisabled', 'uploadDisabled']) {
+            assert.ok(pack[key], `${lang}.php defines ${key}`);
+            if (lang !== 'en') assert.notEqual(pack[key], en[key], `${lang}.php translates ${key}`);
+        }
+    }
+    assert.ok(read('submit.php').includes("respond(502, msg('paymentFailed'"));
+});
+
 test('review 2.1.6: the e-mail confirmation box is labelled from the pack, not guessed from emailMismatch', () => {
     const js = read('bbf.js');
     assert.ok(!js.includes(".includes('match')") && !js.includes("' (confirm)'"), 'no English guess left');

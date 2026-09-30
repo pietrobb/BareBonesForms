@@ -867,6 +867,11 @@ function bbf_uploads_diagnostics(array $config, ?callable $existsFor = null): ar
 
 // ─── Upload (section 4.2) ────────────────────────────────────────
 
+function bbf_uploads_config_error(array $config, string $error): void {
+    $config['uploads']['rate_limit'] = ['max' => 1, 'window' => 3600];
+    if (bbf_uploads_rate_limit($config, 'configuration:' . hash('sha256', $error))) error_log('BareBonesForms uploads: ' . $error);
+}
+
 function bbf_uploads_rate_limit(array $config, string $ip): bool {
     $u = bbf_uploads_config($config);
     $max = max(1, (int)($u['rate_limit']['max'] ?? 60));
@@ -1168,8 +1173,8 @@ function bbf_uploads_plan(array $config, string $formId, string $submissionId, a
     $root = bbf_uploads_root($config, !$sandbox);
     if (!$root['ok']) {
         // Setup advice ("move uploads.dir …") is for the admin: the log and the sandbox, not the respondent.
-        if (!$sandbox) error_log('BareBonesForms uploads: ' . $root['error']);
-        return ['ok' => false, 'code' => 503, 'errors' => ['_uploads' => $sandbox ? $root['error'] : bbf_uploads_t('uploadCannotStore')]];
+        if (!$sandbox && $root['code'] !== 404) bbf_uploads_config_error($config, $root['error']);
+        return ['ok' => false, 'code' => $root['code'], 'errors' => ['_uploads' => $sandbox ? $root['error'] : bbf_uploads_t($root['code'] === 404 ? 'uploadDisabled' : 'uploadCannotStore')]];
     }
     $root = $root['root'];
     $u = bbf_uploads_config($config);

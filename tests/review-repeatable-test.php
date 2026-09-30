@@ -287,7 +287,7 @@ repeat_check('isolated file CSV and SQLite HTTP round-trip preserves repeatable 
         $server = null;
         try {
             $config = [
-                'api_token' => 'repeatable-fixture-admin-token', 'access_tokens' => [],
+                'api_token' => hash('sha256', 'repeatable-fixture-admin-token'), 'access_tokens' => [],
                 'storage' => $storage, 'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions",
                 'templates_dir' => "$root/templates", 'logs_dir' => "$root/logs", 'csrf' => false,
                 'allowed_origins' => [], 'sandbox' => false, 'rate_limit' => 1000, 'honeypot_field' => '_hp',

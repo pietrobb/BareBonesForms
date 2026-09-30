@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'A beküldést nem sikerült befejezni. Küldje be újra — nem jön létre duplikátum.',
     'submitProcessing'      => 'A beküldése még feldolgozás alatt áll. Ne töltse ki újra az űrlapot — néhány perc múlva kattintson ismét a Küldés gombra; nem jön létre duplikátum.',
     'submitUnconfirmed'     => 'Nem tudtuk megerősíteni a beküldését. A szervezőt értesítettük.',
+    'paymentFailed'         => 'A fizetést nem sikerült elindítani. Kérjük, próbálja újra később.',
+    'draftDisabled'         => 'Az előrehaladás mentése le van tiltva ennél az űrlapnál.',
+    'uploadDisabled'        => 'A fájlfeltöltés le van tiltva ennél az űrlapnál.',
 ];

@@ -58,11 +58,11 @@ jobs:
           php tools/package-deploy.php --version "$version" --check --destination "$out"
           rm "$out/.bbf-package"
           (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}.zip" barebonesforms)
-          # Upgrade ZIP: code only, plus check.php and CHANGELOG.md (the dry run lists its Breaking notes). Uploading
+          # Upgrade ZIP: code, check.php, current docs.html and CHANGELOG.md (the dry run lists its Breaking notes). Uploading
           # it over FTP never overwrites your templates, sample forms or .htaccess; the new .htaccess rules come as
           # .htaccess.dist (maintenance.php upgrade uses it).
           cp "$out/.htaccess" "$out/.htaccess.dist"
-          php -r '$m = json_decode(file_get_contents($argv[1]), true); foreach ($m["files"] as $p => $f) if ($f["kind"] !== "code" && $p !== "check.php" && $p !== "CHANGELOG.md") unlink($argv[2] . "/" . $p);' \
+          php -r '$m = json_decode(file_get_contents($argv[1]), true); foreach ($m["files"] as $p => $f) if ($f["kind"] !== "code" && $p !== "check.php" && $p !== "CHANGELOG.md" && $p !== "docs.html") unlink($argv[2] . "/" . $p);' \
             "$out/.bbf-manifest.json" "$out"
           (cd "$RUNNER_TEMP" && zip -qr "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" barebonesforms)
           # Checksums outside the ZIPs (the manifest inside only detects damage, not a substituted package).
@@ -104,7 +104,7 @@ jobs:
           subject-path: |
             ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}.zip
             ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}-upgrade.zip
-      - name: Publish GitHub release
+      - name: Create draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -119,8 +119,8 @@ jobs:
           [ -s "$notes" ] || echo "See CHANGELOG.md." > "$notes"
           gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}.zip" \
             "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" "$RUNNER_TEMP/SHA256SUMS" \
-            --title "$GITHUB_REF_NAME" --notes-file "$notes"
-      - name: Verify the published files
+            --draft --title "$GITHUB_REF_NAME" --notes-file "$notes"
+      - name: Verify uploaded draft files
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -132,3 +132,10 @@ jobs:
           gh release download "$GITHUB_REF_NAME" --dir "$check"
           cmp "$RUNNER_TEMP/SHA256SUMS" "$check/SHA256SUMS"
           (cd "$check" && sha256sum -c SHA256SUMS)
+      - name: Publish verified draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "$GITHUB_REF_NAME" --draft=false

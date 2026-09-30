@@ -701,13 +701,15 @@
                 };
                 const removeEntry = entry => {
                     if (entry.xhr) entry.xhr.abort();
+                    entry.xhr = null;
                     if (entry.token && !sandbox) {
                         const csrf = formEl.querySelector('input[name="_bbf_csrf"]');
                         const deleteRequest = () => fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=upload_delete`, {
                             method: 'POST', body: JSON.stringify({ token: entry.token }), credentials: 'same-origin',
                             headers: Object.assign({ 'Content-Type': 'application/json' }, csrf ? { 'X-BBF-CSRF': csrf.value } : {}, upload.headers || {}) });
+                        const sentToken = csrf ? csrf.value : '';
                         deleteRequest().then(async resp => {
-                            if (resp.status === 403 && csrf && await this._refreshCsrf(baseUrl, formId, formEl)) await deleteRequest();
+                            if (resp.status === 403 && csrf && await this._refreshCsrf(baseUrl, formId, formEl, sentToken)) await deleteRequest();
                         }).catch(() => {});
                     }
                     wrap._bbfFiles = wrap._bbfFiles.filter(f => f !== entry);
@@ -721,7 +723,8 @@
                     entry.xhr = xhr;
                     xhr.open('POST', `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=upload&field=${encodeURIComponent(field.name)}${langCode ? '&lang=' + encodeURIComponent(langCode) : ''}${sandbox ? '&sandbox' : ''}`);
                     const csrf = formEl.querySelector('input[name="_bbf_csrf"]');
-                    if (csrf) xhr.setRequestHeader('X-BBF-CSRF', csrf.value);
+                    const sentToken = csrf ? csrf.value : '';
+                    if (csrf) xhr.setRequestHeader('X-BBF-CSRF', sentToken);
                     Object.entries(upload.headers || {}).forEach(([k, v]) => xhr.setRequestHeader(k, v));
                     xhr.upload.addEventListener('progress', e => {
                         if (e.lengthComputable && entry.progressEl) entry.progressEl.value = Math.round(e.loaded / e.total * 100);
@@ -735,8 +738,9 @@
                     xhr.addEventListener('load', async () => {
                         // Expired session or renamed cookie: refresh the token once and upload again.
                         if (xhr.status === 403 && csrf && !csrfRetried && entry.xhr === xhr) {
-                            if (await this._refreshCsrf(baseUrl, formId, formEl) && entry.xhr === xhr) { send(entry, true); return; }
+                            if (await this._refreshCsrf(baseUrl, formId, formEl, sentToken) && entry.xhr === xhr) { send(entry, true); return; }
                         }
+                        if (entry.xhr !== xhr) return;
                         let result = {};
                         try { result = JSON.parse(xhr.responseText); } catch (error) { /* non-JSON error page */ }
                         if (xhr.status === 200 && typeof result.token === 'string') {
@@ -779,7 +783,7 @@
                     input.value = '';
                 });
                 wrap._bbfClearFiles = () => {
-                    wrap._bbfFiles.forEach(entry => { if (entry.xhr) entry.xhr.abort(); });
+                    wrap._bbfFiles.forEach(entry => { if (entry.xhr) entry.xhr.abort(); entry.xhr = null; });
                     wrap._bbfFiles = [];
                     list.textContent = '';
                     status.textContent = '';
@@ -949,15 +953,24 @@
         },
 
         /** Fetches a fresh CSRF token (the session expired or its cookie changed) and stores it in the form's hidden field. */
-        _refreshCsrf: async function(baseUrl, formId, formEl) {
-            try {
-                const resp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`, { credentials: 'same-origin' });
-                const token = resp.ok ? (await resp.json()).csrf_token : null;
-                if (!token) return null;
-                const field = formEl && formEl.querySelector('input[name="_bbf_csrf"]');
-                if (field) field.value = token;
-                return token;
-            } catch (error) { return null; }
+        _refreshCsrf: function(baseUrl, formId, formEl, rejectedToken) {
+            const field = formEl && formEl.querySelector('input[name="_bbf_csrf"]');
+            const key = new URL(baseUrl, location.href).href + ':' + formId;
+            const pending = this._csrfRefreshes || (this._csrfRefreshes = new Map());
+            let refresh = pending.get(key);
+            if (!refresh && rejectedToken !== undefined && field && field.value && field.value !== rejectedToken) return Promise.resolve(field.value);
+            if (!refresh) {
+                refresh = (async () => {
+                    try {
+                        const resp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`, { credentials: 'same-origin' });
+                        const token = resp.ok ? (await resp.json()).csrf_token : null;
+                        return typeof token === 'string' && token ? token : null;
+                    } catch (error) { return null; }
+                })();
+                pending.set(key, refresh);
+                refresh.finally(() => { if (pending.get(key) === refresh) pending.delete(key); });
+            }
+            return refresh.then(token => { if (token && field) field.value = token; return token; });
         },
 
         /** The form's current CSRF token: the hidden field is updated whenever a request refreshes it. */
@@ -977,7 +990,7 @@
             let response = await fetch(url, options);
             // Expired session or renamed cookie: refresh the token once and repeat, so the answers are not lost.
             if (response.status === 403 && isSameOrigin && formEl && '_bbf_csrf' in body) {
-                const token = await this._refreshCsrf(baseUrl, formId, formEl);
+                const token = await this._refreshCsrf(baseUrl, formId, formEl, body._bbf_csrf);
                 if (token) response = await fetch(url, Object.assign({}, options, { body: JSON.stringify(Object.assign({}, body, { _bbf_csrf: token })) }));
             }
             const result = await response.json().catch(() => ({ status: 'error', message: this._t('errorDefault') }));

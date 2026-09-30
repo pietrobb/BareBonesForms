@@ -135,7 +135,7 @@ server_check(str_contains($editorSource, 'bbf_create_file_exclusive($file, $temp
 
 // ─── Submit releases the session lock right after reading the secret ─
 $submitSource = file_get_contents(dirname(__DIR__) . '/submit.php');
-preg_match('/function ensureSession\(\): void \{.*?\n\}/s', $submitSource, $m);
+preg_match('/function ensureSession\([^)]*\): void \{.*?\n\}/s', $submitSource, $m);
 server_check(isset($m[0]), 'ensureSession() found in submit.php');
 if (isset($m[0])) {
     // Fresh process: sessions cannot start once this test has printed output.

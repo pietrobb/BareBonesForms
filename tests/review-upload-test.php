@@ -123,6 +123,7 @@ function up_maintenance(string $root, string $command): array {
     $output = [];
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg("$root/maintenance.php") . " $command 2>&1", $output, $code);
     clearstatcache(); // the child changed files this process may have stat-cached
+    if ($code !== 0) print 'MAINTENANCE ' . $command . ': ' . implode("\n", $output) . "\n";
     return [$code, implode("\n", $output)];
 }
 
@@ -201,6 +202,57 @@ try {
         ['name' => 'cv', 'type' => 'file', 'label' => 'CV', 'required' => true, 'accept' => ['pdf'], 'show_if' => ['field' => 'apply', 'value' => 'yes']],
     ]);
     $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
+
+    // Rejected CSRF must not issue a cookie, create a session, touch upload storage or spend quota.
+    up_config($root, $data, ['csrf' => true], ['rate_limit' => ['max' => 1, 'window' => 600]]);
+    $sessionsBefore = glob("$root/sessions/sess_*") ?: [];
+    foreach (['', 'BBFSID=' . str_repeat('a', 32), 'BBFSID=invalid!'] as $publicCookie) {
+        $bad = up_upload($server, 'up', 'cv', 'bad.pdf', $pdf, ['X-BBF-CSRF' => 'stale', 'Cookie' => $publicCookie]);
+        up_check($bad['code'] === 403 && stripos($bad['headers'], 'Set-Cookie:') === false,
+            'CSRF rejection neither creates nor rotates BBFSID (' . ($publicCookie ?: 'no cookie') . ')');
+    }
+    $badDelete = up_delete($server, 'up', str_repeat('a', 32));
+    up_check($badDelete['code'] === 403 && stripos($badDelete['headers'], 'Set-Cookie:') === false
+        && (glob("$root/sessions/sess_*") ?: []) === $sessionsBefore && !is_dir($data)
+        && !glob("$root/logs/ratelimit_upload_*"), 'rejected upload/delete CSRF leaves sessions, storage and upload quota untouched');
+    $public = bbf_test_http($server, up_url($server, 'form=up&action=csrf'));
+    preg_match('/Set-Cookie:\s*(BBFSID=[^;\r\n]+)/i', $public['headers'], $publicMatch);
+    $publicCookie = $publicMatch[1] ?? '';
+    $publicToken = $public['json']['csrf_token'] ?? '';
+    $valid = up_upload($server, 'up', 'cv', 'valid.pdf', $pdf, ['Cookie' => $publicCookie, 'X-BBF-CSRF' => $publicToken]);
+    up_check($valid['code'] === 200 && stripos($valid['headers'], 'Set-Cookie:') === false, 'valid existing-session upload succeeds after rejected CSRF without rotating its cookie');
+    $rateBefore = (string)file_get_contents((glob("$root/logs/ratelimit_upload_*") ?: [''])[0]);
+    $bad = up_upload($server, 'up', 'cv', 'bad.pdf', $pdf, ['Cookie' => $publicCookie, 'X-BBF-CSRF' => 'stale']);
+    up_check($bad['code'] === 403 && stripos($bad['headers'], 'Set-Cookie:') === false
+        && (string)file_get_contents((glob("$root/logs/ratelimit_upload_*") ?: [''])[0]) === $rateBefore, 'wrong token with an existing session does not spend quota or set a cookie');
+    up_config($root, $data);
+    up_delete($server, 'up', $valid['json']['token'] ?? '');
+    foreach (glob("$root/logs/ratelimit_upload_*") ?: [] as $file) unlink($file);
+    // Disabled drafts are not a missing bearer code.
+    foreach (['draft_save', 'draft_load', 'draft_delete'] as $action) {
+        $disabled = bbf_test_http($server, up_url($server, "form=up&action=$action"), [], ['method' => 'POST']);
+        up_check($disabled['code'] === 403 && ($disabled['json']['reason'] ?? '') === 'disabled'
+            && !str_contains($disabled['json']['message'] ?? '', 'not found'), "$action distinguishes disabled drafts from an unknown code");
+    }
+
+    // Anonymous disabled/unknown upload requests are not configuration incidents.
+    up_config($root, $data, [], ['enabled' => false]);
+    $logBefore = (string)@file_get_contents("$root/logs/php-error.log");
+    for ($i = 0; $i < 3; $i++) $disabled = up_upload($server, 'up', 'cv', 'a.pdf', $pdf);
+    up_check($disabled['code'] === 404 && ($disabled['json']['reason'] ?? '') === 'disabled'
+        && !str_contains($disabled['json']['message'] ?? '', 'cannot store')
+        && (string)@file_get_contents("$root/logs/php-error.log") === $logBefore, 'disabled uploads do not claim storage failure or log configuration incidents');
+    up_config($root, $data);
+    for ($i = 0; $i < 3; $i++) $unknown = up_upload($server, 'unknown', 'cv', 'a.pdf', $pdf);
+    up_check($unknown['code'] === 404 && (string)@file_get_contents("$root/logs/php-error.log") === $logBefore
+        && !glob("$root/logs/ratelimit_upload_*"), 'unknown-form uploads do not log incidents or spend upload quota');
+    up_config($root, "$root/uploads-inside");
+    for ($i = 0; $i < 3; $i++) $broken = up_upload($server, 'up', 'cv', 'a.pdf', $pdf);
+    $logAfter = (string)@file_get_contents("$root/logs/php-error.log");
+    up_check($broken['code'] === 503 && substr_count($logAfter, 'Move uploads.dir outside it.') - substr_count($logBefore, 'Move uploads.dir outside it.') === 1,
+        'genuine upload configuration errors retain one rate-limited log entry');
+    up_config($root, $data);
+    foreach (glob("$root/logs/ratelimit_upload_*") ?: [] as $file) unlink($file);
 
     // ── Definition projection ───────────────────────────────────
     $def = bbf_test_http($server, up_url($server, 'form=up&action=definition'));
@@ -793,7 +845,22 @@ try {
         'upload directory inside the web root without the flag → refused; review 2.1.6: the respondent gets no setup advice ('
         . ($inside['json']['message'] ?? '') . ')');
     up_config($root, $data, [], ['enabled' => false]);
-    up_check(up_upload($server, 'up', 'cv', 'a.pdf', $pdf)['code'] === 404, 'uploads disabled → refused');
+    $logBefore = (string)@file_get_contents("$root/logs/php-error.log");
+    for ($i = 0; $i < 3; $i++) $disabled = up_upload($server, 'up', 'cv', 'a.pdf', $pdf);
+    up_check($disabled['code'] === 404 && ($disabled['json']['reason'] ?? '') === 'disabled'
+        && !str_contains($disabled['json']['message'] ?? '', 'cannot store')
+        && (string)@file_get_contents("$root/logs/php-error.log") === $logBefore, 'disabled uploads return an intentional refusal without configuration-error logging');
+    up_config($root, $data);
+    $logBefore = (string)@file_get_contents("$root/logs/php-error.log");
+    for ($i = 0; $i < 3; $i++) $unknown = up_upload($server, 'unknown', 'cv', 'a.pdf', $pdf);
+    up_check($unknown['code'] === 404 && (string)@file_get_contents("$root/logs/php-error.log") === $logBefore,
+        'unknown-form anonymous uploads do not emit form incidents');
+    up_config($root, "$root/uploads-inside");
+    $logBefore = (string)@file_get_contents("$root/logs/php-error.log");
+    for ($i = 0; $i < 3; $i++) $broken = up_upload($server, 'up', 'cv', 'a.pdf', $pdf);
+    $logAfter = (string)@file_get_contents("$root/logs/php-error.log");
+    up_check($broken['code'] === 503 && substr_count($logAfter, 'Move uploads.dir outside it.') === substr_count($logBefore, 'Move uploads.dir outside it.'),
+        'genuine upload configuration errors are logged once per hour, not per request');
     up_config($root, $data);
 
     // Without ZipArchive the Office types leave the effective allowlist.

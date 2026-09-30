@@ -59,4 +59,7 @@ return [
     'submitAgain'           => 'ngeH rInlaHbe\'. ngeH yInIDqa\' — cha\'logh ngeHlu\'be\'.',
     'submitProcessing'      => 'ngeHlu\'taH. nab yIteb\'eghQo\' — tup puS pIq ngeH yIwIvqa\'; cha\'logh ngeHlu\'be\'.',
     'submitUnconfirmed'     => 'ngeH wIwIvlaHbe\'. DevwI\' SovmoHlu\'ta\'.',
+    'paymentFailed'         => 'Huch nobmeH Qu\' taghlaHbe\'lu\'. tugh yInIDqa\'.',
+    'draftDisabled'         => 'navvamDaq ta\' polmeH Qu\' chaw\'be\'lu\'.',
+    'uploadDisabled'        => 'navvamDaq De\'wI\' ghItlhmey lI\'meH Qu\' chaw\'be\'lu\'.',
 ];

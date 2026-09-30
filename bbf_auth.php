@@ -5,13 +5,12 @@
  * the POST sign-in form or the X-BBF-Token header. Only the legacy nonempty api_token is an unrestricted admin.
  */
 defined('BBF_LOADED') || exit;
-const BBF_AUTH_MIN_TOKEN = 16;
-const BBF_AUTH_MIN_BITS = 44;       // estimated guessing work a token must need (bbf_auth_token_strength)
+const BBF_AUTH_MIN_TOKEN = 32;
 const BBF_AUTH_MAX_FAILURES = 10;   // wrong tokens per client address ...
 const BBF_AUTH_FAILURE_WINDOW = 900; // ... per 15 minutes; then the client is blocked: wrong tokens get 429 at once.
                                      // A correct token is always accepted, so nobody sharing the address can lock the
-                                     // operator out; guessing is made pointless by the token strength (bbf_auth_token_weak:
-                                     // no common words, placeholders, runs or repeats, at least BBF_AUTH_MIN_BITS).
+                                     // operator out. Generate random secrets with maintenance.php new-token; format alone
+                                     // cannot establish their randomness.
 const BBF_AUTH_MAX_CLIENTS = 5000;   // cap on remembered client addresses in logs/.auth_failures.json
 const BBF_AUTH_SESSION_NAME = 'BBFADMIN'; // management sign-in cookie; public forms keep PHP's default session
 
@@ -59,9 +58,9 @@ function bbf_auth_fail(int $code = 403, string $detail = ''): void {
             $loginCsrf = $_SESSION['bbf_login_csrf'];
         }
         $hint = $login['configured']
-            ? 'Enter the <code>api_token</code> from <code>config.php</code>.'
-            : 'No valid access token is configured. Set a long random <code>api_token</code> (at least ' . BBF_AUTH_MIN_TOKEN . ' characters) in <code>config.php</code> '
-                . '(a malformed <code>access_tokens</code> list disables all tokens).';
+            ? 'Enter an access token from <code>config.php</code>. ' . htmlspecialchars($login['reason'] ?? '', ENT_QUOTES)
+            : 'No usable access token is configured. ' . htmlspecialchars($login['reason'] ?? '', ENT_QUOTES)
+                . ' Generate a random token with <code>php maintenance.php new-token</code> and set it in <code>config.php</code>.';
         echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<title>BareBonesForms: sign in</title><style>body{font-family:system-ui,sans-serif;max-width:420px;margin:12vh auto;padding:0 20px;color:#1a1a2e}'
             . 'input,button{font:inherit;padding:8px 10px;width:100%;box-sizing:border-box;margin-top:8px}code{background:#f1f3f5;padding:1px 4px;border-radius:3px}</style></head><body>'
@@ -227,114 +226,9 @@ function bbf_auth_throttled(int $retryAfter): void {
     exit;
 }
 
-/** Common words, placeholder parts and names an attacker tries first (lowercase; leetspeak is folded before lookup). */
-function bbf_auth_token_words(): array {
-    static $words = null;
-    return $words ??= array_fill_keys(preg_split('/\s+/', trim('
-        your my me the our this that here put insert enter set use new old it is to no go ok now please just only real really
-        secret secrets token tokens api key keys pass passwd password passwords passphrase pwd admin administrator root user
-        username login logon signin access auth master owner manager super superuser sysadmin webmaster
-        change changeme replace replaceme example sample default test testing tester demo dummy placeholder value string
-        strong random long very private public hidden forms form bbf barebones barebonesforms config server site website
-        web www mail email info contact office company business shop store
-        letmein welcome hello hallo ahoj qwerty qwertz azerty dragon monkey shadow sunshine princess football baseball
-        soccer hockey iloveyou trustno love lover sexy freedom whatever batman superman starwars pokemon computer
-        internet google facebook microsoft apple samsung
-        summer winter spring autumn fall january february march april june july august september october november december
-        monday tuesday wednesday thursday friday saturday sunday
-        heslo hesla tajne tajny tajomstvo kluc pristup spravca leto zima jesen jaro passwort geheim zugang
-        slovensko slovakia bratislava kosice praha czech cesko
-        one two three four five six seven eight nine ten zero red blue green black white yellow orange purple
-        cat dog fish bird tiger lion bear wolf eagle horse')), true);
-}
-
-/**
- * Pessimistic estimate of the guessing work for a token, in bits, and whether it is built only from guessable parts.
- * A random character costs log2 of the character set in use (16 for pure hex). Cheaper readings win: a dictionary
- * word or placeholder part (also Capitalised or in leetspeak), a run of 4+ repeated characters or characters in
- * alphabet, number or keyboard order ("aaaa", "1234", "qwerty", "9876"), a year 1950–2039, a separator between
- * words, and a repeat of an earlier part cost only a few bits each.
- * Returns [bits, patternsOnly].
- */
-function bbf_auth_token_strength(string $token): array {
-    static $cache = [];
-    $key = hash('sha256', $token);
-    if (isset($cache[$key])) return $cache[$key];
-    $n = strlen($token);
-    $pool = 0;
-    if (preg_match('/\A(?:[0-9a-f]+|[0-9A-F]+)\z/', $token)) $pool = 16;
-    else {
-        if (preg_match('/[a-z]/', $token)) $pool += 26;
-        if (preg_match('/[A-Z]/', $token)) $pool += 26;
-        if (preg_match('/[0-9]/', $token)) $pool += 10;
-        if (preg_match('/[^a-zA-Z0-9]/', $token)) $pool += 33;
-    }
-    $charBits = $pool > 1 ? log($pool, 2) : 1.0;
-    $lower = strtolower($token);
-    $leet = [strtr($lower, '013457@$!', 'oieastasi'), strtr($lower, '013457@$!', 'oleastasl')];
-    $words = bbf_auth_token_words();
-    $wordBits = log(count($words), 2);
-    $rows = ['1234567890', 'qwertyuiop', 'qwertzuiop', 'asdfghjkl', 'zxcvbnm', 'yxcvbnm'];
-    $adjacent = static function (string $a, string $b, int $dir) use ($rows): bool {
-        if ($dir === 0) return $a === $b;
-        if (ord($b) - ord($a) === $dir) return true;
-        foreach ($rows as $row) {
-            $p = strpos($row, $a);
-            if ($p !== false && isset($row[$p + $dir]) && $p + $dir >= 0 && $row[$p + $dir] === $b) return true;
-        }
-        return false;
-    };
-    // best[i]: cheapest reading of the first i characters; only[i]: reachable without any random character.
-    $best = array_fill(0, $n + 1, INF);
-    $only = array_fill(0, $n + 1, false);
-    $best[0] = 0.0;
-    $only[0] = true;
-    for ($i = 0; $i < $n; $i++) {
-        if ($best[$i] === INF) continue;
-        $relax = static function (int $j, float $cost, bool $pattern) use (&$best, &$only, $i): void {
-            if ($best[$i] + $cost < $best[$j]) $best[$j] = $best[$i] + $cost;
-            if ($pattern && $only[$i]) $only[$j] = true;
-        };
-        $relax($i + 1, $charBits, false);
-        if ($i > 0 && strpos('-_. ', $token[$i]) !== false) $relax($i + 1, 2.0, true);
-        for ($len = 2; $i + $len <= $n && $len <= 20; $len++) {
-            $plain = substr($lower, $i, $len);
-            $leetUsed = isset($words[$plain]) ? 0 : (isset($words[substr($leet[0], $i, $len)]) || isset($words[substr($leet[1], $i, $len)]) ? 1 : null);
-            if ($leetUsed === null) continue;
-            $orig = substr($token, $i, $len);
-            $caps = $orig === $plain ? 0 : ($orig === ucfirst($plain) || $orig === strtoupper($plain) ? 1 : $len);
-            $relax($i + $len, $wordBits + $caps + 2 * $leetUsed, true);
-        }
-        foreach ([0, 1, -1] as $dir) {
-            for ($j = $i + 1; $j < $n && $adjacent($lower[$j - 1], $lower[$j], $dir); $j++);
-            for ($end = $i + 4; $end <= $j; $end++) $relax($end, 8 + log($end - $i, 2), true);
-        }
-        if ($i + 4 <= $n && preg_match('/\A(?:19[5-9]|20[0-3])\d\z/', substr($token, $i, 4))
-            && !ctype_digit($token[$i - 1] ?? 'x') && !ctype_digit($token[$i + 4] ?? 'x')) $relax($i + 4, 7.0, true);
-        for ($len = 4; $i + $len <= $n && $len <= min($i, 20); $len++) {
-            if (strpos(substr($lower, 0, $i), substr($lower, $i, $len)) === false) break;
-            $relax($i + $len, 3 + log($i, 2) + log($len, 2), true);
-        }
-    }
-    if (count($cache) > 64) $cache = [];
-    return $cache[$key] = [$best[$n], $only[$n]];
-}
-
-/**
- * Too easy to guess to protect the management pages: a wrong token is answered 429 and a right one 200 even for a
- * blocked address, so the token itself must withstand fast online guessing. Weak: made only of common words,
- * placeholder parts, runs and repeats ("your-secret-token", "adminadminadmin1", "qwertyuiopasdfgh"), or under
- * BBF_AUTH_MIN_BITS in the pessimistic estimate (2^44 guesses at 1500/s take about 370 years; a random 16-digit
- * hex token has 64 bits, 1 000 000 of them were all accepted).
- */
-function bbf_auth_token_weak(string $token): bool {
-    [$bits, $patternsOnly] = bbf_auth_token_strength($token);
-    return $patternsOnly || $bits < BBF_AUTH_MIN_BITS;
-}
-
-/** A token that may act as a credential: a string of at least BBF_AUTH_MIN_TOKEN characters and no weak pattern. */
+/** Credential format only; this does not prove randomness. Generate secrets with maintenance.php new-token. */
 function bbf_auth_token_usable($token): bool {
-    return is_string($token) && strlen($token) >= BBF_AUTH_MIN_TOKEN && !bbf_auth_token_weak($token);
+    return is_string($token) && strlen($token) >= BBF_AUTH_MIN_TOKEN && preg_match('/\A[0-9a-fA-F]+\z/D', $token) === 1;
 }
 
 /** Browsers mark cross-site requests (an <img> or link on another site); only scripts, bookmarks and same-origin pages may use ?token=. */
@@ -354,7 +248,7 @@ function bbf_auth_registry(array $config): array {
     $registry = []; $secrets = [];
     $legacy = $config['api_token'] ?? '';
     if (!is_string($legacy)) return [];
-    // A guessable token ("admin123", "aaaaaaaaaaaaaaaa") is not a credential and is never accepted.
+    // Tokens outside the hex credential format are ignored individually.
     if (bbf_auth_token_usable($legacy)) {
         $fp = hash('sha256', $legacy);
         $registry['legacy-admin'] = ['id' => 'legacy-admin', 'fingerprint' => $fp, 'admin' => true,
@@ -362,7 +256,7 @@ function bbf_auth_registry(array $config): array {
         $secrets[$fp] = true;
     }
     foreach ($records as $r) {
-        // A too-short or patterned token is skipped like such an api_token; it must not take every other credential down with it.
+        // An invalid token format is skipped like such an api_token; other credentials remain usable.
         if (is_array($r) && is_string($r['token'] ?? null) && !bbf_auth_token_usable($r['token'])) continue;
         if (!is_array($r) || bbf_auth_id($r['id'] ?? null) === '' || ($r['id'] ?? '') === 'legacy-admin'
             || !is_string($r['token'] ?? null)
@@ -387,7 +281,7 @@ function bbf_auth_registry(array $config): array {
     foreach ($registry as $r) if (isset($secrets[hash('sha256', $r['id'])])) return []; return $registry;
 }
 
-/** access_tokens records whose token is too short or too predictable to be accepted (skipped by bbf_auth_registry). */
+/** access_tokens records with invalid credential format (skipped by bbf_auth_registry). */
 function bbf_auth_short_records(array $config): array {
     $records = $config['access_tokens'] ?? [];
     if (!is_array($records)) return [];
@@ -404,32 +298,31 @@ function bbf_auth_config_problems(array $config): array {
     $legacy = $config['api_token'] ?? '';
     $records = array_key_exists('access_tokens', $config) ? $config['access_tokens'] : [];
     if (!is_string($legacy)) $out[] = ['level' => 'error', 'message' => 'api_token must be a string; all access is disabled.'];
-    elseif ($legacy !== '' && strlen($legacy) < BBF_AUTH_MIN_TOKEN)
-        $out[] = ['level' => 'error', 'message' => 'api_token is shorter than ' . BBF_AUTH_MIN_TOKEN . ' characters and is ignored (viewer, editor, API and backup refuse it). Set a long random value.'];
     elseif ($legacy !== '' && !bbf_auth_token_usable($legacy))
-        $out[] = ['level' => 'error', 'message' => 'api_token is too easy to guess (a sample value such as "your-secret-token", common words, keyboard or number runs such as "qwerty" or "1234", or repetition) and is ignored (viewer, editor, API and backup refuse it). Set a random value, e.g. php -r "echo bin2hex(random_bytes(16));"'];
+        $out[] = ['level' => 'error', 'message' => 'api_token must contain only hexadecimal characters (0-9, a-f, A-F) and be at least ' . BBF_AUTH_MIN_TOKEN . ' characters long; it is ignored. Generate a random value with php maintenance.php new-token.'];
     $short = bbf_auth_short_records($config);
     if ($short !== []) {
         $ids = array_map(static fn(array $r): string => bbf_auth_id($r['id'] ?? null) ?: '(no id)', $short);
         $out[] = ['level' => 'warn', 'message' => 'access_tokens: ' . implode(', ', $ids) . ' ha' . (count($ids) === 1 ? 's' : 've')
-            . ' a token shorter than ' . BBF_AUTH_MIN_TOKEN . ' characters or too easy to guess (sample value, common words, runs or repetition) and '
-            . (count($ids) === 1 ? 'is' : 'are') . ' ignored. Use random values, e.g. php -r "echo bin2hex(random_bytes(16));"'];
+            . ' a token outside the required hexadecimal format (0-9, a-f, A-F; at least ' . BBF_AUTH_MIN_TOKEN . ' characters) and '
+            . (count($ids) === 1 ? 'is' : 'are') . ' ignored. Generate random values with php maintenance.php new-token.'];
     }
     if (is_string($legacy)) {
         $usable = (bbf_auth_token_usable($legacy) ? 1 : 0)
             + (is_array($records) ? count($records) - count($short) : 0);
         if (!is_array($records) || !array_is_list($records) || ($usable > 0 && count(bbf_auth_registry($config)) !== $usable))
             $out[] = ['level' => 'error', 'message' => 'access_tokens contains a malformed or duplicate record; ALL tokens, including api_token, are disabled until it is fixed.'];
-        elseif ($usable === 0) $out[] = ['level' => 'warn', 'message' => 'No usable access token: viewer, editor and submissions API are locked. Set api_token (at least ' . BBF_AUTH_MIN_TOKEN . ' characters).'];
+        elseif ($usable === 0) $out[] = ['level' => 'warn', 'message' => 'No usable access token: viewer, editor and submissions API are locked. Set api_token (at least ' . BBF_AUTH_MIN_TOKEN . ' hexadecimal characters). Generate a random value with php maintenance.php new-token.'];
     }
     $smoke = $config['smoke_token'] ?? '';
     if ($smoke !== '' && $smoke !== null && bbf_smoke_token($config) === null)
-        $out[] = ['level' => 'warn', 'message' => 'smoke_token is not a usable credential (shorter than ' . BBF_AUTH_MIN_TOKEN
-            . ' characters, too easy to guess, not a string, or with spaces/control characters) and is ignored: HTTP smoke tests are off. Set a random value, e.g. php -r "echo bin2hex(random_bytes(16));"'];
+        $out[] = ['level' => 'warn', 'message' => 'smoke_token must be a string containing only hexadecimal characters (0-9, a-f, A-F), at least ' . BBF_AUTH_MIN_TOKEN
+            . ' characters long; it is ignored: HTTP smoke tests are off. Generate a random value with php maintenance.php new-token.'];
     $proxies = $config['trusted_proxies'] ?? [];
     $bad = array_filter(is_array($proxies) ? $proxies : [$proxies], static fn($e): bool => !bbf_proxy_entry_valid($e));
     if ($bad !== []) $out[] = ['level' => 'error', 'message' => 'trusted_proxies has invalid entries that are ignored: '
         . implode(', ', array_map(static fn($e): string => is_string($e) ? '"' . $e . '"' : gettype($e), $bad)) . '. Use an address or address/prefix, e.g. "10.0.0.0/8".'];
+    if (!bbf_cookie_path_valid($config)) $out[] = ['level' => 'error', 'message' => 'cookie_path must be an absolute URL path beginning with /, without spaces, control characters, semicolons, ? or #; an empty string uses the installation path. The invalid value is ignored.'];
     return $out;
 }
 
@@ -437,9 +330,15 @@ function bbf_auth_config_problems(array $config): array {
  * Path of the session cookies: the installation folder as the browser sees it. PHP knows only its own path, so behind
  * a reverse proxy that serves the folder under another path (/forms/ -> /bbf/) set 'cookie_path' => '/forms/'.
  */
+function bbf_cookie_path_valid(array $config): bool {
+    if (!array_key_exists('cookie_path', $config)) return true;
+    $path = $config['cookie_path'];
+    return is_string($path) && ($path === '' || preg_match('~\A/[A-Za-z0-9._\~!$&\'()*+,=:@%/-]*\z~', $path) === 1);
+}
+
 function bbf_cookie_path(array $config): string {
     $path = $config['cookie_path'] ?? '';
-    if (is_string($path) && preg_match('~\A/[A-Za-z0-9._\~!$&\'()*+,=:@%/-]*\z~', $path)) return rtrim($path, '/') . '/';
+    if ($path !== '' && bbf_cookie_path_valid($config)) return rtrim($path, '/') . '/';
     return rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/'))), '/') . '/';
 }
 
@@ -479,7 +378,12 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
     if ($session) bbf_auth_session($config);
     // HTML management pages accept the sign-in form POST so the token stays out of URLs and logs.
     $formLogin = $html && $session && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && array_key_exists('token', $_POST);
-    if ($html) $GLOBALS['bbf_auth_login_page'] = ['configured' => $registry !== []];
+    if ($html) {
+        $usable = array_filter($registry, static fn(array $r): bool => !$r['revoked'] && $r['expires'] > time());
+        $problems = bbf_auth_config_problems($config);
+        $GLOBALS['bbf_auth_login_page'] = ['configured' => $usable !== [],
+            'reason' => implode(' ', array_column($problems, 'message')) ?: ($usable === [] ? 'All configured access tokens are expired or revoked.' : '')];
+    }
     // Login CSRF: the form carries a per-session value, so another site cannot sign the browser in with its token.
     if ($formLogin && !(is_string($_POST['login_csrf'] ?? null) && is_string($_SESSION['bbf_login_csrf'] ?? null)
             && hash_equals($_SESSION['bbf_login_csrf'], $_POST['login_csrf']))) {
@@ -498,7 +402,7 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
     if ($explicit) {
         // The correct token always gets in, so a guesser sharing the address (NAT, IPv6 /64, proxy without
         // trusted_proxies) cannot lock the operator out. Only wrong tokens are limited; since the answer then shows
-        // whether a guess was right, strength rests on the token itself (random, >= 16 chars, bbf_auth_token_weak).
+        // whether a guess was right, use randomly generated secrets; hex format alone does not prove randomness.
         if (is_string($provided) && $provided !== '') {
             $fp = hash('sha256', $provided);
             foreach ($registry as $r) if (hash_equals($r['fingerprint'], $fp)) $principal = $r;
@@ -601,10 +505,10 @@ function bbf_auth_csrf_valid(): bool {
     return is_string($provided) && bbf_auth_csrf() !== '' && hash_equals(bbf_auth_csrf(), $provided);
 }
 
-/** The configured smoke_token when it is usable as a credential: printable, at least BBF_AUTH_MIN_TOKEN long, no weak pattern. */
+/** The configured smoke_token when it meets the same hexadecimal format as management credentials. */
 function bbf_smoke_token(array $config): ?string {
     $token = $config['smoke_token'] ?? null;
-    return bbf_auth_token_usable($token) && preg_match('/\A[\x21-\x7e]{1,512}\z/D', $token) ? $token : null;
+    return bbf_auth_token_usable($token) ? $token : null;
 }
 
 /** Configured tokens to redact from audit entries. Tokens shorter than BBF_AUTH_MIN_TOKEN (access tokens and

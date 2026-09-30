@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Kiriman Anda tidak dapat diselesaikan. Silakan kirim lagi — tidak akan terduplikasi.',
     'submitProcessing'      => 'Kiriman Anda masih diproses. Jangan isi formulir lagi — tekan Kirim sekali lagi dalam beberapa menit; tidak akan terjadi duplikat.',
     'submitUnconfirmed'     => 'Kami tidak dapat mengonfirmasi kiriman Anda. Penyelenggara telah diberi tahu.',
+    'paymentFailed'         => 'Pembayaran tidak dapat dimulai. Silakan coba lagi nanti.',
+    'draftDisabled'         => 'Penyimpanan kemajuan dinonaktifkan untuk formulir ini.',
+    'uploadDisabled'        => 'Unggahan file dinonaktifkan untuk formulir ini.',
 ];

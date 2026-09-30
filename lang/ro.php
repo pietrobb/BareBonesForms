@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Trimiterea dvs. nu a putut fi finalizată. Trimiteți din nou — nu va fi duplicată.',
     'submitProcessing'      => 'Trimiterea dvs. este încă în curs de procesare. Nu completați din nou formularul — apăsați din nou Trimite peste câteva minute; nu se va crea un duplicat.',
     'submitUnconfirmed'     => 'Nu am putut confirma trimiterea dvs. Organizatorul a fost anunțat.',
+    'paymentFailed'         => 'Plata nu a putut fi inițiată. Încercați din nou mai târziu.',
+    'draftDisabled'         => 'Salvarea progresului este dezactivată pentru acest formular.',
+    'uploadDisabled'        => 'Încărcarea fișierelor este dezactivată pentru acest formular.',
 ];

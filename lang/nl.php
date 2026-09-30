@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Uw inzending kon niet worden voltooid. Verzend opnieuw — er ontstaat geen dubbele inzending.',
     'submitProcessing'      => 'Uw inzending wordt nog verwerkt. Vul het formulier niet opnieuw in — klik over een paar minuten nogmaals op Verzenden; er ontstaat geen dubbele inzending.',
     'submitUnconfirmed'     => 'We konden uw inzending niet bevestigen. De organisator is op de hoogte gebracht.',
+    'paymentFailed'         => 'De betaling kon niet worden gestart. Probeer het later opnieuw.',
+    'draftDisabled'         => 'Het opslaan van de voortgang is uitgeschakeld voor dit formulier.',
+    'uploadDisabled'        => 'Het uploaden van bestanden is uitgeschakeld voor dit formulier.',
 ];

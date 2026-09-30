@@ -55,7 +55,7 @@ try {
     file_put_contents("$source/submissions/beta/bbf_beta.json", json_encode(['id' => 'bbf_beta', 'form' => 'beta',
         'data' => ['answer' => 'private-beta'], 'meta' => ['submitted' => '2026-09-09T00:00:00Z']], JSON_THROW_ON_ERROR));
 
-    $access = [['id' => 'reviewer', 'token' => 'SOURCE-SECRET-MUST-NOT-BE-BACKED-UP', 'forms' => ['alpha'],
+    $access = [['id' => 'reviewer', 'token' => hash('sha256', 'SOURCE-SECRET-MUST-NOT-BE-BACKED-UP'), 'forms' => ['alpha'],
         'permissions' => ['read', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]];
     $sourceConfig = ['storage' => 'file', 'forms_dir' => "$source/forms", 'submissions_dir' => "$source/submissions",
         'logs_dir' => "$source/logs", 'api_token' => '', 'access_tokens' => $access,
@@ -103,7 +103,7 @@ try {
     backup_check(PHP_OS_FAMILY === 'Windows' || ((fileperms($created['path']) & 0777) === 0600
         && (fileperms(dirname($created['path'])) & 0777) === 0700),
         'backup bundle and private directory enforce owner-only POSIX modes where supported');
-    backup_check(!str_contains($bytes, 'SOURCE-SECRET-MUST-NOT-BE-BACKED-UP')
+    backup_check(!str_contains($bytes, hash('sha256', 'SOURCE-SECRET-MUST-NOT-BE-BACKED-UP'))
         && ($document['payload']['access']['principals'][0]['id'] ?? null) === 'reviewer',
         'bundle preserves applicable access boundaries without credentials');
     backup_check(isset($document['payload']['delivery']['bbf_alpha']['ledger'],
@@ -119,7 +119,7 @@ try {
         ['ok' => true, 'state' => 'succeeded', 'stage' => 'final_reply'], 13);
 
     $targetAccess = $access;
-    $targetAccess[0]['token'] = 'DIFFERENT-TARGET-SECRET';
+    $targetAccess[0]['token'] = hash('sha256', 'DIFFERENT-TARGET-SECRET');
     $targetConfig = ['storage' => 'file', 'forms_dir' => "$target/forms", 'submissions_dir' => "$target/submissions",
         'logs_dir' => "$target/logs", 'api_token' => '', 'access_tokens' => $targetAccess,
         'backup' => ['directory' => $backupDir]];
@@ -286,7 +286,7 @@ foreach ($portableBackends as $backend) {
                 bbf_storage_json($record['data']), bbf_storage_json($record['meta']), $record['meta']['submitted']]);
             $pdo = null;
         }
-        $access = [['id' => 'reviewer', 'token' => 'PORTABLE-SOURCE-SECRET', 'forms' => ['alpha'],
+        $access = [['id' => 'reviewer', 'token' => hash('sha256', 'PORTABLE-SOURCE-SECRET'), 'forms' => ['alpha'],
             'permissions' => ['read', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]];
         $sourceConfig = ['storage' => 'file', 'forms_dir' => "$source/forms", 'submissions_dir' => "$source/submissions",
             'logs_dir' => "$source/logs", 'sqlite' => ['path' => "$source/submissions/bbf.sqlite"],
@@ -345,7 +345,7 @@ foreach ($portableBackends as $backend) {
         backup_check($corruptRejected && !is_dir($backupDir),
             "$backend backup rejects a malformed source record before publishing a bundle");
         $bundle = bbf_backup_create($sourceConfig, 'alpha', strtotime('2026-09-09T12:00:00Z'));
-        $targetAccess = $access; $targetAccess[0]['token'] = 'PORTABLE-TARGET-SECRET';
+        $targetAccess = $access; $targetAccess[0]['token'] = hash('sha256', 'PORTABLE-TARGET-SECRET');
         $targetConfig = ['storage' => 'file', 'forms_dir' => "$target/forms", 'submissions_dir' => "$target/submissions",
             'logs_dir' => "$target/logs", 'sqlite' => ['path' => "$target/submissions/bbf.sqlite"],
             'api_token' => '', 'access_tokens' => $targetAccess, 'backup' => ['directory' => $backupDir]];
@@ -399,9 +399,9 @@ try {
     fputcsv($orderCsv, ['bbf_ffffffffffffffff', '2026-09-10T00:00:00Z', '', '', 'old'], ',', '"', '');
     fputcsv($orderCsv, ['bbf_0000000000000000', '2026-09-11T00:00:00Z', '', '', 'new'], ',', '"', '');
     fclose($orderCsv);
-    $orderAccess = [['id' => 'reviewer', 'token' => 'ORDER-SOURCE-SECRET', 'forms' => ['ordered'],
+    $orderAccess = [['id' => 'reviewer', 'token' => hash('sha256', 'ORDER-SOURCE-SECRET'), 'forms' => ['ordered'],
         'permissions' => ['read', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]];
-    $targetAccess = $orderAccess; $targetAccess[0]['token'] = 'ORDER-TARGET-SECRET';
+    $targetAccess = $orderAccess; $targetAccess[0]['token'] = hash('sha256', 'ORDER-TARGET-SECRET');
     $orderSourceConfig = ['storage' => 'file', 'forms_dir' => "$orderSource/forms",
         'submissions_dir' => "$orderSource/submissions", 'logs_dir' => "$orderSource/logs",
         'api_token' => '', 'access_tokens' => $orderAccess, 'backup' => ['directory' => $orderBackupDir]];

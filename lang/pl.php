@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Nie udało się ukończyć zgłoszenia. Wyślij ponownie — nie powstanie duplikat.',
     'submitProcessing'      => 'Twoje zgłoszenie jest nadal przetwarzane. Nie wypełniaj formularza ponownie — za kilka minut kliknij Wyślij jeszcze raz; nie powstanie duplikat.',
     'submitUnconfirmed'     => 'Nie udało się potwierdzić zgłoszenia. Organizator został powiadomiony.',
+    'paymentFailed'         => 'Nie udało się rozpocząć płatności. Spróbuj ponownie później.',
+    'draftDisabled'         => 'Zapisywanie postępu jest wyłączone dla tego formularza.',
+    'uploadDisabled'        => 'Przesyłanie plików jest wyłączone dla tego formularza.',
 ];

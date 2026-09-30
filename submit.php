@@ -119,7 +119,7 @@ function msg(string $key, array $params = []): string {
 header('Content-Type: application/json; charset=utf-8');
 
 // Start session only when needed (CSRF token or same-origin POST)
-function ensureSession(): void {
+function ensureSession(bool $create = true): void {
     static $loaded = false;
     if ($loaded || session_status() === PHP_SESSION_ACTIVE) return;
     // The respondent session holds only the CSRF secret: scripts never need it, so keep it HttpOnly.
@@ -135,6 +135,39 @@ function ensureSession(): void {
     session_name('BBFSID');
     session_set_cookie_params(['lifetime' => 0, 'path' => bbf_cookie_path($config),
         'secure' => $https, 'httponly' => true, 'samesite' => $https ? 'None' : '']);
+    if (!$create) {
+        // Upload validation must only read an existing session, never rotate a stale cookie.
+        $_SESSION = [];
+        $id = $_COOKIE['BBFSID'] ?? '';
+        if (!is_string($id) || !preg_match('/\A[a-zA-Z0-9,-]{1,256}\z/D', $id)) return;
+        if (ini_get('session.save_handler') !== 'files') {
+            session_id($id);
+            session_start(['read_and_close' => true, 'use_cookies' => false, 'use_strict_mode' => false]);
+            $loaded = true;
+            return;
+        }
+        $parts = explode(';', session_save_path());
+        $path = array_pop($parts) ?: sys_get_temp_dir();
+        $depth = $parts ? (int)$parts[0] : 0;
+        if ($depth > strlen($id)) return;
+        for ($i = 0; $i < $depth; $i++) $path .= '/' . $id[$i];
+        $sessionFile = @fopen($path . '/sess_' . $id, 'rb');
+        if (!$sessionFile || !flock($sessionFile, LOCK_SH)) { if (is_resource($sessionFile)) fclose($sessionFile); return; }
+        // A read-only handler prevents the files handler from creating a replacement if GC won the race.
+        session_set_save_handler(new class($sessionFile) implements SessionHandlerInterface {
+            public function __construct(private $file) {}
+            public function open(string $path, string $name): bool { return true; }
+            public function close(): bool { flock($this->file, LOCK_UN); fclose($this->file); return true; }
+            public function read(string $id): string|false { return stream_get_contents($this->file); }
+            public function write(string $id, string $data): bool { return false; }
+            public function destroy(string $id): bool { return false; }
+            public function gc(int $max_lifetime): int|false { return 0; }
+        });
+        session_id($id);
+        session_start(['read_and_close' => true, 'use_cookies' => false, 'use_strict_mode' => false]);
+        $loaded = true;
+        return;
+    }
     session_start();
     if (empty($_SESSION['bbf_secret'])) {
         $_SESSION['bbf_secret'] = bin2hex(random_bytes(32));
@@ -270,12 +303,12 @@ unset($input[$hpField]);
 // ─── CSRF validation ────────────────────────────────────────────
 // Skip public CSRF only for a valid nonempty smoke-token header (used by smoketest.php).
 $_smokeToken = $_SERVER['HTTP_X_BBF_SMOKE_TOKEN'] ?? '';
-$_smokeAuth  = bbf_smoke_token($config) !== null // a smoke_token shorter than 16 characters is no credential
+$_smokeAuth  = bbf_smoke_token($config) !== null // an invalid-format smoke_token is no credential
                && is_string($_smokeToken) && $_smokeToken !== '' && hash_equals(bbf_smoke_token($config), $_smokeToken);
 $isCorsRequest = !empty($origin) && !empty($config['allowed_origins'])
     && in_array($origin, $config['allowed_origins'], true);
 if (!$isSandbox && ($config['csrf'] ?? true) && !$isCorsRequest && !$_smokeAuth) {
-    ensureSession();
+    ensureSession(false);
     $csrfToken = is_string($input['_bbf_csrf'] ?? null) ? $input['_bbf_csrf'] : '';
     if (empty($_SESSION['bbf_secret'])
         || !hash_equals(hash_hmac('sha256', $formId, $_SESSION['bbf_secret']), $csrfToken)) {
@@ -302,7 +335,7 @@ $flatFields = flattenFields($form['fields']); $input = bbfSystemInput($flatField
 // ─── Opt-in respondent drafts ───────────────────────────────────
 $draftAction = $_GET['action'] ?? '';
 if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_delete'], true)) {
-    if (bbf_draft_policy($form) === null) respond(404, msg('draftNotFound'));
+    if (bbf_draft_policy($form) === null) respond(403, msg('draftDisabled'), ['reason' => 'disabled']);
     bbf_draft_cleanup($config);
     $handle = is_string($input['_bbf_draft_handle'] ?? null) ? $input['_bbf_draft_handle'] : '';
     if ($draftAction === 'draft_save') {
@@ -525,7 +558,7 @@ if ($isPayment) {
     if ($provider !== 'stripe') respond(500, "Unsupported payment provider: $provider");
     // A missing stripe.secret_key keeps the lead: the record is stored, then answered as payment_unavailable.
     // Referer and Host differ between retries; a retry must send Stripe identical parameters.
-    $baseHost = ($_SERVER['REQUEST_SCHEME'] ?? 'https') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    $baseHost = (bbf_request_https($config) ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
     $referer = $_SERVER['HTTP_REFERER'] ?? $baseHost;
     $successUrl = $payment['success_url'] ?? $referer;
     $cancelUrl  = $payment['cancel_url'] ?? $referer;
@@ -779,7 +812,7 @@ function bbf_submit_payment_response(array $finished, bool $replay): never {
             ['code' => 'submit_pending', 'retry_after' => 5] + $flag);
     }
     if (isset($response['payment_unavailable'])) {
-        respond(502, 'Your submission was saved, but the payment could not be started. The organiser has been notified.',
+        respond(502, msg('paymentFailed'),
             ['code' => 'payment_unavailable', 'submission_id' => $state['submission_id']] + $flag);
     }
     respond(200, 'OK', $flag + ['submission_id' => $state['submission_id'], 'redirect' => $response['redirect'] ?? null]);
@@ -826,7 +859,7 @@ function bbf_submit_upload_csrf(array $config, string $formId): void {
         && is_string($smoke) && $smoke !== '' && hash_equals(bbf_smoke_token($config), $smoke);
     $cors = !empty($origin) && in_array($origin, (array)($config['allowed_origins'] ?? []), true);
     if (!($config['csrf'] ?? true) || $cors || $smokeAuth) return;
-    ensureSession();
+    ensureSession(false);
     $token = $_SERVER['HTTP_X_BBF_CSRF'] ?? '';
     if (empty($_SESSION['bbf_secret']) || !is_string($token)
         || !hash_equals(hash_hmac('sha256', $formId, $_SESSION['bbf_secret']), $token)) {
@@ -838,7 +871,7 @@ function bbf_submit_upload_csrf(array $config, string $formId): void {
 function bbf_submit_upload_field(array $config, string $formId): array {
     $path = $config['forms_dir'] . "/$formId.json";
     if (!is_file($path)) {
-        bbf_submit_form_incident($config, $formId, true, 'A visitor tried to upload a file to this form, but its definition file is missing.');
+        // Unknown anonymous upload targets are not evidence of a broken published form.
         respond(404, "Form '$formId' not found.");
     }
     $form = json_decode((string)file_get_contents($path), true);
@@ -857,21 +890,23 @@ function bbf_submit_upload_field(array $config, string $formId): array {
 /** Upload storage not ready: the respondent gets a translated message, the setup advice goes to the error log (the sandbox is the admin). */
 function bbf_submit_upload_unavailable(array $root, bool $isSandbox): never {
     if ($isSandbox) respond($root['code'], $root['error']);
-    error_log('BareBonesForms uploads: ' . $root['error']);
+    if ($root['code'] === 404) respond(404, msg('uploadDisabled'), ['reason' => 'disabled']);
+    bbf_uploads_config_error($GLOBALS['config'], $root['error']);
     respond($root['code'], msg('uploadCannotStore'));
 }
 
 function bbf_submit_upload(array $config, string $formId, bool $isSandbox): never {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, 'Method not allowed.');
-    $root = bbf_uploads_root($config, !$isSandbox);
-    if (!$root['ok']) bbf_submit_upload_unavailable($root, $isSandbox);
-    $ip = bbf_client_ip($config);
-    // Every request counts, including ones rejected below.
-    if (!$isSandbox && !bbf_uploads_rate_limit($config, $ip)) respond(429, msg('uploadRateLimit'), ['retry_after' => 60]);
-    $postMax = bbf_uploads_ini_bytes(ini_get('post_max_size'));
-    if ($postMax > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $postMax) respond(413, msg('uploadServerLimit'));
+    if (empty(bbf_uploads_config($config)['enabled'])) bbf_submit_upload_unavailable(['code' => 404, 'error' => 'File uploads are not enabled.'], $isSandbox);
     if (!$isSandbox) bbf_submit_upload_csrf($config, $formId);
     $field = bbf_submit_upload_field($config, $formId);
+    $ip = bbf_client_ip($config);
+    // Authenticated attempts count, including content refusals, but never rejected CSRF.
+    if (!$isSandbox && !bbf_uploads_rate_limit($config, $ip)) respond(429, msg('uploadRateLimit'), ['retry_after' => 60]);
+    $root = bbf_uploads_root($config, !$isSandbox);
+    if (!$root['ok']) bbf_submit_upload_unavailable($root, $isSandbox);
+    $postMax = bbf_uploads_ini_bytes(ini_get('post_max_size'));
+    if ($postMax > 0 && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > $postMax) respond(413, msg('uploadServerLimit'));
     $file = $_FILES['file'] ?? null;
     if (count($_FILES) !== 1 || !is_array($file) || is_array($file['name'] ?? null) || !is_int($file['error'] ?? null)) {
         respond(400, msg('uploadNoFile'));
@@ -922,9 +957,11 @@ function bbf_submit_json_body(): mixed {
 
 function bbf_submit_upload_delete(array $config, string $formId, bool $isSandbox): never {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, 'Method not allowed.');
+    if (empty(bbf_uploads_config($config)['enabled'])) bbf_submit_upload_unavailable(['code' => 404, 'error' => 'File uploads are not enabled.'], $isSandbox);
+    if (!$isSandbox) bbf_submit_upload_csrf($config, $formId);
+    if (!is_file($config['forms_dir'] . "/$formId.json")) respond(404, "Form '$formId' not found.");
     $root = bbf_uploads_root($config, false);
     if (!$root['ok']) bbf_submit_upload_unavailable($root, $isSandbox);
-    if (!$isSandbox) bbf_submit_upload_csrf($config, $formId);
     $body = bbf_submit_json_body();
     $token = is_array($body) ? ($body['token'] ?? null) : null;
     if ($isSandbox) {

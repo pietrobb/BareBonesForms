@@ -277,7 +277,7 @@ php barebonesforms/tools/upgrade.php --install=/path/to/bbf</pre><button class="
 <p><strong>Update notices:</strong> the daily <code>php maintenance.php selfcheck</code> asks GitHub whether a newer release exists and emails <code>error_notify</code> <strong>once</strong> per new version. Set <code>'update_check' =&gt; false</code> to turn this off.</p>
 
 <h3>FTP only</h3>
-<p>Download <strong><code>barebonesforms-vX.Y.Z-upgrade.zip</code></strong> from the release, not the full ZIP. It contains only code plus <code>check.php</code> and <code>CHANGELOG.md</code> (read its <strong>Breaking</strong> items) &mdash; no <code>config.php</code>, <code>.htaccess</code>, sample forms, email templates, docs or demo pages &mdash; so uploading it over your installation cannot overwrite anything you edited. The release's <code>.htaccess</code> rules come as <code>.htaccess.dist</code>: compare it with your <code>.htaccess</code> and copy new rules over by hand. Files removed from a release stay behind; that is harmless. Then open <code>check.php</code> to confirm the new version and that protected files are still blocked, and delete <code>check.php</code> again. The version is also shown under the forms list in <code>viewer.php</code>.</p>
+<p>Download <strong><code>barebonesforms-vX.Y.Z-upgrade.zip</code></strong> from the release, not the full ZIP. It contains code plus <code>check.php</code>, <code>docs.html</code> and <code>CHANGELOG.md</code> (read its <strong>Breaking</strong> items) &mdash; no <code>config.php</code>, <code>.htaccess</code>, sample forms, email templates or demo pages. Application code and the shipped documentation are replaced; your configuration, forms and templates are not. The release's <code>.htaccess</code> rules come as <code>.htaccess.dist</code>: compare it with your <code>.htaccess</code> and copy new rules over by hand. Files removed from a release stay behind; that is harmless. Then open <code>check.php</code> to confirm the new version and that protected files are still blocked, and delete <code>check.php</code> again. The version is also shown under the forms list in <code>viewer.php</code>.</p>
 
 <h3>By hand</h3>
 <p><strong>Before you start:</strong> read the <a href="https://github.com/pietrobb/BareBonesForms/blob/main/CHANGELOG.md" target="_blank">CHANGELOG</a> entries between your version and the new one. Items marked <strong>Breaking</strong> tell you exactly what to change.</p>
@@ -1338,11 +1338,11 @@ return [
 
 <p>Every submission that passes through this system is yours to query. But first &mdash; authentication. I don't let strangers walk behind my bar, and neither should you.</p>
 
-<p>Generate a random token and set it as <code>api_token</code> in <code>config.php</code>. Do not copy a sample value: a token made of words, placeholders (<code>your-secret-token</code>), keyboard runs or repetition is refused.</p>
+<p>Generate a token and set it as <code>api_token</code> in <code>config.php</code>. All access tokens must contain at least 32 hexadecimal characters (0–9, a–f, A–F). The command below prints 64 hex characters from 32 cryptographically random bytes. Format validation cannot prove randomness: never invent a token by hand or copy a sample value. Passwords, UUIDs and base64 tokens are no longer supported.</p>
 
-<div class="code-block"><span class="lang">bash</span><pre>php -r "echo bin2hex(random_bytes(16));"</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<div class="code-block"><span class="lang">bash</span><pre>php maintenance.php new-token</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
-<div class="code-block"><span class="lang">php</span><pre>'api_token' => '',   // paste the 32 characters printed by the command above</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+<div class="code-block"><span class="lang">php</span><pre>'api_token' => '',   // paste the 64 characters printed by the command above</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
 <p>Pass the token via header (recommended &mdash; keeps it out of server logs and browser history, where any passing scoundrel might see it):</p>
 
@@ -1511,7 +1511,7 @@ $actionResponse['redirect'] = '/thank-you?order=' . $orderId;</pre><button class
 <p><code>viewer.php</code> is a built-in dashboard for browsing, searching, and exporting form submissions. It reads directly from your configured storage backend &mdash; no extra setup needed.</p>
 
 <h3>Access</h3>
-<p>Required on every host, including localhost. Open <code>viewer.php</code> and sign in with your <code>api_token</code> (or a scoped token). Authentication persists in the session &mdash; AJAX calls work without repeating the token. Scripts can send the <code>X-BBF-Token</code> header instead. Tokens shorter than 16 characters or too easy to guess (sample values such as <code>your-secret-token</code>, common words, keyboard or number runs such as <code>qwerty</code> or <code>1234</code>, repetition) are never accepted; use a random value (<code>php -r "echo bin2hex(random_bytes(16));"</code>). After 10 wrong tokens from one address within 15 minutes, further wrong tokens get HTTP 429 at once; the right token is always checked and signs in, so nobody sharing the address can lock you out. The sign-in uses its own <code>BBFADMIN</code> session cookie limited to the installation folder, and the sign-in form is CSRF-protected. Behind Cloudflare or a reverse proxy, list the proxy ranges in <code>trusted_proxies</code> so limits and stored IPs use the visitor's address (a listed proxy's <code>X-Forwarded-Proto: https</code> also makes the cookies <code>Secure</code>). If the proxy serves the folder under another path than PHP sees (<code>/forms/</code> &rarr; <code>/bbf/</code>), set <code>cookie_path</code> to the public one.</p>
+<p>Required on every host, including localhost. Open <code>viewer.php</code> and sign in with your <code>api_token</code> (or a scoped token). Authentication persists in the session &mdash; AJAX calls work without repeating the token. Scripts can send the <code>X-BBF-Token</code> header instead. Tokens must contain at least 32 hex characters; generate them with <code>php maintenance.php new-token</code> (64 hex characters, 32 random bytes). Format validation does not prove randomness; do not invent passwords or tokens by hand. After 10 wrong tokens from one address within 15 minutes, further wrong tokens get HTTP 429 at once; the right token is always checked and signs in, so nobody sharing the address can lock you out. The sign-in uses its own <code>BBFADMIN</code> session cookie limited to the installation folder, and the sign-in form is CSRF-protected. Behind Cloudflare or a reverse proxy, list the proxy ranges in <code>trusted_proxies</code> so limits and stored IPs use the visitor's address (a listed proxy's <code>X-Forwarded-Proto: https</code> also makes the cookies <code>Secure</code>). If the proxy serves the folder under another path than PHP sees (<code>/forms/</code> &rarr; <code>/bbf/</code>), set <code>cookie_path</code> to the public one.</p>
 
 <h3>Features</h3>
 <table>
@@ -1548,7 +1548,7 @@ $actionResponse['redirect'] = '/thank-you?order=' . $orderId;</pre><button class
 <p>Besides the admin <code>api_token</code>, you can hand out per-form tokens &mdash; to a colleague who only reads one form&rsquo;s leads, or an integration that only exports:</p>
 
 <div class="code-block"><span class="lang">php</span><pre>'access_tokens' => [
-    ['id' => 'sales-reader', 'token' => 'LONG_RANDOM_SECRET', 'forms' => ['contact'],
+    ['id' => 'sales-reader', 'token' => '' /* paste generated hex token */, 'forms' => ['contact'],
      'permissions' => ['read', 'review'], 'expires_at' => '2027-01-01T00:00:00Z', 'revoked' => false],
 ],</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
 
@@ -1922,8 +1922,8 @@ curl -X POST -H "X-BBF-Smoke-Token: YOUR_TOKEN" "https://example.com/bbf/smokete
 
 <h3>Setup</h3>
 
-<div class="code-block"><span class="lang">php</span><pre>// Generate: php -r "echo bin2hex(random_bytes(16));"
-'smoke_token'  => 'a1b2c3d4e5f6...',       // HTTP access; empty = endpoint returns 404
+<div class="code-block"><span class="lang">php</span><pre>// Generate: php maintenance.php new-token
+'smoke_token'  => '',                     // paste the generated 64-hex token; empty = HTTP 404
 'smoke_email'  => 'tester@example.com',     // "submitter" &mdash; receives confirmation emails
 'smoke_notify' => 'admin@example.com',      // "admin" &mdash; receives notifications (test Reply-To)
 'diagnostic_base_url' => 'https://example.com/bbf',  // required for live mode</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>

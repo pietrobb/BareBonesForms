@@ -55,4 +55,7 @@ return [
     'submitAgain'           => 'Neizdevās pabeigt veidlapas nosūtīšanu. Mēģiniet vēlreiz — dublikāts netiks izveidots.',
     'submitProcessing'      => 'Jūsu veidlapa vēl tiek apstrādāta. Neaizpildiet to atkārtoti — pēc dažām minūtēm vēlreiz nospiediet Nosūtīt; dublikāts netiks izveidots.',
     'submitUnconfirmed'     => 'Neizdevās apstiprināt veidlapas iesniegšanu. Organizators ir informēts.',
+    'paymentFailed'         => 'Neizdevās sākt maksājumu. Lūdzu, mēģiniet vēlreiz vēlāk.',
+    'draftDisabled'         => 'Progresa saglabāšana šai veidlapai ir atspējota.',
+    'uploadDisabled'        => 'Failu augšupielāde šai veidlapai ir atspējota.',
 ];

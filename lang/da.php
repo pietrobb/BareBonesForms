@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Din indsendelse kunne ikke gennemføres. Send igen — den bliver ikke dubleret.',
     'submitProcessing'      => 'Din indsendelse behandles stadig. Udfyld ikke formularen igen — klik på Send igen om et par minutter; der oprettes ingen dublet.',
     'submitUnconfirmed'     => 'Vi kunne ikke bekræfte din indsendelse. Arrangøren er underrettet.',
+    'paymentFailed'         => 'Betalingen kunne ikke startes. Prøv igen senere.',
+    'draftDisabled'         => 'Lagring af fremskridt er deaktiveret for denne formular.',
+    'uploadDisabled'        => 'Upload af filer er deaktiveret for denne formular.',
 ];

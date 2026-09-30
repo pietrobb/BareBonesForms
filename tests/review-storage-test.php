@@ -40,7 +40,7 @@ try {
     require "$root/tests/storage-functions.php";
     $config = ['storage' => 'file', 'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions",
         'logs_dir' => "$root/logs", 'templates_dir' => "$root/templates", 'sqlite' => ['path' => "$root/data/bbf.sqlite"],
-        'csrf' => false, 'honeypot_field' => '_hp', 'rate_limit' => 1000, 'lang' => 'en', 'api_token' => 'fixture-only-token-0123',
+        'csrf' => false, 'honeypot_field' => '_hp', 'rate_limit' => 1000, 'lang' => 'en', 'api_token' => hash('sha256', 'fixture-only-token-0123'),
         'error_notify' => '', 'stripe' => ['secret_key' => 'sk_test_never_used', 'webhook_secret' => 'fixture-webhook-secret']];
     storage_config($root, $config);
     storage_check(in_array('sqlite', PDO::getAvailableDrivers(), true), 'SQLite driver required');

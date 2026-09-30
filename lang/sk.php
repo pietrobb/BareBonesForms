@@ -59,4 +59,7 @@ return [
     'submitAgain'           => 'Odoslanie sa nepodarilo dokončiť. Odošlite formulár znova — duplicitný záznam nevznikne.',
     'submitProcessing'      => 'Vaše odoslanie sa ešte spracúva. Formulár nevypĺňajte znova — o pár minút stlačte Odoslať ešte raz; duplicitný záznam nevznikne.',
     'submitUnconfirmed'     => 'Odoslanie sa nepodarilo potvrdiť. Organizátor bol upozornený.',
+    'paymentFailed'         => 'Platbu sa nepodarilo začať. Skúste to, prosím, neskôr.',
+    'draftDisabled'         => 'Ukladanie postupu je pre tento formulár vypnuté.',
+    'uploadDisabled'        => 'Nahrávanie súborov je pre tento formulár vypnuté.',
 ];

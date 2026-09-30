@@ -14,10 +14,10 @@ function inbox_check(bool $ok, string $label): void {
 }
 
 $auth = bbf_auth_registry(['api_token' => '', 'access_tokens' => [[
-    'id' => 'reviewer', 'token' => 'reviewer-secret-000001', 'forms' => ['alpha'],
+    'id' => 'reviewer', 'token' => hash('sha256', 'reviewer-secret-000001'), 'forms' => ['alpha'],
     'permissions' => ['read', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false,
 ], [
-    'id' => '0', 'token' => 'zero-principal-secret', 'forms' => ['0'],
+    'id' => '0', 'token' => hash('sha256', 'zero-principal-secret'), 'forms' => ['0'],
     'permissions' => ['read', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false,
 ]]]);
 inbox_check(($auth['reviewer']['permissions'] ?? []) === ['read', 'review'], 'review permission is a valid scoped capability');
@@ -241,11 +241,11 @@ try {
     file_put_contents("$root/submissions/beta/bbf_one.json", json_encode(['id' => 'bbf_one', 'form' => 'beta',
         'data' => ['answer' => 'beta-private'], 'meta' => ['submitted' => '2026-09-09T00:00:00Z']], JSON_THROW_ON_ERROR));
     $tokens = [
-        ['id' => 'reader', 'token' => 'reader-secret-123456789', 'forms' => ['alpha'], 'permissions' => ['read'],
+        ['id' => 'reader', 'token' => hash('sha256', 'reader-secret-123456789'), 'forms' => ['alpha'], 'permissions' => ['read'],
             'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false],
-        ['id' => 'reviewer', 'token' => 'reviewer-secret-123456789', 'forms' => ['alpha'],
+        ['id' => 'reviewer', 'token' => hash('sha256', 'reviewer-secret-123456789'), 'forms' => ['alpha'],
             'permissions' => ['read', 'export', 'delete', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false],
-        ['id' => 'other', 'token' => 'other-4Vd8Rk2Nq7Xw', 'forms' => ['alpha'], 'permissions' => ['read', 'review'],
+        ['id' => 'other', 'token' => hash('sha256', 'other-4Vd8Rk2Nq7Xw'), 'forms' => ['alpha'], 'permissions' => ['read', 'review'],
             'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false],
     ];
     $endpointConfig = ['api_token' => '', 'access_tokens' => $tokens, 'storage' => 'file',

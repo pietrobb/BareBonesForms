@@ -164,7 +164,7 @@ $_SERVER['REMOTE_ADDR'] = '203.0.113.7';
 $_SERVER['REQUEST_URI'] = '//untrusted.invalid/check.php';
 $_SERVER['SCRIPT_NAME'] = '/check.php';
 $_SERVER['REQUEST_METHOD'] = 'GET';
-if (!in_array('--anonymous', $argv, true)) $_SERVER['HTTP_X_BBF_TOKEN'] = 'diagnostic-test-admin';
+if (!in_array('--anonymous', $argv, true)) $_SERVER['HTTP_X_BBF_TOKEN'] = hash('sha256', 'diagnostic-test-admin');
 ob_start();
 require __DIR__ . '/check.php';
 ob_end_clean();
@@ -209,12 +209,12 @@ PHP);
         diagnostic_check(trim($fopenOut) === '403', 'probe works with allow_url_fopen=0 via cURL');
     }
     $config = [
-        'storage' => 'file', 'api_token' => 'diagnostic-test-admin', 'smoke_token' => 'diagnostic-test-smoke',
+        'storage' => 'file', 'api_token' => hash('sha256', 'diagnostic-test-admin'), 'smoke_token' => hash('sha256', 'diagnostic-test-smoke'),
         'smoke_email' => 'test@example.test', 'smoke_notify' => 'notify@example.test',
         'csrf' => false, 'sandbox' => false, 'lang' => 'en', 'rate_limit' => 0,
         'forms_dir' => $root . '/forms', 'submissions_dir' => $root . '/submissions',
         'templates_dir' => $root . '/templates', 'logs_dir' => $root . '/logs',
-        'access_tokens' => [['id' => 'diag-reader', 'token' => 'diagnostic-scoped-secret', 'forms' => ['test_diag'],
+        'access_tokens' => [['id' => 'diag-reader', 'token' => hash('sha256', 'diagnostic-scoped-secret'), 'forms' => ['test_diag'],
             'permissions' => ['read'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]],
     ];
     diagnostic_config($root, $config);
@@ -229,22 +229,22 @@ PHP);
     $response = bbf_test_http($server, $base . '/check.php');
     diagnostic_check($response['code'] === 403, 'check rejects anonymous loopback HTTP request');
     diagnostic_check(str_contains($response['body'], '<form method="post" action="check.php">')
-        && !str_contains($response['body'], 'diagnostic-test-admin'), 'anonymous check page offers a POST sign-in form without secrets');
+        && !str_contains($response['body'], hash('sha256', 'diagnostic-test-admin')), 'anonymous check page offers a POST sign-in form without secrets');
     // Login CSRF: the form carries a per-session value; a POST without it (another site's form) signs nobody in.
     preg_match('/Set-Cookie: (BBFADMIN=[^;\r\n]+)/i', $response['headers'], $loginCookie);
     preg_match('/name="login_csrf" value="([a-f0-9]{64})"/', $response['body'], $loginCsrf);
     diagnostic_check(isset($loginCookie[1], $loginCsrf[1]), 'sign-in page sets the BBFADMIN cookie and a login CSRF value');
     $session = ['cookie' => $loginCookie[1] ?? ''];
-    $forged = bbf_test_http($server, $base . '/check.php', ['token' => 'diagnostic-test-admin']);
+    $forged = bbf_test_http($server, $base . '/check.php', ['token' => hash('sha256', 'diagnostic-test-admin')]);
     diagnostic_check($forged['code'] === 403 && str_contains($forged['body'], 'form expired') && !str_contains($forged['body'], 'Invalid token')
         && !str_contains($forged['headers'], 'Location:'),
         'a sign-in POST without the login CSRF value does not sign in, even with the right token');
-    $forged = bbf_test_http($server, $base . '/check.php', ['token' => 'diagnostic-test-admin', 'login_csrf' => str_repeat('0', 64)], $session);
+    $forged = bbf_test_http($server, $base . '/check.php', ['token' => hash('sha256', 'diagnostic-test-admin'), 'login_csrf' => str_repeat('0', 64)], $session);
     diagnostic_check($forged['code'] === 403 && str_contains($forged['body'], 'form expired'), 'a wrong login CSRF value does not sign in');
     $login = bbf_test_http($server, $base . '/check.php', ['token' => 'wrong-token', 'login_csrf' => $loginCsrf[1] ?? ''], $session);
     diagnostic_check($login['code'] === 403 && str_contains($login['body'], 'Invalid token'), 'sign-in form rejects a wrong token and says so');
     diagnostic_check(!str_contains($response['body'], 'Invalid token'), 'first sign-in page shows no failure message');
-    $login = bbf_test_http($server, $base . '/check.php', ['token' => 'diagnostic-test-admin', 'login_csrf' => $loginCsrf[1] ?? ''], $session);
+    $login = bbf_test_http($server, $base . '/check.php', ['token' => hash('sha256', 'diagnostic-test-admin'), 'login_csrf' => $loginCsrf[1] ?? ''], $session);
     diagnostic_check($login['code'] === 303 && preg_match('/^Location: check\.php\r?$/mi', $login['headers']) === 1
         && preg_match('/^Set-Cookie: /mi', $login['headers']) === 1, 'sign-in form POST starts a session and redirects to a clean URL');
     foreach (['README.md', 'CHANGELOG.md'] as $doc) if (!is_file("$root/$doc")) bbf_test_copy(dirname(__DIR__) . "/$doc", "$root/$doc");
@@ -346,7 +346,7 @@ PHP);
     diagnostic_config($root, $config);
     [$exit, $output] = diagnostic_cli($root, ['test_diag', '--live']);
     diagnostic_check($exit !== 0 && str_contains($output, 'diagnostic_base_url'), 'CLI live mode rejects absent fixed target');
-    $response = bbf_test_http($server, $base . '/poison-smoke.php?live=1&form=test_diag', [], ['headers' => ['X-BBF-Smoke-Token' => 'diagnostic-test-smoke']]);
+    $response = bbf_test_http($server, $base . '/poison-smoke.php?live=1&form=test_diag', [], ['headers' => ['X-BBF-Smoke-Token' => hash('sha256', 'diagnostic-test-smoke')]]);
     diagnostic_check($response['code'] === 400 && str_contains($response['body'], 'diagnostic_base_url'), 'HTTP authorized POST ignores hostile Host/path when fixed target absent');
     diagnostic_check(!file_exists($root . '/logs/mock-request.json'), 'missing target causes no outbound submission');
     diagnostic_audit_pair($root, 'smoke_live', 'allowed', 'failed', 'smoke-http');
@@ -359,7 +359,7 @@ PHP);
         diagnostic_check(str_contains($output, 'HTTP 302'), "$mode reports redirect as failed smoke result");
         $request = json_decode(file_get_contents($root . '/logs/mock-request.json'), true, 512, JSON_THROW_ON_ERROR);
         diagnostic_check($request['uri'] === '/target/submit.php?form=test_diag', "$mode uses configured subpath with no URL credential");
-        diagnostic_check($request['token'] === 'diagnostic-test-smoke' && $request['method'] === 'POST', "$mode authenticates mock via POST header");
+        diagnostic_check($request['token'] === hash('sha256', 'diagnostic-test-smoke') && $request['method'] === 'POST', "$mode authenticates mock via POST header");
         diagnostic_check(!file_exists($root . '/logs/trap'), "$mode never follows redirect carrying credential");
         diagnostic_audit_pair($root, 'smoke_live', 'allowed', 'failed', 'smoke-cli', 1);
     }
@@ -369,7 +369,7 @@ PHP);
         $httpServer = diagnostic_start_server($root, $streams);
         $httpBase = 'http://127.0.0.1:' . $httpServer['port'];
         $smokeUrl = $httpBase . '/smoketest.php?form=test_diag';
-        $header = ['headers' => ['X-BBF-Smoke-Token' => 'diagnostic-test-smoke']];
+        $header = ['headers' => ['X-BBF-Smoke-Token' => hash('sha256', 'diagnostic-test-smoke')]];
         $response = bbf_test_http($httpServer, $httpBase . '/runtime.php');
         diagnostic_check($response['json']['curl'] === !$streams, "$mode selected independently");
         diagnostic_check($response['json']['opcache'] === true && $response['json']['timestamps'] === '0', "$mode config rotation runs with timestamp checks disabled in OPcache");
@@ -387,9 +387,9 @@ PHP);
         diagnostic_check($response['code'] === 405, "$mode PUT cannot invoke live work");
         foreach ([
             [$smokeUrl, []],
-            [$smokeUrl . '&token=diagnostic-test-smoke', []],
-            [$smokeUrl . '&smoke_token=diagnostic-test-smoke', $header],
-            [$smokeUrl . '&token=diagnostic-test-smoke', $header],
+            [$smokeUrl . '&token=' . hash('sha256', 'diagnostic-test-smoke'), []],
+            [$smokeUrl . '&smoke_token=' . hash('sha256', 'diagnostic-test-smoke'), $header],
+            [$smokeUrl . '&token=' . hash('sha256', 'diagnostic-test-smoke'), $header],
             [$smokeUrl, ['headers' => ['X-BBF-Smoke-Token' => '']]],
             [$smokeUrl, ['headers' => ['X-BBF-Smoke-Token' => 'bad token']]],
             [$smokeUrl, ['headers' => ['X-BBF-Smoke-Token' => str_repeat('x', 513)]]],
@@ -399,7 +399,7 @@ PHP);
             diagnostic_check(in_array($response['code'], [403, 429], true), "$mode missing/query/empty/malformed HTTP credential rejected $i");
             diagnostic_audit_pair($root, 'smoke_live', 'denied', 'failed', 'anonymous');
         }
-        foreach (['diagnostic-test-admin' => 'legacy-admin', 'diagnostic-scoped-secret' => 'diag-reader'] as $token => $id) {
+        foreach ([hash('sha256', 'diagnostic-test-admin') => 'legacy-admin', hash('sha256', 'diagnostic-scoped-secret') => 'diag-reader'] as $token => $id) {
             $response = bbf_test_http($httpServer, $httpBase . '/auth-fixture.php', null, ['headers' => ['X-BBF-Token' => $token]]);
             diagnostic_check(($response['json']['id'] ?? '') === $id && preg_match('/Set-Cookie: (BBFADMIN=[^;\r\n]+)/i', $response['headers'], $m) === 1, "$mode obtains genuine $id management cookie" . ($response['code'] === 500 ? file_get_contents($root . '/logs/php-error.log') : ''));
             $cookie = $m[1];
@@ -416,7 +416,7 @@ PHP);
         diagnostic_check($response['code'] === 200 && ($response['json']['forms'][0]['submission_id'] ?? '') === 'mock-id-test@example.test', "$mode authorized POST live completes against separate owned mock");
         diagnostic_check(diagnostic_count($root . '/logs/mock-requests') === $before + 1, "$mode exactly one mock operation for authorized POST");
         $request = json_decode(file_get_contents($root . '/logs/mock-request.json'), true, 512, JSON_THROW_ON_ERROR);
-        diagnostic_check($request['method'] === 'POST' && $request['token'] === 'diagnostic-test-smoke' && $request['uri'] === '/target/submit.php?form=test_diag', "$mode outbound token remains header-only");
+        diagnostic_check($request['method'] === 'POST' && $request['token'] === hash('sha256', 'diagnostic-test-smoke') && $request['uri'] === '/target/submit.php?form=test_diag', "$mode outbound token remains header-only");
         diagnostic_audit_pair($root, 'smoke_live', 'allowed', 'completed', 'smoke-http', 1);
         file_put_contents($root . '/target/status', '302');
         bbf_test_verify_server($server);
@@ -425,7 +425,7 @@ PHP);
         diagnostic_audit_pair($root, 'smoke_live', 'allowed', 'failed', 'smoke-http', 1);
 
         $rotated = $config;
-        $rotated['smoke_token'] = 'rotated-diagnostic-smoke';
+        $rotated['smoke_token'] = hash('sha256', 'rotated-diagnostic-smoke');
         diagnostic_config($root, $rotated);
         $before = diagnostic_count($root . '/logs/mock-requests');
         $response = bbf_test_http($httpServer, $smokeUrl . '&live=1', [], $header);
@@ -518,7 +518,7 @@ PHP);
         $response = bbf_test_http($httpServer, $httpBase . '/check.php', null, ['cookie' => $adminCookie]);
         diagnostic_check($response['code'] === 200, "$mode check accepts current administrator session");
         diagnostic_check(diagnostic_count($root . '/logs/config-loads') === $loads + 1, "$mode check loads config once, not again after auth");
-        $rotated = $config; $rotated['api_token'] = 'rotated-diagnostic-admin';
+        $rotated = $config; $rotated['api_token'] = hash('sha256', 'rotated-diagnostic-admin');
         diagnostic_config($root, $rotated);
         $before = diagnostic_count($root . '/logs/probe-requests');
         $response = bbf_test_http($httpServer, $httpBase . '/check.php', null, ['cookie' => $adminCookie]);
@@ -545,8 +545,8 @@ PHP);
     }
     $audit = file_get_contents($root . '/logs/access-audit.php');
     diagnostic_check(str_starts_with($audit, '<?php http_response_code(404); exit; ?>'), 'audit file has direct-access guard');
-    foreach (['diagnostic-test-smoke', 'rotated-diagnostic-smoke', 'diagnostic-test-admin', 'rotated-diagnostic-admin',
-        'diagnostic-scoped-secret', 'test@example.test', 'notify@example.test', '127.0.0.1', '203.0.113.7',
+    foreach ([hash('sha256', 'diagnostic-test-smoke'), hash('sha256', 'rotated-diagnostic-smoke'), hash('sha256', 'diagnostic-test-admin'), hash('sha256', 'rotated-diagnostic-admin'),
+        hash('sha256', 'diagnostic-scoped-secret'), 'test@example.test', 'notify@example.test', '127.0.0.1', '203.0.113.7',
         'mock-id-', 'untrusted.invalid', 'X-Injected', 'bad token', 'Test Value'] as $private) {
         diagnostic_check(!str_contains($audit, $private), 'audit excludes fixture secret/PII: ' . $private);
     }

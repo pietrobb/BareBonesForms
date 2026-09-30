@@ -21,7 +21,7 @@ try {
         'logs_dir' => "$root/logs", 'templates_dir' => "$root/templates", 'csrf' => false,
         'sandbox' => false, 'honeypot_field' => '_hp', 'rate_limit' => 1000, 'lang' => 'en',
         'store_ip' => false, 'store_user_agent' => false, 'error_notify' => '',
-        'mail' => ['method' => 'mail'], 'stripe' => [], 'api_token' => 'private-never-expose',
+        'mail' => ['method' => 'mail'], 'stripe' => [], 'api_token' => hash('sha256', 'private-never-expose'),
         'system_fields' => array_map(static fn($name) => ['name' => $name, 'type' => 'hidden', 'value' => ''], $names),
         'visit_context' => ['trigger_params' => ['gclid', 'gbraid', 'wbraid'], 'params' => array_slice($names, 3, 5), 'private' => 'not-public'],
         'analytics' => ['umami' => true],
@@ -37,10 +37,10 @@ try {
     $fields = array_column($definition['json']['fields'] ?? [], null, 'name');
     contextCheck($definition['code'] === 200 && count($fields) === 12, 'definition injects all eleven system fields');
     contextCheck(($fields['gclid']['type'] ?? '') === 'hidden' && !isset($fields['gclid']['required']) && !isset($fields['gclid']['maxlength']), 'system input is hidden and has no user validation');
-    contextCheck(!str_contains($definition['body'], 'private-never-expose') && !isset($definition['json']['on_submit']), 'definition never exposes server configuration');
+    contextCheck(!str_contains($definition['body'], hash('sha256', 'private-never-expose')) && !isset($definition['json']['on_submit']), 'definition never exposes server configuration');
     $public = bbf_test_http($server, "$url?action=context");
     contextCheck(($public['json']['visit_context']['trigger_params'] ?? []) === ['gclid', 'gbraid', 'wbraid']
-        && !str_contains($public['body'], 'not-public') && !str_contains($public['body'], 'private-never-expose'), 'context endpoint exposes only public allowlists');
+        && !str_contains($public['body'], 'not-public') && !str_contains($public['body'], hash('sha256', 'private-never-expose')), 'context endpoint exposes only public allowlists');
     $long = '  ' . str_repeat('á &=%? +', 90) . '  ';
     foreach ([['answer' => 'ok'], ['answer' => 'ok', 'gclid' => $long, 'utm_term' => $long, 'landing_url' => $long],
               ['answer' => 'ok', 'gclid' => ['bad' => ['array']], 'utm_campaign' => (object)['bad' => 1]]] as $i => $input) {

@@ -18,10 +18,10 @@ foreach (['file', 'csv', 'sqlite'] as $storage) {
         bbf_test_remove_dir("$root/forms"); mkdir("$root/forms", 0700);
         $tokens = [];
         foreach (['reader' => ['read'], 'exporter' => ['read', 'export'], 'deleter' => ['read', 'delete']] as $id => $permissions) {
-            $tokens[] = ['id' => $id, 'token' => "storage-fixture-secret-$id", 'forms' => ['alpha'],
+            $tokens[] = ['id' => $id, 'token' => hash('sha256', "storage-fixture-secret-$id"), 'forms' => ['alpha'],
                 'permissions' => $permissions, 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false];
         }
-        $config = ['storage' => $storage, 'api_token' => 'storage-fixture-admin', 'access_tokens' => $tokens,
+        $config = ['storage' => $storage, 'api_token' => hash('sha256', 'storage-fixture-admin'), 'access_tokens' => $tokens,
             'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions", 'logs_dir' => "$root/logs",
             'sqlite' => ['path' => "$root/submissions/bbf.sqlite"], 'lang' => 'en'];
         file_put_contents("$root/config.php", '<?php defined("BBF_LOADED") || exit; return ' . var_export($config, true) . ';');
@@ -52,7 +52,7 @@ foreach (['file', 'csv', 'sqlite'] as $storage) {
         $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
         $base = 'http://127.0.0.1:' . $server['port'] . '/';
         $http = static fn(string $path, array $options = []) => bbf_test_http($server, $base . $path, null, $options);
-        $header = static fn(string $id) => ['headers' => ['X-BBF-Token' => "storage-fixture-secret-$id"]];
+        $header = static fn(string $id) => ['headers' => ['X-BBF-Token' => hash('sha256', "storage-fixture-secret-$id")]];
         foreach (['viewer.php?action=submissions', 'viewer.php?action=detail', 'submissions.php'] as $path) {
             $r = $http($path . (str_contains($path, '?') ? '&' : '?') . 'form=alpha&id=bbf_alpha', $header('reader'));
             access_storage_check($r['code'] === 200 && str_contains($r['body'], 'alpha-confidential-answer'), "$storage authorized read $path");

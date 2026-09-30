@@ -178,6 +178,31 @@ async function browserChecks() {
     renewed.answer(200, { token: 'c'.repeat(32), expires_at: soon, file: { name: 'renew.pdf', size: 10, type: 'application/pdf' } });
     check('the repeated upload completes without an error row', () =>
         csrfWrap.querySelectorAll('.bbf-file-done').length === 1 && csrfWrap.querySelectorAll('.bbf-file-error').length === 0);
+    // Concurrent uploads share the pending refresh; a late 403 uses the token already refreshed.
+    csrfWrap._bbfClearFiles();
+    const picks = new DataTransfer(); picks.items.add(pdf('one.pdf')); picks.items.add(pdf('two.pdf'));
+    // Use a second field/form with two slots for the concurrent case.
+    const concurrent = BBF._buildForm({ id: 'parallel', name: 'Parallel', fields: [{ name: 'doc', type: 'file', label: 'Doc', max_files: 3 }] }, 'parallel', './', {}, 'old', 'en', true);
+    document.body.appendChild(concurrent);
+    const parallelWrap = concurrent.querySelector('[data-field="doc"]');
+    const parallelInput = parallelWrap.querySelector('input[type="file"]');
+    picks.items.add(pdf('late.pdf')); parallelInput.files = picks.files;
+    const start = uploads.length, refreshStart = fetches.length;
+    parallelInput.dispatchEvent(new Event('change', { bubbles: true }));
+    uploads[start].answer(403, {}); uploads[start + 1].answer(403, {});
+    await tick();
+    check('concurrent upload 403s issue exactly one CSRF refresh', () => fetches.length === refreshStart + 1);
+    // Remove the first upload while both callbacks wait on the shared refresh.
+    parallelWrap.querySelector('.bbf-file-remove').click();
+    fetches[refreshStart].resolve(response(200, { csrf_token: 'shared' }));
+    await tick();
+    check('removed upload does not retry or reappear after refresh', () => uploads.length === start + 4 && parallelWrap.querySelectorAll('.bbf-file').length === 2 && uploads[start].aborted);
+    uploads[start + 2].answer(403, {});
+    await tick();
+    check('late stale upload reuses the fresh token without another refresh', () => fetches.length === refreshStart + 1 && uploads.length === start + 5 && uploads[start + 4].headers['X-BBF-CSRF'] === 'shared');
+    uploads[start + 3].answer(403, {});
+    await tick();
+    check('a retry answered 403 does not refresh a second time', () => fetches.length === refreshStart + 1 && parallelWrap.querySelectorAll('.bbf-file-error').length === 1);
     check('no script errors', () => window.__errors.length === 0);
     const output = document.createElement('pre'); output.id = 'upload-ui-result';
     output.textContent = JSON.stringify(results); document.body.appendChild(output);
@@ -207,7 +232,7 @@ test('file upload client in real Chromium', () => {
         const browserResults = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
         const failures = browserResults.filter(check => !check.ok);
         assert.equal(failures.length, 0, JSON.stringify({ passed: browserResults.length - failures.length, failures }, null, 2));
-        assert.equal(browserResults.length, 20, 'all upload browser checks executed');
+        assert.equal(browserResults.length, 24, 'all upload browser checks executed');
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }

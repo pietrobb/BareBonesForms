@@ -15,10 +15,10 @@ function routing_json(string $path, array $data): void {
 function routing_http(string $path, array $options = []): array {
     global $server;
     if (!isset($options['cookie']) && !isset($options['headers']['X-BBF-Token']))
-        $options['headers']['X-BBF-Token'] ??= 'routing-fixture-all';
+        $options['headers']['X-BBF-Token'] ??= '4752ccb56f6ad6cfdb4ee4df2f64cc5c7d390831b2e492b8127b89c6cf95d53a';
     return bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . '/' . $path, null, $options);
 }
-function routing_login(string $token = 'routing-fixture-all', string $page = 'viewer.php'): array {
+function routing_login(string $token = '4752ccb56f6ad6cfdb4ee4df2f64cc5c7d390831b2e492b8127b89c6cf95d53a', string $page = 'viewer.php'): array {
     $r = routing_http($page, ['headers' => ['X-BBF-Token' => $token]]);
     preg_match('/Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/i', $r['headers'], $cookie);
     preg_match('/const TOKEN = ("[^"]+");/', $r['body'], $csrf);
@@ -107,9 +107,9 @@ foreach (['file', 'csv', 'sqlite'] as $global) {
         $scope = ['alpha', 'bravo', 'charlie', 'ALPHA', 'BRAVO', 'CHARLIE', 'orphan', 'ORPHAN', 'newform'];
         $tokens = [];
         foreach (['all' => ['read', 'export', 'delete'], 'reader' => ['read']] as $id => $permissions)
-            $tokens[] = ['id' => $id, 'token' => "routing-fixture-$id", 'forms' => $scope, 'permissions' => $permissions,
+            $tokens[] = ['id' => $id, 'token' => hash('sha256', "routing-fixture-$id"), 'forms' => $scope, 'permissions' => $permissions,
                 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false];
-        $config = ['api_token' => 'routing-fixture-admin', 'access_tokens' => $tokens, 'storage' => $global,
+        $config = ['api_token' => '6d0d1940300872eae7f4c06560ee6f12d7e1f417c1840ba61acb505c93a583e7', 'access_tokens' => $tokens, 'storage' => $global,
             'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions", 'logs_dir' => "$root/logs",
             'sqlite' => ['path' => "$root/submissions/bbf.sqlite"], 'lang' => 'en'];
         file_put_contents("$root/config.php", '<?php defined("BBF_LOADED") || exit; return ' . var_export($config, true) . ';');
@@ -127,7 +127,7 @@ foreach (['file', 'csv', 'sqlite'] as $global) {
         $pdo = null;
         $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
         routing_check(routing_http('tests/review-storage-routing-test.php')['code'] === 403, "$global HTTP CLI guard");
-        $session = routing_login(); $reader = routing_login('routing-fixture-reader'); $editor = routing_login('routing-fixture-admin', 'editor.php'); $admin = ['cookie' => $editor['cookie']];
+        $session = routing_login(); $reader = routing_login('cccea36d77292f95f22a34924451231d416d31c3b087f55145df2b4f8160d0d0'); $editor = routing_login('6d0d1940300872eae7f4c06560ee6f12d7e1f417c1840ba61acb505c93a583e7', 'editor.php'); $admin = ['cookie' => $editor['cookie']];
         preg_match('/const CAN_DELETE = (\{[^\n]+?\});/', $session['body'], $m);
         $cap = isset($m[1]) ? json_decode($m[1], true) : [];
         routing_check(($cap['delete_forms'] ?? null) === ['alpha' => true, 'bravo' => false, 'charlie' => true]
@@ -156,7 +156,7 @@ foreach (['file', 'csv', 'sqlite'] as $global) {
             foreach (["viewer.php?action=export&form=$form", "submissions.php?format=csv&form=$form"] as $endpoint) {
                 $r = routing_http($endpoint);
                 routing_check($r['code'] === 200 && substr_count($r['body'], "ACTUAL-$form-$effective-") === 3 && !str_contains($r['body'], 'DECOY-'), "$tag export $endpoint");
-                routing_check(routing_http($endpoint, ['headers' => ['X-BBF-Token' => 'routing-fixture-reader']])['code'] === 403, "$tag read-only export denied");
+                routing_check(routing_http($endpoint, ['headers' => ['X-BBF-Token' => 'cccea36d77292f95f22a34924451231d416d31c3b087f55145df2b4f8160d0d0']])['code'] === 403, "$tag read-only export denied");
             }
             $r = routing_http("viewer.php?action=stats&form=$form");
             routing_check($r['code'] === 200 && ($r['json'] ?? []) === ['total' => 3, 'today' => 3, 'this_week' => 3, 'this_month' => 3], "$tag stats effective backend");
@@ -251,7 +251,7 @@ foreach (['file', 'csv', 'sqlite'] as $global) {
         }
         $audit = file_get_contents("$root/logs/access-audit.php");
         routing_check(str_contains($audit, '"decision":"denied"') && str_contains($audit, '"action":"viewer_bulk_delete"')
-            && !str_contains($audit, 'routing-fixture-') && !str_contains($audit, 'ACTUAL-') && !str_contains($audit, 'DECOY-') && !str_contains($audit, 'broken-secret'), "$global audit covers denials and mutations without secrets or records");
+            && !str_contains($audit, $config['api_token']) && !str_contains($audit, $tokens[0]['token']) && !str_contains($audit, $tokens[1]['token']) && !str_contains($audit, 'ACTUAL-') && !str_contains($audit, 'DECOY-') && !str_contains($audit, 'broken-secret'), "$global audit covers denials and mutations without secrets or records");
     } finally {
         $pdo = null;
         bbf_test_stop_server($server);

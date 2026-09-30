@@ -95,20 +95,19 @@ if ($config) {
     check('Config', 'Storage backend set', in_array($storage, ['file', 'sqlite', 'mysql', 'csv']),
         'Current: "' . $storage . '"');
 
-    check('Config', 'api_token configured', !empty($config['api_token']),
-        'submissions.php is blocked until api_token is set.', 'warn');
+    check('Config', 'api_token configured', isset(bbf_auth_registry($config)['legacy-admin']),
+        'api_token must be usable: at least 32 hexadecimal characters (0-9, a-f, A-F), with a valid access_tokens registry. Generate a random value with php maintenance.php new-token.', 'warn');
 
     $accessProblems = bbf_auth_config_problems($config);
     if ($accessProblems === []) check('Config', 'Access tokens and trusted_proxies', true, 'Valid.');
     foreach ($accessProblems as $problem) check('Config', 'Access tokens and trusted_proxies', false, $problem['message'], $problem['level']);
 
-    // A forwarding proxy in front of the site makes every visitor share one address unless it is trusted.
-    $viaProxy = !empty($_SERVER['HTTP_X_FORWARDED_FOR']) || !empty($_SERVER['HTTP_CF_CONNECTING_IP']);
-    check('Config', 'Proxy / Cloudflare client address', !$viaProxy || bbf_trusted_proxies($config) !== [],
-        $viaProxy ? (bbf_trusted_proxies($config) !== []
-            ? 'Requests arrive through a proxy; client address resolved as ' . bbf_client_ip($config) . '.'
-            : 'Requests arrive through a proxy (X-Forwarded-For / CF-Connecting-IP) but trusted_proxies is empty: rate limits and the sign-in limit see only the proxy address. List the proxy ranges in trusted_proxies.')
-            : 'No forwarding proxy detected.', 'warn');
+    // Only the actual peer address establishes trust; forwarding headers from other peers prove nothing.
+    $trustedPeer = bbf_ip_in_list((string)($_SERVER['REMOTE_ADDR'] ?? ''), bbf_trusted_proxies($config));
+    check('Config', 'Proxy / Cloudflare client address', true,
+        $trustedPeer ? 'The peer is a configured trusted proxy; client address resolved as ' . bbf_client_ip($config) . '.'
+            : 'The peer is not a configured trusted proxy. Forwarding headers are ignored; client address is ' . bbf_client_ip($config)
+                . '. If this site is behind a proxy, configure its verified address ranges in trusted_proxies.');
 
     check('Config', 'webhook_secret configured', !empty($config['webhook_secret']),
         empty($config['webhook_secret'])

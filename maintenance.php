@@ -5,14 +5,7 @@ if (PHP_SAPI !== 'cli') {
     exit('CLI only.');
 }
 define('BBF_LOADED', true);
-if (!is_file(__DIR__ . '/config.php')) {
-    fwrite(STDERR, "Missing config.php.\n");
-    exit(2);
-}
 require_once __DIR__ . '/bbf_auth.php';
-require_once __DIR__ . '/bbf_retention.php';
-require_once __DIR__ . '/bbf_backup.php';
-
 function bbf_maintenance_fail(string $message, int $code = 2): never {
     fwrite(STDERR, $message . "\n");
     exit($code);
@@ -28,6 +21,8 @@ $usage = 'Usage: php maintenance.php retention --form=<id> [--apply --confirm=<r
     . "\n       php maintenance.php selfcheck      (daily cron: check forms, folders, SMTP, stuck deliveries; email problems)"
     . "\n       php maintenance.php alerts         (send pending admin alerts now)"
     . "\n       php maintenance.php alerts-test    (send a test alert to error_notify)"
+    . "\n       php maintenance.php new-token    (generate 64 hex characters using bin2hex(random_bytes(32)); keep secret)"
+    . "\n       php maintenance.php help         (tokens require at least 32 hex characters; format does not prove randomness)"
     . "\n       php maintenance.php version"
     . "\n       php maintenance.php upgrade --package=<release.zip|folder> [--checksum=<sha256 from SHA256SUMS> | --trust-package] [--apply --confirm=<upgrade-digest>]"
     . "\n       php maintenance.php upgrade-rollback --backup=<logs/upgrades/...> [--apply --confirm=<rollback-digest>]";
@@ -41,7 +36,7 @@ $allowed = match ($command) {
     'restore-abort' => ['form', 'confirm'],
     'upgrade' => ['package', 'confirm', 'checksum'],
     'upgrade-rollback' => ['backup', 'confirm'],
-    'submit-recover', 'uploads-cleanup', 'deliveries-retry', 'selfcheck', 'alerts', 'alerts-test', 'version' => [],
+    'submit-recover', 'uploads-cleanup', 'deliveries-retry', 'selfcheck', 'alerts', 'alerts-test', 'version', 'new-token', 'help' => [],
     default => bbf_maintenance_fail($usage),
 };
 $options = ['apply' => false];
@@ -51,7 +46,7 @@ foreach ($arguments as $argument) {
         continue;
     }
     if ($argument === '--apply') {
-        if ($options['apply'] || in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'deliveries-retry', 'selfcheck', 'alerts', 'alerts-test', 'version'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
+        if ($options['apply'] || in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'deliveries-retry', 'selfcheck', 'alerts', 'alerts-test', 'version', 'new-token', 'help'], true)) bbf_maintenance_fail('Unknown or duplicate maintenance option.');
         $options['apply'] = true;
         continue;
     }
@@ -68,9 +63,18 @@ if (in_array($command, ['retention', 'backup', 'restore-abort'], true)) {
 if ($command === 'restore' && !is_string($options['bundle'] ?? null)) {
     bbf_maintenance_fail('A --bundle path is required.');
 }
-if (!in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'deliveries-retry', 'selfcheck', 'alerts', 'alerts-test', 'version'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
+if (!in_array($command, ['backup', 'submit-recover', 'uploads-cleanup', 'deliveries-retry', 'selfcheck', 'alerts', 'alerts-test', 'version', 'new-token', 'help'], true) && $options['apply'] !== array_key_exists('confirm', $options)) {
     bbf_maintenance_fail('--apply and --confirm must be supplied together.');
 }
+if ($command === 'help') { fwrite(STDOUT, $usage . "\n"); exit(0); }
+if ($command === 'new-token') { fwrite(STDOUT, bin2hex(random_bytes(32)) . "\n"); exit(0); }
+if (!is_file(__DIR__ . '/config.php')) {
+    fwrite(STDERR, "Missing config.php.\n");
+    exit(2);
+}
+require_once __DIR__ . '/bbf_retention.php';
+require_once __DIR__ . '/bbf_backup.php';
+
 $config = bbf_auth_load_config(__DIR__ . '/config.php');
 if (in_array($command, ['version', 'upgrade', 'upgrade-rollback'], true)) {
     require_once __DIR__ . '/bbf_upgrade.php';

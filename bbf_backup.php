@@ -54,14 +54,14 @@ function bbf_backup_access_policy(array $config, string $formId): array {
 }
 
 /**
- * Names of tokens (api_token, access_tokens ids) that are long enough but now rejected as guessable, when counting
- * them back in reproduces the backup's policy exactly: a bundle from 2.1.6 or older made with such a token.
+ * Names of legacy tokens (api_token, access_tokens ids) rejected by the current format policy, when counting
+ * them back in reproduces the backup's policy exactly.
  */
 function bbf_backup_newly_weak(array $config, string $formId, $bundlePolicy): array {
     $legacy = $config['api_token'] ?? '';
     $records = $config['access_tokens'] ?? [];
     if (!is_string($legacy) || !is_array($records) || !is_array($bundlePolicy)) return [];
-    $longWeak = static fn($t): bool => is_string($t) && strlen($t) >= BBF_AUTH_MIN_TOKEN && bbf_auth_token_weak($t);
+    $longWeak = static fn($t): bool => is_string($t) && strlen($t) >= 16 && !bbf_auth_token_usable($t);
     $names = $longWeak($legacy) ? ['api_token'] : [];
     try { $policy = bbf_backup_access_policy($config, $formId); } catch (RuntimeException $e) { return []; }
     if ($names !== []) $policy['legacy_admin'] = true;
@@ -374,8 +374,8 @@ function bbf_backup_restore_plan(array $config, string $path): array {
     if (bbf_backup_access_policy($config, $payload['form']) !== $payload['access']) {
         $weak = bbf_backup_newly_weak($config, $payload['form'], $payload['access']);
         if ($weak !== []) throw new RuntimeException('The backup was made while ' . implode(', ', $weak)
-            . ' had a token that this version rejects as easy to guess, so the access policy no longer matches.'
-            . ' Set a random token in config.php (php -r "echo bin2hex(random_bytes(24));") and restore again.');
+            . ' had a token that does not meet this version\'s hex-format policy, so the access policy no longer matches.'
+            . ' Set a generated token in config.php (php maintenance.php new-token) and restore again.');
         throw new RuntimeException('Restore access policy does not match the protected target.');
     }
     $empty = bbf_backup_target_empty($effective, $payload);

@@ -101,6 +101,18 @@ PHP);
         'delivery' => ['max_attempts' => 3, 'retry_delay' => 30],
     ];
     file_put_contents("$root/forms/delivery-fixture.json", json_encode($form, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+    file_put_contents("$root/templates/numeric-fixture.html", '<p>{{1}}|{{5}}|{{_id}}</p>');
+    $numericForm = ['id' => 'numeric', 'fields' => [], 'on_submit' => [
+        'confirm_email' => ['to' => 'person@example.test', 'template' => 'numeric-fixture.html'],
+        'notify' => ['to' => 'owner@example.test', 'template' => 'numeric-fixture.html'],
+    ]];
+    $numericSubmission = ['id' => 'numeric-id', 'form' => 'numeric',
+        'data' => [1 => '<first>', 5 => 'fifth'], 'meta' => []];
+    $numericJobs = bbf_delivery_prepare_jobs($numericForm, $numericSubmission, $config);
+    foreach ($numericJobs as $numericJob) {
+        submit_delivery_check($numericJob['payload']['body'] === '<p>&lt;first&gt;|fifth|numeric-id</p>',
+            $numericJob['key'] . ' email preserves numeric field names and escapes their values');
+    }
     $jobs = bbf_delivery_prepare_jobs($form, $submission, $config, ['_payment_status' => 'fixture-paid']);
     $byKey = array_column($jobs, null, 'key');
     submit_delivery_check(array_keys($byKey) === ['confirm', 'notify', 'webhook:0', 'action:0'],

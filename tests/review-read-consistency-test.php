@@ -15,7 +15,7 @@ function rc_wait(callable $ready, string $label): void {
 }
 function rc_http(string $path, array $options = []): array {
     global $server;
-    if (!isset($options['cookie'])) $options['headers']['X-BBF-Token'] = 'consistency-private-admin';
+    if (!isset($options['cookie'])) $options['headers']['X-BBF-Token'] = hash('sha256', 'consistency-private-admin');
     return bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . '/' . $path, null, $options);
 }
 function rc_csv_ids(string $body): array {
@@ -39,7 +39,7 @@ foreach (['file', 'sqlite', 'sqlite_streaming_control'] as $mode) { $storage = $
         bbf_test_copy(__FILE__, "$root/tests/review-read-consistency-test.php");
         bbf_test_remove_dir("$root/forms"); mkdir("$root/forms", 0700);
         file_put_contents("$root/forms/alpha.json", json_encode(['id' => 'alpha', 'fields' => [['name' => 'value', 'type' => 'text']]]));
-        $config = ['api_token' => 'consistency-private-admin', 'storage' => $storage,
+        $config = ['api_token' => hash('sha256', 'consistency-private-admin'), 'storage' => $storage,
             'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions", 'logs_dir' => "$root/logs",
             'sqlite' => ['path' => "$root/submissions/bbf.sqlite"]];
         file_put_contents("$root/config.php", '<?php return ' . var_export($config, true) . ';');

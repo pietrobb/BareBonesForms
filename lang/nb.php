@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Innsendingen din kunne ikke fullføres. Send inn på nytt — den blir ikke duplisert.',
     'submitProcessing'      => 'Innsendingen din behandles fortsatt. Ikke fyll ut skjemaet på nytt — klikk Send igjen om noen minutter; det opprettes ingen duplikat.',
     'submitUnconfirmed'     => 'Vi kunne ikke bekrefte innsendingen din. Arrangøren er varslet.',
+    'paymentFailed'         => 'Betalingen kunne ikke startes. Prøv igjen senere.',
+    'draftDisabled'         => 'Lagring av fremdrift er deaktivert for dette skjemaet.',
+    'uploadDisabled'        => 'Opplasting av filer er deaktivert for dette skjemaet.',
 ];

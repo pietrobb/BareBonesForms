@@ -3,6 +3,28 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.8] — 2026-09-30
+
+Fixes from the review of 2.1.7.
+
+### Security
+- **Breaking: access tokens now require at least 32 hexadecimal characters.** This applies to `api_token`, scoped `access_tokens` and `smoke_token`. Passwords, UUIDs, base64 strings and shorter tokens are ignored. Generate each credential with `php maintenance.php new-token`: it prints 64 hex characters from 32 cryptographically random bytes. The password dictionary and entropy estimator are removed. Format validation cannot establish random origin: never invent a token by hand, use repeated characters or copy a sample value. Correct tokens still authenticate even when wrong guesses from the same address are blocked.
+- **Upgrade lockout is not success:** if the new policy leaves no usable administrative token, the apply result explicitly reports that code was updated but administrative access is blocked, returns `ok: false` and exits nonzero. Replace the token in `config.php`, then run `php check.php` or `php maintenance.php selfcheck`. The sign-in page explains the token requirements; diagnostics no longer mark a rejected `api_token` as configured correctly.
+- **Release integrity:** releases remain drafts until downloaded assets match the build's `SHA256SUMS`; only then are they published.
+
+### Fixed
+- **Concurrent CSRF recovery:** uploads and drafts share a pending token refresh. A rejected upload does not create a session or replace its cookie, and does not consume the upload quota. Removing a file during recovery prevents its retry.
+- **Upload errors:** disabled uploads and unknown forms do not flood the error log or masquerade as broken storage. Genuine storage problems remain diagnosable.
+- **Numeric field names in email templates:** confirmation and notification bodies preserve keys such as `"1"` and `"5"`, while still escaping respondent values.
+- **Upgrade/security rules:** stock legacy `.htaccess.dist` files are recognized across published releases; rule checks preserve block context instead of treating all lines as one unordered set. Child-process exit codes survive long PHP-notice output.
+- **Documentation:** upgrade ZIPs include `docs.html` so old installations receive the current token and upgrade instructions.
+- **Proxy/configuration:** invalid `cookie_path` is reported; client-supplied forwarding headers do not create trusted-proxy warnings, and Stripe return URLs use trusted TLS-proxy detection.
+- **Respondent messages:** payment gateway failures use the selected language; disabled drafts are distinguished from missing drafts.
+
+### Upgrading
+- **Breaking: `show_if.value` cannot be an object.** This validation was introduced in 2.1.7 but omitted from its Breaking notes. Use a scalar or a list of scalars. Upgrade preflight validates existing forms with the new code and names incompatible definitions before replacing files.
+- Replace incompatible credentials before upgrading. Use `--checksum` so the package's upgrader and diagnostics evaluate the new policy. FTP uploads do not run preflight: generate tokens, validate forms, and run diagnostics yourself. No production installation is upgraded automatically.
+
 ## [2.1.7] — 2026-09-30
 
 Fixes from the review of 2.1.6.

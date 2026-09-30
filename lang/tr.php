@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Gönderiminiz tamamlanamadı. Lütfen tekrar gönderin — yinelenmeyecek.',
     'submitProcessing'      => 'Gönderiminiz hâlâ işleniyor. Formu yeniden doldurmayın — birkaç dakika sonra Gönder\'e tekrar basın; yinelenen kayıt oluşmaz.',
     'submitUnconfirmed'     => 'Gönderiminizi doğrulayamadık. Düzenleyiciye bildirildi.',
+    'paymentFailed'         => 'Ödeme başlatılamadı. Lütfen daha sonra tekrar deneyin.',
+    'draftDisabled'         => 'Bu form için ilerlemeyi kaydetme devre dışı bırakılmıştır.',
+    'uploadDisabled'        => 'Bu form için dosya yükleme devre dışı bırakılmıştır.',
 ];

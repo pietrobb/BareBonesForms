@@ -11,16 +11,16 @@ function core_check(bool $ok, string $name): void {
 }
 $root = bbf_test_installation(dirname(__DIR__));
 try {
-    foreach (['viewer.php', 'editor.php'] as $file) bbf_test_copy(dirname(__DIR__) . '/' . $file, "$root/$file");
+    foreach (['viewer.php', 'editor.php', 'check.php'] as $file) bbf_test_copy(dirname(__DIR__) . '/' . $file, "$root/$file");
     bbf_test_copy(__FILE__, "$root/tests/review-access-core-test.php");
     bbf_test_remove_dir("$root/forms"); mkdir("$root/forms", 0700);
     $tokens = [];
     foreach (['reader' => ['read'], 'exporter' => ['read', 'export'], 'deleter' => ['read', 'delete'],
               'exportonly' => ['export'], 'deleteonly' => ['delete'], 'empty' => [], 'all' => ['read', 'export', 'delete']] as $id => $permissions) {
-        $tokens[] = ['id' => $id, 'token' => "fixture-secret-$id-76543210", 'forms' => ['alpha', 'orphan'],
+        $tokens[] = ['id' => $id, 'token' => hash('sha256', "fixture-secret-$id-76543210"), 'forms' => ['alpha', 'orphan'],
             'permissions' => $permissions, 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false];
     }
-    $baseConfig = ['api_token' => 'fixture-admin-secret-987654321', 'access_tokens' => $tokens,
+    $baseConfig = ['api_token' => 'c9ffddaa918a1b920038790fc128858957809e3c80165b8a8cbbe77c556883f2', 'access_tokens' => $tokens,
         'storage' => 'file', 'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions",
         'logs_dir' => "$root/logs", 'lang' => 'en', 'mail' => ['method' => 'mail'],
         'delivery' => ['lease_seconds' => 5, 'retry_delay' => 1, 'max_attempts' => 3]];
@@ -53,7 +53,7 @@ try {
     }
     function core_header(string $id): array {
         global $baseConfig;
-        return ['headers' => ['X-BBF-Token' => $id === 'admin' ? $baseConfig['api_token'] : "fixture-secret-$id-76543210"]];
+        return ['headers' => ['X-BBF-Token' => $id === 'admin' ? $baseConfig['api_token'] : hash('sha256', "fixture-secret-$id-76543210")]];
     }
     function core_login(string $id, string $page = 'viewer.php'): array {
         $r = core_http($page, core_header($id));
@@ -80,16 +80,16 @@ try {
     foreach (['viewer.php?action=submissions&form=alpha', 'submissions.php?form=alpha'] as $path) {
         core_check(core_http($path, core_header('reader'))['code'] === 200, "valid header $path");
         $stateless = str_starts_with($path, 'submissions.php');
-        core_check(core_http($path . '&token=fixture-secret-reader-76543210')['code'] === ($stateless ? 200 : 403),
+        core_check(core_http($path . '&token=bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f')['code'] === ($stateless ? 200 : 403),
             $stateless ? "valid query API $path" : "a session page never accepts ?token= ($path)");
         core_check(core_http($path . '&token=bad', core_header('reader'))['code'] === 200, 'header wins over bad query');
-        core_check(core_http($path . '&token=fixture-secret-reader-76543210', ['headers' => ['X-BBF-Token' => 'bad']])['code'] === 403, 'bad header wins over good query');
+        core_check(core_http($path . '&token=bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f', ['headers' => ['X-BBF-Token' => 'bad']])['code'] === 403, 'bad header wins over good query');
     }
     // Review 2.1.4: ?token= never signs a browser in (login CSRF through a link) and never sets a session cookie.
-    $q = core_http('viewer.php?token=fixture-secret-reader-76543210&form=alpha');
+    $q = core_http('viewer.php?token=bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f&form=alpha');
     core_check($q['code'] === 403 && str_contains($q['body'], 'Tokens in the address are not accepted') && !preg_match('/Location:/i', $q['headers']),
         'HTML ?token= shows the sign-in form with a notice instead of signing in');
-    core_check(!str_contains($q['body'] . $q['headers'], 'fixture-secret'), 'ignored query token is never echoed');
+    core_check(!str_contains($q['body'] . $q['headers'], 'bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f'), 'ignored query token is never echoed');
     $sandboxQuery = core_http('editor.php?token=' . $baseConfig['api_token']);
     core_check($sandboxQuery['code'] === 403 && !str_contains($sandboxQuery['body'], 'const TOKEN'), 'editor ?token= with the admin token does not sign in');
     // A cross-site request (an <img> on another site) cannot use ?token= at all, so it cannot spend the address's wrong-token budget.
@@ -98,9 +98,9 @@ try {
     core_check(str_contains($cross['body'], 'opened from another site') && !str_contains($cross['body'], 'cross-guess'),
         'review 2.1.6: the cross-site CSV link explains why it is refused, without echoing the token');
     core_check(core_http('submissions.php?form=alpha')['body'] === '{"error":"Access denied."}', 'a request without ?token= keeps the plain message');
-    core_check(core_http('submissions.php?form=alpha&token=fixture-secret-reader-76543210', ['headers' => ['Sec-Fetch-Site' => 'cross-site']])['code'] === 403,
+    core_check(core_http('submissions.php?form=alpha&token=bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f', ['headers' => ['Sec-Fetch-Site' => 'cross-site']])['code'] === 403,
         'even a right token is ignored on a cross-site request');
-    core_check(core_http('submissions.php?form=alpha&token=fixture-secret-reader-76543210', ['headers' => ['Sec-Fetch-Site' => 'none']])['code'] === 200,
+    core_check(core_http('submissions.php?form=alpha&token=bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f', ['headers' => ['Sec-Fetch-Site' => 'none']])['code'] === 200,
         'a typed URL / bookmark (Sec-Fetch-Site: none) still works');
     core_check(core_http('viewer.php', core_header('admin'))['code'] === 200, 'cross-site attempts did not block the address');
     core_config($baseConfig);
@@ -110,7 +110,7 @@ try {
         core_check($page['code'] === 200 && str_contains($page['body'], 'const LANG = ' . json_encode($expected) . ';')
             && !str_contains($page['body'], '<script>alert(1)'), 'viewer ?lang accepts only a language code: ' . json_encode($lang));
     }
-    core_check(!str_contains($reader['response']['body'], 'beta-private') && !str_contains($reader['response']['body'], 'fixture-secret'), 'sidebar/bootstrap exclude cross-form metadata and token');
+    core_check(!str_contains($reader['response']['body'], 'beta-private') && !str_contains($reader['response']['body'], 'bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f'), 'sidebar/bootstrap exclude cross-form metadata and token');
     core_check(str_contains(strtolower($reader['response']['headers']), 'httponly') && str_contains(strtolower($reader['response']['headers']), 'samesite=strict') && str_contains($reader['response']['headers'], 'no-store') && str_contains($reader['response']['headers'], 'no-referrer'), 'session/privacy headers');
     foreach (['list_forms', 'dashboard'] as $action) {
         $r = core_http("viewer.php?action=$action", ['cookie' => $reader['cookie']]);
@@ -182,7 +182,7 @@ try {
         core_check($loaded['code'] === 200 && $loaded['json']['submission']['data']['answer'] === 'alpha-private-body', "print record loaded before $change");
         $config = $baseConfig;
         switch ($change) {
-            case 'rotate': $config['access_tokens'][1]['token'] = 'rotated-exporter'; break;
+            case 'rotate': $config['access_tokens'][1]['token'] = '7f0253d4866e1feb0718fdb2db5fce55123fbb1cc0981d6806fd2eee18f54cd2'; break;
             case 'remove': array_splice($config['access_tokens'], 1, 1); break;
             case 'expire': $config['access_tokens'][1]['expires_at'] = '2000-01-01T00:00:00Z'; break;
             case 'revoke': $config['access_tokens'][1]['revoked'] = true; break;
@@ -214,7 +214,7 @@ try {
     foreach (['rotate', 'remove', 'expire', 'revoke', 'scope', 'permissions'] as $change) {
         core_config($baseConfig); $s = core_login('reader'); $config = $baseConfig;
         switch ($change) {
-            case 'rotate': $config['access_tokens'][0]['token'] = 'rotated-credential'; break;
+            case 'rotate': $config['access_tokens'][0]['token'] = '5ce432c3d3ebe44ab80437901fadf869de1f14ee8cf691b52fbdf83425780dd2'; break;
             case 'remove': array_shift($config['access_tokens']); break;
             case 'expire': $config['access_tokens'][0]['expires_at'] = '2000-01-01T00:00:00Z'; break;
             case 'revoke': $config['access_tokens'][0]['revoked'] = true; break;
@@ -228,7 +228,7 @@ try {
         core_config($baseConfig); $s = core_login('reader'); $config = $baseConfig; $config[$setting] = 1; core_config($config); sleep(2);
         core_check(core_http('viewer.php', ['cookie' => $s['cookie']])['code'] === 403, "$setting enforced");
     }
-    foreach (['', 'rotated-admin-credential'] as $newToken) {
+    foreach (['', 'c450a62a708923e103a244016c3da0943cb4903929b15be75fadaacc6df6b5d8'] as $newToken) {
         core_config($baseConfig); $s = core_login('admin'); $config = $baseConfig; $config['api_token'] = $newToken; core_config($config);
         core_check(core_http('editor.php', ['cookie' => $s['cookie']])['code'] === 403, 'legacy session invalidated after removal/rotation');
     }
@@ -286,20 +286,20 @@ try {
     core_check(core_http('submissions.php?form=alpha', $guessHeader('guess-99'))['code'] === 429, 'a success does not reset the wrong-token limit');
     // Review 2.1.6: an expired or revoked token is answered like a wrong one while blocked (it once was valid).
     $staleConfig = $baseConfig;
-    $staleConfig['access_tokens'][] = ['id' => 'expired', 'token' => 'fixture-8Hq3Lz6Wn1Vx', 'forms' => ['alpha'], 'permissions' => ['read'],
+    $staleConfig['access_tokens'][] = ['id' => 'expired', 'token' => 'fa267f6a634226df5cecac4f9b55fc5d47ae2fae28da8a573ad76ab949bb33f2', 'forms' => ['alpha'], 'permissions' => ['read'],
         'expires_at' => '2001-01-01T00:00:00Z', 'revoked' => false];
-    $staleConfig['access_tokens'][] = ['id' => 'revoked', 'token' => 'fixture-2Pk7Tm4Yc9Rb', 'forms' => ['alpha'], 'permissions' => ['read'],
+    $staleConfig['access_tokens'][] = ['id' => 'revoked', 'token' => '9806d4b292ce8435a27e53f1957d5d5ec84113aba751cb41dbd2fa05f7781b6c', 'forms' => ['alpha'], 'permissions' => ['read'],
         'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => true];
     file_put_contents("$root/config.php", '<?php defined("BBF_LOADED") || exit; return ' . var_export($staleConfig, true) . ';'); // keeps the block
     clearstatcache();
-    core_check(core_http('submissions.php?form=alpha', $guessHeader('fixture-8Hq3Lz6Wn1Vx'))['code'] === 429
-        && core_http('submissions.php?form=alpha', $guessHeader('fixture-2Pk7Tm4Yc9Rb'))['code'] === 429,
+    core_check(core_http('submissions.php?form=alpha', $guessHeader('fa267f6a634226df5cecac4f9b55fc5d47ae2fae28da8a573ad76ab949bb33f2'))['code'] === 429
+        && core_http('submissions.php?form=alpha', $guessHeader('9806d4b292ce8435a27e53f1957d5d5ec84113aba751cb41dbd2fa05f7781b6c'))['code'] === 429,
         'review 2.1.6: an expired or revoked token gets 429 like any wrong token while blocked, not a 403 that reveals it');
     $weakConfig = $baseConfig; $weakConfig['api_token'] = 'abcdefghijklmnopqrstuvwxyz';
     core_config($weakConfig);
-    core_check(core_http('viewer.php', $guessHeader('abcdefghijklmnopqrstuvwxyz'))['code'] !== 200, 'a patterned api_token ("abcd…") is never accepted');
+    core_check(core_http('viewer.php', $guessHeader('abcdefghijklmnopqrstuvwxyz'))['code'] !== 200, 'a non-hex api_token is never accepted');
     core_config(['api_token' => 'short'] + $baseConfig);
-    core_check(core_http('viewer.php', $guessHeader('short'))['code'] === 403, 'api_token shorter than 16 characters is never accepted');
+    core_check(core_http('viewer.php', $guessHeader('short'))['code'] === 403, 'api_token shorter than 32 characters is never accepted');
     core_check(core_http('viewer.php', core_header('reader'))['code'] === 200, 'a short api_token does not disable the access_tokens');
     // N4: one too-short access token is ignored on its own; it does not take api_token and the others down.
     $shortConfig = $baseConfig;
@@ -309,6 +309,47 @@ try {
     core_check(core_http('viewer.php', core_header('admin'))['code'] === 200, 'a short access_tokens entry does not lock out api_token');
     core_check(core_http('viewer.php', core_header('reader'))['code'] === 200, 'a short access_tokens entry does not lock out the other tokens');
     core_check(core_http('viewer.php', ['headers' => ['X-BBF-Token' => 'fourteen-chars']])['code'] === 403, 'the short token itself is never accepted');
+    foreach ([16, 32] as $bytes) {
+        $generatedAdmin = strtoupper(bin2hex(random_bytes($bytes)));
+        core_config(['api_token' => $generatedAdmin] + $baseConfig);
+        core_check(core_http('viewer.php', $guessHeader($generatedAdmin))['code'] === 200,
+            'random uppercase ' . ($bytes * 2) . '-character hex admin authenticates');
+    }
+    core_config(['api_token' => 'YOUR_TOKEN_HERE_123'] + $baseConfig);
+    $login = core_http('viewer.php');
+    core_check($login['code'] === 403 && str_contains($login['body'], 'api_token must contain only hexadecimal'),
+        'rejected admin format is explained even when scoped credentials remain usable');
+    // Review 2.1.8: sign-in explains rejected formats and malformed registries without exposing secrets.
+    foreach (['1qaz2wsx3edc4rfv', 'manchesterunited', 'correct-horse-battery-staple', 'YOUR_TOKEN_HERE_123',
+        'pass1word2secret3', 'Bratislava-Petržalka'] as $password) {
+        core_config(['api_token' => $password, 'access_tokens' => []] + $baseConfig);
+        $login = core_http('viewer.php');
+        core_check($login['code'] === 403 && str_contains($login['body'], 'only hexadecimal')
+            && str_contains($login['body'], '32') && str_contains($login['body'], 'maintenance.php new-token')
+            && !str_contains($login['body'], $password), 'sign-in explains invalid format without revealing the human password');
+    }
+    core_config(['access_tokens' => [['id' => 'broken']]] + $baseConfig);
+    $login = core_http('viewer.php');
+    core_check($login['code'] === 403 && str_contains($login['body'], 'malformed or duplicate record')
+        && str_contains($login['body'], 'ALL tokens'), 'sign-in explains a registry that disables otherwise valid tokens');
+    core_config(['api_token' => '', 'access_tokens' => [$staleConfig['access_tokens'][7], $staleConfig['access_tokens'][8]]] + $baseConfig);
+    $login = core_http('viewer.php');
+    core_check($login['code'] === 403 && str_contains($login['body'], 'expired or revoked'), 'sign-in explains when no active credential remains');
+    core_config(['api_token' => 'nonhex-human-password', 'cookie_path' => 'relative/path'] + $baseConfig);
+    $diagnostics = core_http('check.php', core_header('admin'));
+    // The rejected admin cannot authorize diagnostics, even though its string is nonempty.
+    core_check($diagnostics['code'] === 403, 'nonempty invalid api_token does not authorize diagnostics');
+    $proxyConfig = ['cookie_path' => 'relative/path', 'trusted_proxies' => ['192.0.2.0/24']] + $baseConfig;
+    core_config($proxyConfig);
+    $plain = core_http('check.php', core_header('admin'));
+    $spoofed = core_http('check.php', ['headers' => ['X-BBF-Token' => $baseConfig['api_token'],
+        'X-Forwarded-For' => '198.51.100.44', 'CF-Connecting-IP' => '198.51.100.45']]);
+    core_check($plain['code'] === 200 && $spoofed['code'] === 200
+        && str_contains($spoofed['body'], 'cookie_path must be an absolute URL path')
+        && str_contains($plain['body'], 'Forwarding headers are ignored')
+        && str_contains($spoofed['body'], 'Forwarding headers are ignored')
+        && !str_contains($spoofed['body'], '198.51.100.44') && !str_contains($spoofed['body'], '198.51.100.45'),
+        'diagnostics report invalid cookie_path and never infer a proxy from untrusted forwarding headers');
     core_config($baseConfig);
     // Install a request-local deterministic delivery effect through the copied
     // bbf_functions.php test hook. Native outbound functions remain disabled.
@@ -332,7 +373,7 @@ PHP
     file_put_contents("$root/config.php", '<?php defined("BBF_LOADED") || exit; require __DIR__ . "/tests/retry-delivery-fixture.php"; return ' . var_export($baseConfig, true) . ';');
     $all = core_login('all');
     $deliveryDir = "$root/submissions/.delivery/alpha";
-    mkdir($deliveryDir, 0700, true);
+    if (!is_dir($deliveryDir)) mkdir($deliveryDir, 0700, true);
     $deliveryPath = "$deliveryDir/bbf_one.json";
     $successPayload = ['fixture_mode' => 'success', 'secret' => 'private-effect-success'];
     $failurePayload = ['fixture_mode' => 'failure', 'secret' => 'private-effect-failure'];
@@ -490,12 +531,12 @@ PHP
         'retry endpoint itself expires and safely retries stale idempotent lease without indefinite processing');
     $audit = file_get_contents("$root/logs/access-audit.php");
     $rows = array_map(fn($line) => json_decode($line, true, 512, JSON_THROW_ON_ERROR), array_slice(explode("\n", trim($audit)), 1));
-    core_check(!str_contains($audit, 'fixture-secret') && !str_contains($audit, 'fixture-admin') && !str_contains($audit, '@') && !str_contains($audit, '-private-body') && !str_contains($audit, 'token='), 'audit excludes credentials, email, bodies and URLs');
+    core_check(!str_contains($audit, 'bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f') && !str_contains($audit, 'c9ffddaa918a1b920038790fc128858957809e3c80165b8a8cbbe77c556883f2') && !str_contains($audit, '@') && !str_contains($audit, '-private-body') && !str_contains($audit, 'token='), 'audit excludes credentials, email, bodies and URLs');
     core_check(count(array_filter($rows, fn($r) => $r['action'] === 'viewer_bulk_delete' && $r['result'] === 'completed' && $r['result_count'] === 2)) === 1, 'audit counts actual bulk deletion');
     core_check(count(array_filter($rows, fn($r) => $r['decision'] === 'denied' && $r['result'] === 'attempted')) > 5, 'audit records denied attempts');
     core_check(count(array_filter($rows, fn($r) => $r['action'] === 'viewer_forward' && $r['decision'] === 'allowed' && $r['result'] === 'failed')) === 1, 'audit distinguishes authorized failed forward');
     core_check(core_http('logs/access-audit.php')['code'] === 404, 'audit direct HTTP protected');
-    foreach (glob("$root/sessions/*") as $file) core_check(!str_contains(file_get_contents($file), 'fixture-secret') && !str_contains(file_get_contents($file), 'fixture-admin'), 'session files contain no raw credentials');
+    foreach (glob("$root/sessions/*") as $file) core_check(!str_contains(file_get_contents($file), 'bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f') && !str_contains(file_get_contents($file), 'c9ffddaa918a1b920038790fc128858957809e3c80165b8a8cbbe77c556883f2'), 'session files contain no raw credentials');
     rename("$root/logs/access-audit.php", "$root/logs/saved-audit.php"); mkdir("$root/logs/access-audit.php");
     foreach (['export', 'print', 'delete', 'bulk_delete', 'forward'] as $action) {
         $r = in_array($action, ['export', 'print'], true) ? core_http("viewer.php?action=$action&form=alpha&id=bbf_one", ['cookie' => $all['cookie']])
@@ -517,7 +558,7 @@ PHP
     core_check(in_array('CaseProbe.json', scandir("$root/forms"), true), 'case capability probe preserves actual directory spelling');
     unlink("$root/forms/CaseProbe.json");
     print 'Filesystem case-insensitive lookup: ' . ($caseInsensitive ? 'yes (Windows alias regression exercised)' : 'no (case-collision fixtures enabled)') . "\n";
-    $baseConfig['access_tokens'][] = ['id' => 'mixed', 'token' => 'fixture-secret-mixed-76543210',
+    $baseConfig['access_tokens'][] = ['id' => 'mixed', 'token' => 'b5a921301329fb1ef83d1585f72ccd7e38f04256a56c5d0cffdaed857d714e64',
         'forms' => ['ALPHA', 'UpperID', 'OrphanUP', 'ORPHAN', 'SplitID', 'CsvUP', 'CSVLOW', 'DbUP', 'dbup'],
         'permissions' => ['read', 'export', 'delete'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false];
     core_config($baseConfig);
@@ -602,7 +643,7 @@ PHP
     $pdo = null; core_config($baseConfig);
     // Unknown action credentials must never be persisted, even for anonymous denials.
     foreach (['viewer.php', 'editor.php'] as $page) foreach (['admin', 'reader', 'anonymous'] as $who) {
-        $secret = $who === 'admin' ? $baseConfig['api_token'] : 'fixture-secret-reader-76543210';
+        $secret = $who === 'admin' ? $baseConfig['api_token'] : 'bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f';
         foreach ([$secret, 'prefix-' . $secret . '-suffix'] as $action) {
             $r = core_http($page . '?action=' . rawurlencode($action), $who === 'anonymous' ? [] : core_header($who));
             $expected = $who === 'anonymous' || ($page === 'editor.php' && $who === 'reader') ? 403 : 400;
@@ -616,10 +657,10 @@ PHP
         core_check(count(array_filter($rows, fn($r) => $r['action'] === $event && $r['principal_id'] === 'anonymous' && $r['decision'] === 'denied')) === 4, "$event anonymous denied audit");
     }
     define('BBF_LOADED', true); require_once dirname(__DIR__) . '/bbf_auth.php';
-    bbf_audit_write($baseConfig, null, 'prefix-fixture-secret-reader-76543210-suffix', '', [], 'denied', 'failed', 0);
+    bbf_audit_write($baseConfig, null, 'prefix-bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f-suffix', '', [], 'denied', 'failed', 0);
     $audit = file_get_contents("$root/logs/access-audit.php");
     core_check(str_contains($audit, 'prefix-[redacted]-suffix'), 'shared audit action redaction defense in depth');
-    core_check(!str_contains($audit, 'fixture-secret') && !str_contains($audit, 'fixture-admin'), 'all unknown action paths exclude raw credentials from audit');
+    core_check(!str_contains($audit, 'bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f') && !str_contains($audit, 'c9ffddaa918a1b920038790fc128858957809e3c80165b8a8cbbe77c556883f2'), 'all unknown action paths exclude raw credentials from audit');
     print 'Core regression additions: ' . ($checks - $baselineChecks) . " passed. Total: $checks. MySQL runtime not exercised; shared MySQL predicate uses binary casts.\n";
     // Fixture-only replacement of disabled native mail(), NOT sendEmail/rendering/auth/audit.
     // The real viewer and bbf_functions.php run unchanged over helper-owned loopback HTTP.
@@ -734,7 +775,7 @@ PHP
     }
     core_check($forwardHashes === [hash_file('sha256', "$root/submissions/alpha/bbf_forward.json"), hash_file('sha256', "$root/forms/alpha.json")], 'forward success/failures leave stored response and definition unchanged');
     $audit = file_get_contents("$root/logs/access-audit.php");
-    core_check(!str_contains($audit, '@') && !str_contains($audit, 'fixture-secret') && !str_contains($audit, 'fixture-admin')
+    core_check(!str_contains($audit, '@') && !str_contains($audit, 'bcfda526e91745357e617477c8093a33df1ac961edd675af1ce07ce3ab4ef84f') && !str_contains($audit, 'c9ffddaa918a1b920038790fc128858957809e3c80165b8a8cbbe77c556883f2')
         && !str_contains($audit, 'Private forward') && !str_contains($audit, 'onerror') && !str_contains($audit, 'literal'), 'forward audit excludes recipients, notes, rendered data and credentials');
     core_check($forwardFailures === [], 'forward HTTP/audit delivery controls: ' . implode('; ', $forwardFailures));
     print "Core access including fixture-only forward: $checks passed. No real mail or external network.\n";

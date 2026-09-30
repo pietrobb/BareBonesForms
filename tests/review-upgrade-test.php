@@ -109,6 +109,7 @@ try {
     file_put_contents("$tmp/new/maintenance.php", "\n// 2.2.0\n", FILE_APPEND);
     file_put_contents("$tmp/new/templates/notify.html", "\n<!-- 2.2.0 -->\n", FILE_APPEND);
     file_put_contents("$tmp/new/templates/confirm.html", "\n<!-- 2.2.0 -->\n", FILE_APPEND);
+    file_put_contents("$tmp/new/docs.html", "\n<!-- updated documentation -->\n", FILE_APPEND);
     file_put_contents("$tmp/new/newfile.php", "<?php\n// added in 2.2.0\n");
     unlink("$tmp/new/demo10.html");
     file_put_contents("$tmp/new/config.example.php", preg_replace('/^return \[\r?\n/m', "return [\n    'brand_new_setting' => true,\n", file_get_contents("$tmp/new/config.example.php"), 1));
@@ -119,7 +120,7 @@ try {
     $dry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/site");
     $plan = $dry['json'] ?? [];
     check_upgrade($dry['code'] === 0 && ($plan['ok'] ?? false) && $plan['from'] === '2.1.0' && $plan['to'] === '2.2.0', 'dry run plans 2.1.0 -> 2.2.0');
-    check_upgrade(($plan['files']['add'] ?? 0) === 1 && ($plan['files']['replace'] ?? 0) === 5, 'adds the new file; replaces bbf.js, maintenance.php, config example, CHANGELOG, untouched notify.html and nothing else');
+    check_upgrade(($plan['files']['add'] ?? 0) === 1 && ($plan['files']['replace'] ?? 0) === 6, 'adds the new file; replaces bbf.js, maintenance.php, config example, CHANGELOG, docs.html, untouched notify.html and nothing else');
     check_upgrade(($plan['added'] ?? []) === ['newfile.php'] && in_array('bbf.js', $plan['replaced'] ?? [], true), 'dry run names the files it adds and replaces');
     check_upgrade(($plan['files']['remove'] ?? []) === ['demo10.html'], 'an unchanged file dropped from the release is removed');
     check_upgrade(($plan['files']['keep_yours'] ?? []) === ['templates/confirm.html'], 'your edited template is kept');
@@ -251,7 +252,7 @@ try {
 
     upgrade_copy("$tmp/new", "$tmp/codeonly");
     foreach ((json_decode(file_get_contents("$tmp/codeonly/.bbf-manifest.json"), true)['files']) as $path => $file) {
-        if ($file['kind'] !== 'code') unlink("$tmp/codeonly/$path");
+        if ($file['kind'] !== 'code' && !in_array($path, ['docs.html', 'check.php', 'CHANGELOG.md'], true)) unlink("$tmp/codeonly/$path");
     }
     $codeOnly = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly"], "$tmp/site");
     check_upgrade(($codeOnly['json']['ok'] ?? false) && !isset($codeOnly['json']['files']['keep_yours']) && ($codeOnly['json']['files']['remove'] ?? []) === ['demo10.html'],
@@ -264,6 +265,8 @@ try {
     check_upgrade($coApply['code'] === 0 && ($coManifest['version'] ?? '') === '2.2.0'
         && ($coManifest['files']['templates/notify.html']['sha256'] ?? '') === hash_file('sha256', "$tmp/cosite/templates/notify.html"),
         'a code-only upgrade keeps the checksum of templates it did not install');
+    check_upgrade(hash_file('sha256', "$tmp/cosite/docs.html") === hash_file('sha256', "$tmp/new/docs.html"),
+        'an upgrade ZIP refreshes existing documentation without restoring missing docs');
     $coNext = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/cosite")['json'] ?? [];
     check_upgrade(in_array('templates/notify.html', $coNext['replaced'] ?? [], true) && ($coNext['files']['keep_yours'] ?? []) === ['templates/confirm.html'],
         'the next full package still updates the untouched template and keeps yours');
@@ -373,8 +376,25 @@ try {
     unlink("$tmp/hta/.htaccess.dist");
     file_put_contents("$tmp/hta/.htaccess", file_get_contents("$repo/.htaccess"));
     check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [], 'the shipped .htaccess has every essential rule');
+    file_put_contents("$tmp/hta/.htaccess", str_replace('<FilesMatch "\\.md$">' . "\n    Require all denied", '<FilesMatch "\\.md$">' . "\n    Require all granted", str_replace("\r\n", "\n", file_get_contents("$repo/.htaccess"))));
+    $grantedMd = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? [];
+    check_upgrade(str_contains(implode(' ', $grantedMd), '\\.md$') && str_contains(implode(' ', $grantedMd), 'Require all denied'), 'Require all granted inside the md block fails even with denied directives in other blocks');
     unlink("$tmp/hta/.htaccess");
     check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [], 'without .htaccess (Nginx) nothing is reported here');
+
+    // Stock dist from every known legacy tag is refreshed even when .htaccess already matches the target release.
+    upgrade_copy("$tmp/site", "$tmp/legacydist");
+    $distTags = preg_split('/\\R/', trim((string)shell_exec('git -C ' . escapeshellarg($repo) . ' tag --list "v2.*"'))) ?: [];
+    foreach ($distTags as $tag) {
+        $legacyHta = upgrade_run(['git', '-C', $repo, 'show', "$tag:.htaccess"], $repo);
+        if ($legacyHta['code'] !== 0 || $legacyHta['out'] === file_get_contents("$tmp/new/.htaccess")) continue;
+        file_put_contents("$tmp/legacydist/.htaccess.dist", $legacyHta['out']);
+        $legacyDistPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/legacydist")['json'] ?? [];
+        check_upgrade(in_array('.htaccess.dist', $legacyDistPlan['replaced'] ?? [], true), "$tag stock .htaccess.dist is refreshed with unchanged current .htaccess");
+    }
+    file_put_contents("$tmp/legacydist/.htaccess.dist", "# My custom dist\nOptions +Indexes\n");
+    $customDistPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/legacydist")['json'] ?? [];
+    check_upgrade(!in_array('.htaccess.dist', $customDistPlan['replaced'] ?? [], true) && str_contains(implode(' ', $customDistPlan['notices'] ?? []), 'unrecognized'), 'locally edited dist is preserved with an actionable notice');
 
     // ─── maintenance.php runs the upgrader of the package, not the installed one ─
     upgrade_copy("$tmp/new", "$tmp/deleg");
@@ -460,6 +480,46 @@ try {
             'an open handle does not block the atomic rename outside Windows');
     }
 
+    // Review 2.1.8: exit status remains authoritative even after a valid result and >20 notices.
+    upgrade_copy("$tmp/deleg", "$tmp/crashpkg");
+    file_put_contents("$tmp/crashpkg/bbf_upgrade.php", "\n" . 'register_shutdown_function(static function () { for ($i = 0; $i < 30; $i++) fwrite(STDERR, "shutdown notice $i\n"); exit(7); });' . "\n", FILE_APPEND);
+    upgrade_remanifest("$tmp/crashpkg", '2.2.0');
+    $crash = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/crashpkg"], "$tmp/site");
+    check_upgrade($crash['code'] === 1 && ($crash['json']['ok'] ?? true) === false && ($crash['json']['upgrader_exit_code'] ?? null) === 7
+        && count($crash['json']['php_messages'] ?? []) === 20 && str_contains(implode(' ', $crash['json']['php_messages'] ?? []), 'exit code 7'),
+        'a shutdown crash after valid JSON survives the 20-message cap and gives a nonzero CLI exit');
+
+    // Strict form-definition errors are visible even when the generated-data smoke test misses them.
+    upgrade_copy("$tmp/site", "$tmp/badcondition");
+    file_put_contents("$tmp/badcondition/forms/badcondition.json", json_encode(['id' => 'badcondition', 'fields' => [
+        ['name' => 'choice', 'type' => 'text', 'show_if' => ['all' => ['field' => 'other', 'value' => 'yes']]],
+    ]]));
+    $definitionPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/badcondition")['json'] ?? [];
+    check_upgrade(str_contains(implode(' ', $definitionPlan['notices'] ?? []), 'badcondition.json')
+        && str_contains(implode(' ', $definitionPlan['notices'] ?? []), 'show_if.all')
+        && str_contains(implode(' ', $definitionPlan['notices'] ?? []), 'Fix this definition'), 'upgrade names malformed show_if objects and gives a repair action');
+
+    // The package auth policy invalidates the last admin; installation stays updated but access is explicitly blocked.
+    upgrade_copy("$tmp/site", "$tmp/blockedsite");
+    file_put_contents("$tmp/blockedsite/config.php", str_replace("'api_token' => '',", "'api_token' => 'a9c4e72b608df315e7a2b8c1',", file_get_contents("$tmp/blockedsite/config.php")));
+    upgrade_copy("$tmp/new", "$tmp/blockedpkg");
+    file_put_contents("$tmp/blockedpkg/bbf_auth.php", str_replace('function bbf_auth_registry(array $config): array {',
+        'function bbf_auth_registry(array $config): array { if (strlen($config["api_token"] ?? "") < 32) return [];', file_get_contents("$tmp/blockedpkg/bbf_auth.php")));
+    upgrade_remanifest("$tmp/blockedpkg", '2.2.0');
+    $blockedPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg"], "$tmp/blockedsite")['json'] ?? [];
+    $blockedApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg", '--apply', '--confirm=' . ($blockedPlan['confirm'] ?? '')], "$tmp/blockedsite");
+    check_upgrade($blockedApply['code'] === 1 && ($blockedApply['json']['ok'] ?? true) === false && ($blockedApply['json']['code_updated'] ?? false)
+        && ($blockedApply['json']['access_blocked'] ?? false) && str_contains($blockedApply['json']['error'] ?? '', '32 hexadecimal')
+        && (json_decode(file_get_contents("$tmp/blockedsite/.bbf-manifest.json"), true)['version'] ?? '') === '2.2.0',
+        'invalidated last admin returns code_updated/access_blocked, ok:false and nonzero exit without reverting code');
+
+    $workflow = file_get_contents("$repo/.github/workflows/release.yml");
+    check_upgrade(str_contains($workflow, '--draft --title') && str_contains($workflow, 'cmp "$RUNNER_TEMP/SHA256SUMS" "$check/SHA256SUMS"')
+        && strpos($workflow, 'gh release create') < strpos($workflow, 'gh release download')
+        && strpos($workflow, 'sha256sum -c SHA256SUMS)', strpos($workflow, 'gh release download')) < strpos($workflow, 'gh release edit')
+        && str_contains($workflow, '--draft=false') && !str_contains($workflow, 'continue-on-error:'),
+        'release creates a draft, downloads/checks uploaded artifacts, and only then publishes; verification failure leaves draft');
+
     // ─── Release history covers every published release (CI gate) ───
     $tagList = trim((string)shell_exec('git -C ' . escapeshellarg($repo) . ' tag --list "v2.*"'));
     if ($tagList !== '') {
@@ -470,7 +530,7 @@ try {
     // ─── Dry run warns when the new code would ignore a token ────────
     upgrade_copy("$tmp/site", "$tmp/tokens");
     file_put_contents("$tmp/tokens/config.php", preg_replace("/'access_tokens' => \[\],/", "'access_tokens' => [['id' => 'short-one', 'token' => 'abc', 'forms' => [], 'permissions' => ['read'], 'revoked' => false, 'expires_at' => '2030-01-01T00:00:00Z']],",
-        str_replace("'api_token' => '',", "'api_token' => 'a-long-enough-admin-token-0123',", file_get_contents("$tmp/tokens/config.php"))));
+        str_replace("'api_token' => '',", "'api_token' => 'a9c4e72b608df315e7a2b8c19df0365e',", file_get_contents("$tmp/tokens/config.php"))));
     $tokenPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/tokens")['json'] ?? [];
     check_upgrade(str_contains(implode(' ', $tokenPlan['access_warnings'] ?? []), 'short-one') && !str_contains(json_encode($tokenPlan), "'abc'"),
         'the dry run names a token the new version will ignore');

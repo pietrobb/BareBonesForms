@@ -20,7 +20,7 @@ return [
 
     // ─── Minimum setup: set these two first ─────────────────────
     // Admin token for check.php, viewer.php, editor.php and submissions.php — required even on localhost.
-    // Generate: php -r "echo bin2hex(random_bytes(32));"   Scripts send it in the X-BBF-Token header.
+    // Generate: php maintenance.php new-token   Scripts send it in the X-BBF-Token header.
     'api_token' => '',
 
     // Fixed operator-owned installation URL for check.php probes and live smoke POSTs.
@@ -154,10 +154,10 @@ return [
     // ─── API & management access ────────────────────────────────
     // (api_token is at the top of this file.)
     // Optional per-form tokens with limited permissions (read, export, delete, review). Example:
-    // ['id'=>'reader-1', 'token'=>'RANDOM_SECRET', 'forms'=>['contact'], 'permissions'=>['read'], 'expires_at'=>'2027-01-01T00:00:00Z', 'revoked'=>false]
+    // ['id'=>'reader-1', 'token'=>'' /* paste generated hex token */, 'forms'=>['contact'], 'permissions'=>['read'], 'expires_at'=>'2027-01-01T00:00:00Z', 'revoked'=>false]
     // read+export for CSV/forward, read+delete for deletion, read+review for inbox metadata; empty lists grant nothing.
-    // Every token needs at least 16 random characters; a shorter one or one that is easy to guess (sample values
-    // such as "your-secret-token", words, "qwerty", "1234…", repetition) is ignored on its own (check.php names it).
+    // Every access token must have at least 32 hexadecimal characters; generate with maintenance.php new-token.
+    // Format does not prove randomness: never invent tokens. Invalid formats are ignored (check.php names them).
     // A malformed or duplicate record disables ALL access, including api_token. The editor accepts only api_token.
     'access_tokens' => [],
 
@@ -173,7 +173,7 @@ return [
     // Dry: GET smoketest.php; live (real storage/emails): POST smoketest.php?live=1.
     // Admin/scoped cookies and X-BBF-Token cannot authorize smoke. Config refreshed per request.
     // Empty disables HTTP smoke; generate: php -r "echo bin2hex(random_bytes(32));"
-    // Tokens must be 1–512 printable ASCII characters, without whitespace/control bytes.
+    // Tokens must be generated hex strings of at least 32 characters (maintenance.php new-token).
     // CLI is trusted local access: php smoketest.php [form_id] [--live]; live needs a valid token.
     // Access is audited in logs_dir/access-audit.php; audit failure blocks work before outgoing requests.
     // Live email fields/confirmations use smoke_email; admin notices use smoke_notify (or smoke_email).

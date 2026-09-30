@@ -57,4 +57,7 @@ return [
     'submitAgain'           => '您的提交未能完成。请重新提交——不会重复。',
     'submitProcessing'      => '您的提交仍在处理中。请勿重新填写表单——几分钟后再次点击提交即可，不会产生重复记录。',
     'submitUnconfirmed'     => '无法确认您的提交。已通知组织者。',
+    'paymentFailed'         => '无法启动付款。请稍后再试。',
+    'draftDisabled'         => '此表单已禁用进度保存。',
+    'uploadDisabled'        => '此表单已禁用文件上传。',
 ];

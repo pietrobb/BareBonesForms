@@ -44,50 +44,77 @@ auth_check(auth_ip($mixed, '192.0.2.10', '198.51.100.7') === '198.51.100.7' && a
 // ─── Configuration problems ────────────────────────────────────────
 $token = static fn(string $id, string $secret): array => ['id' => $id, 'token' => $secret, 'forms' => ['a'], 'permissions' => ['read'],
     'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false];
-$good = ['api_token' => '9f2c7a41e0b83d56c4a1f7e2', 'access_tokens' => [$token('reader', 'rd-5Kq8zW2mXv7Lp3')]];
+$good = ['api_token' => '9f2c7a41e0b83d56c4a1f7e29a063bc58', 'access_tokens' => [$token('reader', '14baf8b571660fbb65f247c4077272371fff1ebd9a16c541ebb1f6b583476bfd')]];
 auth_check(bbf_auth_config_problems($good) === [], 'a valid configuration reports nothing');
 
-// ─── Review 2.1.5: guessable patterns are no credential ────────────
-foreach ([str_repeat('a', 32), '1234567890123456', 'abcdefghijklmnopqrstuvwxyz', '9876543210987654', 'abababababababababab', 'abcabcabcabcabcabc', 'aaaabbbbccccdddd'] as $weak)
-    auth_check(bbf_auth_token_weak($weak) && !bbf_auth_token_usable($weak), "weak token rejected: $weak");
-foreach (['9f2c7a41e0b83d56', 'rd-5Kq8zW2mXv7Lp3', 'smoke-token-long-0123', 'Tr0ub4dor&3-horse-battery', 'correct horse battery staple'] as $strong)
-    auth_check(!bbf_auth_token_weak($strong), "random-looking token accepted: $strong");
-// ─── Review 2.1.6: dictionary words, placeholders and keyboard runs are no credential ─
-foreach (['password12345678', 'adminadminadmin1', 'qwertyuiopasdfgh', 'Summer2026!Summer', 'your-secret-token', 'YOUR_SECRET_TOKEN',
-    'my-super-secret-api-token', 'LONG_RANDOM_SECRET', 'change-me-please-now', 'P4ssw0rd!P4ssw0rd', 'Heslo2026Heslo2026',
-    'test-token-0123456789', 'zxcvbnm,./asdfgh', 'Password2026Password'] as $weak)
-    auth_check(bbf_auth_token_weak($weak) && !bbf_auth_token_usable($weak), "dictionary/keyboard token rejected: $weak");
-$rand = static function (int $len, string $set): string { $s = ''; for ($i = 0; $i < $len; $i++) $s .= $set[random_int(0, strlen($set) - 1)]; return $s; };
-$printable = implode('', array_map('chr', range(33, 126)));
-$generators = [
-    '16 hex digits' => static fn(): string => bin2hex(random_bytes(8)),
-    '32 hex digits' => static fn(): string => bin2hex(random_bytes(16)),
-    '16 base64url' => static fn(): string => rtrim(strtr(base64_encode(random_bytes(12)), '+/', '-_'), '='),
-    'UUID' => static fn(): string => vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex(random_bytes(16)), 4)),
-    '16 printable (password manager)' => static fn(): string => $rand(16, $printable),
-];
-foreach ($generators as $kind => $generate) {
-    $falsePositives = 0;
-    for ($i = 0; $i < 20000; $i++) if (bbf_auth_token_weak($generate())) $falsePositives++;
-    auth_check($falsePositives === 0, "random tokens ($kind) are never flagged ($falsePositives of 20000)");
+// ─── Review 2.1.8: deterministic format, not an entropy estimate ───
+foreach (['1qaz2wsx3edc4rfv', 'manchesterunited', 'correct-horse-battery-staple', 'YOUR_TOKEN_HERE_123',
+    'pass1word2secret3', 'Bratislava-Petržalka'] as $password)
+    auth_check(!bbf_auth_token_usable($password), "human review password rejected: $password");
+foreach (['', str_repeat('a', 31), str_repeat('a', 32) . 'g', ' ' . str_repeat('a', 32), str_repeat('a', 32) . "\n",
+    'YOUR_SECRET_TOKEN', 'your-secret-token', null, 1234, []] as $invalid)
+    auth_check(!bbf_auth_token_usable($invalid), 'invalid credential type, length or non-hex characters rejected');
+foreach ([str_repeat('a', 32), str_repeat('0', 64), str_repeat('aB09', 8), str_repeat('F', 33), str_repeat('d', 4096)] as $hex)
+    auth_check(bbf_auth_token_usable($hex), 'valid hex format accepted without claiming randomness');
+foreach ([16, 32] as $bytes) {
+    $allAccepted = true;
+    for ($i = 0; $i < 1000; $i++) {
+        $hex = bin2hex(random_bytes($bytes));
+        $allAccepted = $allAccepted && bbf_auth_token_usable($hex) && bbf_auth_token_usable(strtoupper($hex));
+    }
+    auth_check($allAccepted, 'random ' . ($bytes * 2) . '-character hex tokens accepted in either case');
 }
-$weakAdmin = ['api_token' => '1234567890123456'] + $good;
-$wm = implode(' ', array_column(bbf_auth_config_problems($weakAdmin), 'message'));
-auth_check(str_contains($wm, 'too easy to guess') && !str_contains($wm, '1234567890123456') && count(bbf_auth_registry($weakAdmin)) === 1,
-    'a patterned api_token is reported (without its value) and ignored alone');
+function auth_cli(array $args): array {
+    $process = proc_open([PHP_BINARY, dirname(__DIR__) . '/maintenance.php', ...$args],
+        [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($process)) throw new RuntimeException('Cannot start maintenance command');
+    fclose($pipes[0]); $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]); fclose($pipes[2]);
+    return [proc_close($process), $stdout, $stderr];
+}
+[$code, $generated, $errors] = auth_cli(['new-token']);
+[$code2, $generated2, $errors2] = auth_cli(['new-token']);
+auth_check($code === 0 && $code2 === 0 && $errors === '' && $errors2 === ''
+    && preg_match('/\A[0-9a-f]{64}\r?\n\z/', $generated) === 1 && $generated !== $generated2
+    && bbf_auth_token_usable(trim($generated)), 'official CLI emits only a fresh 64-character hex token and newline');
+[$code, $help] = auth_cli(['help']);
+auth_check($code === 0 && str_contains($help, 'new-token') && str_contains($help, 'bin2hex(random_bytes(32))')
+    && str_contains($help, 'format does not prove randomness'), 'help documents generator, format and its limits');
+foreach (['--apply', '--form=a', '--trust-package'] as $option) {
+    [$code, $stdout] = auth_cli(['new-token', $option]);
+    auth_check($code !== 0 && $stdout === '', 'generator rejects unsupported option ' . $option);
+}
+$invalidAdmin = ['api_token' => str_repeat('g', 32)] + $good;
+$messages = implode(' ', array_column(bbf_auth_config_problems($invalidAdmin), 'message'));
+auth_check(str_contains($messages, 'only hexadecimal') && str_contains($messages, 'new-token')
+    && !str_contains($messages, $invalidAdmin['api_token']) && count(bbf_auth_registry($invalidAdmin)) === 1,
+    'invalid api_token format is precisely reported without its value and ignored alone');
 $sampleAdmin = ['api_token' => 'your-secret-token'] + $good;
-auth_check(count(bbf_auth_registry($sampleAdmin)) === 1 && str_contains(implode(' ', array_column(bbf_auth_config_problems($sampleAdmin), 'message')), 'too easy to guess'),
-    'the old documentation sample your-secret-token is no admin credential and is reported');
-$weakRecord = $good; $weakRecord['access_tokens'][] = $token('seq', 'abcdefghijklmnop');
-auth_check(count(bbf_auth_registry($weakRecord)) === 2 && str_contains(implode(' ', array_column(bbf_auth_config_problems($weakRecord), 'message')), 'seq'),
-    'a patterned access token is skipped and named by id');
-auth_check(bbf_smoke_token(['smoke_token' => 'aaaaaaaaaaaaaaaaaaaa']) === null, 'a patterned smoke_token is not a credential');
+auth_check(count(bbf_auth_registry($sampleAdmin)) === 1, 'old documentation sample is not a credential');
+$invalidRecord = $good; $invalidRecord['access_tokens'][] = $token('nonhex', str_repeat('z', 32));
+auth_check(count(bbf_auth_registry($invalidRecord)) === 2
+    && str_contains(implode(' ', array_column(bbf_auth_config_problems($invalidRecord), 'message')), 'nonhex'),
+    'invalid scoped token format is skipped and identified without disabling valid credentials');
+auth_check(bbf_smoke_token(['smoke_token' => str_repeat('z', 32)]) === null, 'non-hex smoke token is ignored');
+$_SERVER['SCRIPT_NAME'] = '/bbf/viewer.php';
+foreach (['', '/', '/forms', '/forms/', '/forms-v2.1/'] as $path) {
+    auth_check(bbf_cookie_path_valid(['cookie_path' => $path])
+        && bbf_auth_config_problems(['cookie_path' => $path] + $good) === [], 'valid cookie_path accepted: ' . $path);
+}
+auth_check(bbf_cookie_path([]) === '/bbf/' && bbf_cookie_path(['cookie_path' => '/proxy/forms']) === '/proxy/forms/',
+    'default cookie path and explicit proxy path resolve correctly');
+foreach ([null, [], 42, 'relative/', '/bad path/', '/bad;path', '/bad?path', '/bad#path', "/bad\npath"] as $path) {
+    $problems = bbf_auth_config_problems(['cookie_path' => $path] + $good);
+    auth_check(!bbf_cookie_path_valid(['cookie_path' => $path]) && count($problems) === 1
+        && $problems[0]['level'] === 'error' && str_contains($problems[0]['message'], 'cookie_path')
+        && bbf_cookie_path(['cookie_path' => $path]) === '/bbf/', 'invalid cookie_path is reported, not silently ignored');
+}
 $short = $good; $short['access_tokens'][] = $token('tiny', 'fourteen-chars');
 $msgs = implode(' | ', array_column(bbf_auth_config_problems($short), 'message'));
 auth_check(str_contains($msgs, 'tiny') && !str_contains($msgs, 'fourteen-chars'), 'a short access token is named by id, never by value');
 auth_check(count(bbf_auth_registry($short)) === 2, 'the short token is skipped; api_token and the other token stay');
 $shortAdmin = ['api_token' => 'short'] + $good;
-auth_check(str_contains(implode(' ', array_column(bbf_auth_config_problems($shortAdmin), 'message')), 'api_token is shorter')
+auth_check(str_contains(implode(' ', array_column(bbf_auth_config_problems($shortAdmin), 'message')), 'api_token must contain only hexadecimal')
     && count(bbf_auth_registry($shortAdmin)) === 1, 'a short api_token is reported and ignored alone');
 $broken = $good; $broken['access_tokens'][] = ['id' => 'x'];
 $b = bbf_auth_config_problems($broken);
@@ -169,18 +196,18 @@ try {
     auth_check(!file_exists("$audit.1") && str_contains((string)file_get_contents("$logs/access-audit.1.php"), 'legacy'), 'when access-audit.1.php exists the old file is removed, never overwriting it');
 
     // ─── Audit redaction ignores tokens too short to be credentials ───
-    $rc = $ac + ['api_token' => str_repeat('k', 24), 'access_tokens' => [$token('tiny', 'co')], 'smoke_token' => 'nt'];
-    bbf_audit_write($rc, $principal, 'viewer_list', 'contact', ['smoke-token-long-0123-1', 'kkkkkkkkkkkkkkkkkkkkkkkk'], 'allowed', 'completed', 1);
+    $rc = $ac + ['api_token' => str_repeat('b', 32), 'access_tokens' => [$token('tiny', 'co')], 'smoke_token' => 'nt'];
+    bbf_audit_write($rc, $principal, 'viewer_list', 'contact', ['3428410c91a964b91559e45e32b5e3b09e60b8505710cb7bdf53c31948d262b3-1', str_repeat('b', 32)], 'allowed', 'completed', 1);
     $last = json_decode(trim(array_slice(explode("\n", trim((string)file_get_contents($audit))), -1)[0]), true);
     auth_check(($last['form'] ?? '') === 'contact', 'a 2-character access token or smoke_token ("nt") does not mangle "contact" in the audit log');
-    auth_check(($last['submission_ids'] ?? []) === ['smoke-token-long-0123-1', '[redacted]'], 'api_token is still redacted');
-    $rc['smoke_token'] = 'smoke-token-long-0123';
-    bbf_audit_write($rc, $principal, 'viewer_list', 'contact', ['smoke-token-long-0123-1'], 'allowed', 'completed', 1);
+    auth_check(($last['submission_ids'] ?? []) === ['3428410c91a964b91559e45e32b5e3b09e60b8505710cb7bdf53c31948d262b3-1', '[redacted]'], 'api_token is still redacted');
+    $rc['smoke_token'] = '3428410c91a964b91559e45e32b5e3b09e60b8505710cb7bdf53c31948d262b3';
+    bbf_audit_write($rc, $principal, 'viewer_list', 'contact', ['3428410c91a964b91559e45e32b5e3b09e60b8505710cb7bdf53c31948d262b3-1'], 'allowed', 'completed', 1);
     $last = json_decode(trim(array_slice(explode("\n", trim((string)file_get_contents($audit))), -1)[0]), true);
-    auth_check(($last['submission_ids'] ?? []) === ['[redacted]-1'], 'a usable smoke_token (16+ characters) is redacted');
-    auth_check(bbf_smoke_token(['smoke_token' => 'nt']) === null && bbf_smoke_token(['smoke_token' => 'smoke-token-long-0123']) === 'smoke-token-long-0123'
-        && bbf_smoke_token(['smoke_token' => str_repeat('a', 15) . ' ']) === null, 'a smoke_token shorter than 16 printable characters is not a credential');
-    auth_check(str_contains(implode(' ', array_column(bbf_auth_config_problems(['api_token' => str_repeat('k', 24), 'smoke_token' => 'short']), 'message')), 'smoke_token'),
+    auth_check(($last['submission_ids'] ?? []) === ['[redacted]-1'], 'a usable hex smoke_token is redacted');
+    auth_check(bbf_smoke_token(['smoke_token' => 'nt']) === null && bbf_smoke_token(['smoke_token' => '3428410c91a964b91559e45e32b5e3b09e60b8505710cb7bdf53c31948d262b3']) === '3428410c91a964b91559e45e32b5e3b09e60b8505710cb7bdf53c31948d262b3'
+        && bbf_smoke_token(['smoke_token' => str_repeat('a', 15) . ' ']) === null, 'smoke tokens use the same minimum hexadecimal format');
+    auth_check(str_contains(implode(' ', array_column(bbf_auth_config_problems(['api_token' => str_repeat('b', 32), 'smoke_token' => 'short']), 'message')), 'smoke_token'),
         'check.php/selfcheck warn about an unusable smoke_token');
 } finally {
     foreach (["$logs/access-audit.php", "$logs/access-audit.php.1", "$logs/access-audit.1.php"] as $f) @unlink($f);

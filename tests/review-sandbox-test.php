@@ -13,14 +13,14 @@ try {
     bbf_test_copy(dirname(__DIR__) . '/sandbox.php', "$root/sandbox.php");
     bbf_test_copy(__FILE__, "$root/tests/review-sandbox-test.php");
     bbf_test_remove_dir("$root/forms"); mkdir("$root/forms", 0700);
-    $base = ['sandbox' => true, 'api_token' => 'fixture-admin-987654321',
-        'access_tokens' => [['id' => 'scoped', 'token' => 'fixture-scoped-123456789',
+    $base = ['sandbox' => true, 'api_token' => hash('sha256', 'fixture-admin-987654321'),
+        'access_tokens' => [['id' => 'scoped', 'token' => hash('sha256', 'fixture-scoped-123456789'),
             'forms' => ['alpha'], 'permissions' => ['read', 'export', 'delete'],
             'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]],
         'forms_dir' => "$root/forms", 'submissions_dir' => "$root/submissions",
         'templates_dir' => "$root/templates", 'logs_dir' => "$root/logs",
         'storage' => 'file', 'lang' => 'en', 'csrf' => true, 'rate_limit' => 1000,
-        'honeypot_field' => '_bbf_hp', 'smoke_token' => 'fixture-smoke-456789',
+        'honeypot_field' => '_bbf_hp', 'smoke_token' => hash('sha256', 'fixture-smoke-456789'),
         'allowed_origins' => ['https://embed.example.invalid'],
         'mail' => ['method' => 'mail', 'from_email' => 'sender@example.invalid']];
     function sb_config(array $config): void {
@@ -217,7 +217,7 @@ try {
     // Fresh-config changes are tested on the same running process, never by restarting it.
     foreach (['rotate', 'remove'] as $change) {
         sb_config($base); $s = sb_login(); $c = $base;
-        $c['api_token'] = $change === 'rotate' ? 'fixture-rotated-admin' : '';
+        $c['api_token'] = $change === 'rotate' ? hash('sha256', 'fixture-rotated-admin') : '';
         sb_config($c);
         sb_check(sb_http('sandbox.php', ['cookie' => $s['cookie']])['code'] === 403, "$change invalidates page session immediately");
         sb_check(sb_http('submit.php?form=alpha&sandbox=1', sb_post($s))['code'] === 403, "$change invalidates submit session immediately");

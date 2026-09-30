@@ -55,4 +55,7 @@ return [
     'submitAgain'           => 'Nepavyko užbaigti formos siuntimo. Bandykite dar kartą — dublikatas nebus sukurtas.',
     'submitProcessing'      => 'Jūsų forma dar apdorojama. Nepildykite jos iš naujo — po kelių minučių vėl spustelėkite Siųsti; dublikatas nebus sukurtas.',
     'submitUnconfirmed'     => 'Nepavyko patvirtinti formos išsiuntimo. Organizatorius buvo informuotas.',
+    'paymentFailed'         => 'Nepavyko pradėti mokėjimo. Bandykite dar kartą vėliau.',
+    'draftDisabled'         => 'Šios formos pažangos išsaugojimas išjungtas.',
+    'uploadDisabled'        => 'Failų įkėlimas šioje formoje išjungtas.',
 ];

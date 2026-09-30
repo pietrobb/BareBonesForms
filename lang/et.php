@@ -57,4 +57,7 @@ return [
     'submitAgain'           => 'Teie saadetist ei õnnestunud lõpule viia. Saatke uuesti — duplikaati ei teki.',
     'submitProcessing'      => 'Teie saadetist töödeldakse veel. Ärge täitke vormi uuesti — vajutage mõne minuti pärast uuesti Saada; duplikaati ei teki.',
     'submitUnconfirmed'     => 'Me ei saanud teie saadetist kinnitada. Korraldajat on teavitatud.',
+    'paymentFailed'         => 'Makset ei õnnestunud alustada. Palun proovige hiljem uuesti.',
+    'draftDisabled'         => 'Edenemise salvestamine on selle vormi puhul keelatud.',
+    'uploadDisabled'        => 'Failide üleslaadimine on selle vormi puhul keelatud.',
 ];
