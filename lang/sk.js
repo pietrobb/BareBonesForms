@@ -28,6 +28,7 @@ BBF.registerLang('sk', {
     tooLong:           '{label} nesmie mať viac ako {max} znakov.',
     invalidFormat:     '{label} má neplatný formát.',
     emailMismatch:    'Adresy {label} sa nezhodujú.',
+    emailConfirm:     'Potvrďte {label}',
     dateMin:          '{label} musí byť {min} alebo neskôr.',
     dateMax:          '{label} musí byť {max} alebo skôr.',
     nextPage:         'Ďalej',

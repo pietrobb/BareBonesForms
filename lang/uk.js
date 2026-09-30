@@ -23,6 +23,7 @@ BBF.registerLang('uk', {
     tooLong:           '{label} має містити не більше {max} символів.',
     invalidFormat:     '{label} має недійсний формат.',
     emailMismatch:    'Адреси {label} не збігаються.',
+    emailConfirm:     'Підтвердьте {label}',
     dateMin:          '{label} має бути {min} або пізніше.',
     dateMax:          '{label} має бути {max} або раніше.',
     nextPage:         'Далі',

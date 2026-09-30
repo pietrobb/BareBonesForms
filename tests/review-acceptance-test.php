@@ -543,10 +543,10 @@ foreach (['.htaccess' => null, 'Nginx in .htaccess' => $nginxRules($htaccess), '
 }
 $docsHtml = acceptance_source($root, 'docs.html'); $changelog = acceptance_source($root, 'CHANGELOG.md');
 preg_match('/^## \[(\d+\.\d+\.\d+)\]/m', $changelog, $latest);
-acceptance_check(($latest[1] ?? '') !== '' && str_contains($docsHtml, '<title>BareBonesForms v' . $latest[1] . ' ')
-    && str_contains($docsHtml, '<span>v' . $latest[1] . ' Docs</span>')
-    && str_contains($readme, 'barebonesforms-v' . $latest[1] . '.zip') && str_contains($docsHtml, 'barebonesforms-v' . $latest[1] . '.zip'),
-    'docs.html title and the upgrade examples name the newest CHANGELOG version');
+acceptance_check(($latest[1] ?? '') !== '' && str_contains($readme, 'barebonesforms-v' . $latest[1] . '.zip')
+    && !preg_match('/v?\d+\.\d+\.\d+/', (string)preg_replace('/.*<title>(.*?)<\/title>.*<h1>(.*?)<\/h1>.*/s', '$1 $2', $docsHtml))
+    && str_contains($docsHtml, 'barebonesforms-vX.Y.Z.zip') && !str_contains($docsHtml, 'barebonesforms-v' . $latest[1] . '.zip'),
+    'review 2.1.6: the public docs.html names no version in its title, heading or examples (it is not updated by code-only upgrades); README names the newest');
 acceptance_check(!str_contains(acceptance_source($root, 'bbf_uploads.php'), 'BBF 2.2')
     && !str_contains(acceptance_source($root, 'docs/FILE-UPLOAD-DESIGN.md'), 'landed for BareBonesForms 2.2'),
     'file uploads are attributed to 2.1.0, the release that shipped them');
@@ -569,6 +569,8 @@ acceptance_check(count($releaseJobs) === 3 && $writerJobs === 1 && $thirdPartyIn
     && preg_match('/package:.*?permissions:\s*\n\s*contents: read\s*\n\s*steps:.*?setup-php.*?upload-artifact/s', $releaseYml) === 1,
     'release.yml: setup-php runs only in the read-only build job; the write-token job uses only actions/* ('
         . implode(',', $thirdPartyInWriter) . ')');
+acceptance_check(preg_match('/gh release create.*?gh release download "\$GITHUB_REF_NAME".*?cmp "\$RUNNER_TEMP\/SHA256SUMS".*?sha256sum -c SHA256SUMS/s', $releaseYml) === 1,
+    'review 2.1.6: release.yml downloads the published release and checks it against the built SHA256SUMS');
 acceptance_check(str_contains($releaseYml, '$p !== "CHANGELOG.md"'), 'the upgrade ZIP keeps CHANGELOG.md, so the dry run still lists Breaking notes');
 acceptance_check(str_contains($workflow, 'run: php tools/release-history.php --check') && str_contains($workflow, 'fetch-depth: 0'),
     'CI fails while a published release is missing from tools/release-history.json');

@@ -485,6 +485,17 @@ check('malformed show_if never breaks a submission and is reported by the defini
     same(true, evalCondition(['field' => 'kind', 'op' => null, 'value' => 'b'], $input), 'op null means equals');
     same(true, evalCondition(['field' => null, 'value' => 'x'], $input), 'field null means no condition');
     same(true, evalCondition(['field' => 'n', 'value' => 5], ['n' => '5']), 'a numeric value matches the submitted text');
+    // Review 2.1.6: an object or nested list as value is evaluated differently by bbf.js and the server.
+    foreach ([['field' => 'kind', 'value' => ['a' => 'b']], ['field' => 'kind', 'value' => [['b']]], ['any' => [['field' => 'kind', 'value' => ['x' => 1]]]]] as $object) {
+        same(true, str_contains(implode(' ', $errors($object)), '.value: Expected text, a number'));
+    }
+    foreach ([['field' => 'kind', 'value' => 5], ['field' => 'kind', 'value' => true], ['field' => 'kind', 'value' => ['a', 5, false]], ['field' => 'kind', 'value' => []]] as $scalar) {
+        same([], $errors($scalar));
+    }
+    $schema = json_decode((string)file_get_contents(dirname(__DIR__) . '/forms/form.schema.json'), true);
+    $leaf = $schema['$defs']['condition']['oneOf'][0]['properties'];
+    same(true, in_array('number', $leaf['value']['oneOf'][0]['type'], true) && in_array(null, $leaf['op']['enum'], true) && in_array('null', $leaf['op']['type'], true),
+        'form.schema.json allows "value": 5 and "op": null like the server does');
     foreach (glob(dirname(__DIR__) . '/forms/*.json') as $file) {
         $form = json_decode((string)file_get_contents($file), true);
         if (is_array($form) && isset($form['fields'])) same([], array_values(array_filter(validateFormDefinition($form), static fn($e) => str_contains($e, 'show_if'))));

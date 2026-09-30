@@ -6,10 +6,12 @@
  */
 defined('BBF_LOADED') || exit;
 const BBF_AUTH_MIN_TOKEN = 16;
+const BBF_AUTH_MIN_BITS = 44;       // estimated guessing work a token must need (bbf_auth_token_strength)
 const BBF_AUTH_MAX_FAILURES = 10;   // wrong tokens per client address ...
 const BBF_AUTH_FAILURE_WINDOW = 900; // ... per 15 minutes; then the client is blocked: wrong tokens get 429 at once.
                                      // A correct token is always accepted, so nobody sharing the address can lock the
-                                     // operator out; guessing is made pointless by the token strength (bbf_auth_token_weak).
+                                     // operator out; guessing is made pointless by the token strength (bbf_auth_token_weak:
+                                     // no common words, placeholders, runs or repeats, at least BBF_AUTH_MIN_BITS).
 const BBF_AUTH_MAX_CLIENTS = 5000;   // cap on remembered client addresses in logs/.auth_failures.json
 const BBF_AUTH_SESSION_NAME = 'BBFADMIN'; // management sign-in cookie; public forms keep PHP's default session
 
@@ -76,7 +78,11 @@ function bbf_auth_fail(int $code = 403, string $detail = ''): void {
         exit;
     }
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => 'Access denied.']);
+    // A CSV/export link clicked on another site (webmail, chat) arrives cross-site and its ?token= is ignored: say so.
+    echo json_encode(['error' => !empty($GLOBALS['bbf_auth_cross_site_token'])
+        ? 'Access denied. A ?token= link opened from another site is not accepted. Paste the link into the address bar'
+            . ' or open it from a bookmark, or send the token in the X-BBF-Token header.'
+        : 'Access denied.']);
     exit;
 }
 
@@ -221,16 +227,109 @@ function bbf_auth_throttled(int $retryAfter): void {
     exit;
 }
 
+/** Common words, placeholder parts and names an attacker tries first (lowercase; leetspeak is folded before lookup). */
+function bbf_auth_token_words(): array {
+    static $words = null;
+    return $words ??= array_fill_keys(preg_split('/\s+/', trim('
+        your my me the our this that here put insert enter set use new old it is to no go ok now please just only real really
+        secret secrets token tokens api key keys pass passwd password passwords passphrase pwd admin administrator root user
+        username login logon signin access auth master owner manager super superuser sysadmin webmaster
+        change changeme replace replaceme example sample default test testing tester demo dummy placeholder value string
+        strong random long very private public hidden forms form bbf barebones barebonesforms config server site website
+        web www mail email info contact office company business shop store
+        letmein welcome hello hallo ahoj qwerty qwertz azerty dragon monkey shadow sunshine princess football baseball
+        soccer hockey iloveyou trustno love lover sexy freedom whatever batman superman starwars pokemon computer
+        internet google facebook microsoft apple samsung
+        summer winter spring autumn fall january february march april june july august september october november december
+        monday tuesday wednesday thursday friday saturday sunday
+        heslo hesla tajne tajny tajomstvo kluc pristup spravca leto zima jesen jaro passwort geheim zugang
+        slovensko slovakia bratislava kosice praha czech cesko
+        one two three four five six seven eight nine ten zero red blue green black white yellow orange purple
+        cat dog fish bird tiger lion bear wolf eagle horse')), true);
+}
+
 /**
- * A guessable pattern rather than a random secret: fewer than 5 distinct characters ("aaaa…", "abab…") or at least
- * 3/4 of the neighbouring characters repeating or counting up/down by one ("1234…", "abcd…", "9876…"). A random
- * token of 16+ characters practically never trips this (16 hex digits: about 1 in a million).
+ * Pessimistic estimate of the guessing work for a token, in bits, and whether it is built only from guessable parts.
+ * A random character costs log2 of the character set in use (16 for pure hex). Cheaper readings win: a dictionary
+ * word or placeholder part (also Capitalised or in leetspeak), a run of 4+ repeated characters or characters in
+ * alphabet, number or keyboard order ("aaaa", "1234", "qwerty", "9876"), a year 1950–2039, a separator between
+ * words, and a repeat of an earlier part cost only a few bits each.
+ * Returns [bits, patternsOnly].
+ */
+function bbf_auth_token_strength(string $token): array {
+    static $cache = [];
+    $key = hash('sha256', $token);
+    if (isset($cache[$key])) return $cache[$key];
+    $n = strlen($token);
+    $pool = 0;
+    if (preg_match('/\A(?:[0-9a-f]+|[0-9A-F]+)\z/', $token)) $pool = 16;
+    else {
+        if (preg_match('/[a-z]/', $token)) $pool += 26;
+        if (preg_match('/[A-Z]/', $token)) $pool += 26;
+        if (preg_match('/[0-9]/', $token)) $pool += 10;
+        if (preg_match('/[^a-zA-Z0-9]/', $token)) $pool += 33;
+    }
+    $charBits = $pool > 1 ? log($pool, 2) : 1.0;
+    $lower = strtolower($token);
+    $leet = [strtr($lower, '013457@$!', 'oieastasi'), strtr($lower, '013457@$!', 'oleastasl')];
+    $words = bbf_auth_token_words();
+    $wordBits = log(count($words), 2);
+    $rows = ['1234567890', 'qwertyuiop', 'qwertzuiop', 'asdfghjkl', 'zxcvbnm', 'yxcvbnm'];
+    $adjacent = static function (string $a, string $b, int $dir) use ($rows): bool {
+        if ($dir === 0) return $a === $b;
+        if (ord($b) - ord($a) === $dir) return true;
+        foreach ($rows as $row) {
+            $p = strpos($row, $a);
+            if ($p !== false && isset($row[$p + $dir]) && $p + $dir >= 0 && $row[$p + $dir] === $b) return true;
+        }
+        return false;
+    };
+    // best[i]: cheapest reading of the first i characters; only[i]: reachable without any random character.
+    $best = array_fill(0, $n + 1, INF);
+    $only = array_fill(0, $n + 1, false);
+    $best[0] = 0.0;
+    $only[0] = true;
+    for ($i = 0; $i < $n; $i++) {
+        if ($best[$i] === INF) continue;
+        $relax = static function (int $j, float $cost, bool $pattern) use (&$best, &$only, $i): void {
+            if ($best[$i] + $cost < $best[$j]) $best[$j] = $best[$i] + $cost;
+            if ($pattern && $only[$i]) $only[$j] = true;
+        };
+        $relax($i + 1, $charBits, false);
+        if ($i > 0 && strpos('-_. ', $token[$i]) !== false) $relax($i + 1, 2.0, true);
+        for ($len = 2; $i + $len <= $n && $len <= 20; $len++) {
+            $plain = substr($lower, $i, $len);
+            $leetUsed = isset($words[$plain]) ? 0 : (isset($words[substr($leet[0], $i, $len)]) || isset($words[substr($leet[1], $i, $len)]) ? 1 : null);
+            if ($leetUsed === null) continue;
+            $orig = substr($token, $i, $len);
+            $caps = $orig === $plain ? 0 : ($orig === ucfirst($plain) || $orig === strtoupper($plain) ? 1 : $len);
+            $relax($i + $len, $wordBits + $caps + 2 * $leetUsed, true);
+        }
+        foreach ([0, 1, -1] as $dir) {
+            for ($j = $i + 1; $j < $n && $adjacent($lower[$j - 1], $lower[$j], $dir); $j++);
+            for ($end = $i + 4; $end <= $j; $end++) $relax($end, 8 + log($end - $i, 2), true);
+        }
+        if ($i + 4 <= $n && preg_match('/\A(?:19[5-9]|20[0-3])\d\z/', substr($token, $i, 4))
+            && !ctype_digit($token[$i - 1] ?? 'x') && !ctype_digit($token[$i + 4] ?? 'x')) $relax($i + 4, 7.0, true);
+        for ($len = 4; $i + $len <= $n && $len <= min($i, 20); $len++) {
+            if (strpos(substr($lower, 0, $i), substr($lower, $i, $len)) === false) break;
+            $relax($i + $len, 3 + log($i, 2) + log($len, 2), true);
+        }
+    }
+    if (count($cache) > 64) $cache = [];
+    return $cache[$key] = [$best[$n], $only[$n]];
+}
+
+/**
+ * Too easy to guess to protect the management pages: a wrong token is answered 429 and a right one 200 even for a
+ * blocked address, so the token itself must withstand fast online guessing. Weak: made only of common words,
+ * placeholder parts, runs and repeats ("your-secret-token", "adminadminadmin1", "qwertyuiopasdfgh"), or under
+ * BBF_AUTH_MIN_BITS in the pessimistic estimate (2^44 guesses at 1500/s take about 370 years; a random 16-digit
+ * hex token has 64 bits, 1 000 000 of them were all accepted).
  */
 function bbf_auth_token_weak(string $token): bool {
-    if (count(array_unique(str_split($token))) < 5) return true;
-    $steps = 0;
-    for ($i = 1, $n = strlen($token); $i < $n; $i++) if (abs(ord($token[$i]) - ord($token[$i - 1])) <= 1) $steps++;
-    return $steps * 4 >= (strlen($token) - 1) * 3;
+    [$bits, $patternsOnly] = bbf_auth_token_strength($token);
+    return $patternsOnly || $bits < BBF_AUTH_MIN_BITS;
 }
 
 /** A token that may act as a credential: a string of at least BBF_AUTH_MIN_TOKEN characters and no weak pattern. */
@@ -308,12 +407,13 @@ function bbf_auth_config_problems(array $config): array {
     elseif ($legacy !== '' && strlen($legacy) < BBF_AUTH_MIN_TOKEN)
         $out[] = ['level' => 'error', 'message' => 'api_token is shorter than ' . BBF_AUTH_MIN_TOKEN . ' characters and is ignored (viewer, editor, API and backup refuse it). Set a long random value.'];
     elseif ($legacy !== '' && !bbf_auth_token_usable($legacy))
-        $out[] = ['level' => 'error', 'message' => 'api_token is a guessable pattern (repeated or consecutive characters such as "aaaa…" or "1234…") and is ignored (viewer, editor, API and backup refuse it). Set a long random value, e.g. php -r "echo bin2hex(random_bytes(16));"'];
+        $out[] = ['level' => 'error', 'message' => 'api_token is too easy to guess (a sample value such as "your-secret-token", common words, keyboard or number runs such as "qwerty" or "1234", or repetition) and is ignored (viewer, editor, API and backup refuse it). Set a random value, e.g. php -r "echo bin2hex(random_bytes(16));"'];
     $short = bbf_auth_short_records($config);
     if ($short !== []) {
         $ids = array_map(static fn(array $r): string => bbf_auth_id($r['id'] ?? null) ?: '(no id)', $short);
         $out[] = ['level' => 'warn', 'message' => 'access_tokens: ' . implode(', ', $ids) . ' ha' . (count($ids) === 1 ? 's' : 've')
-            . ' a token shorter than ' . BBF_AUTH_MIN_TOKEN . ' characters or with a guessable pattern and ' . (count($ids) === 1 ? 'is' : 'are') . ' ignored.'];
+            . ' a token shorter than ' . BBF_AUTH_MIN_TOKEN . ' characters or too easy to guess (sample value, common words, runs or repetition) and '
+            . (count($ids) === 1 ? 'is' : 'are') . ' ignored. Use random values, e.g. php -r "echo bin2hex(random_bytes(16));"'];
     }
     if (is_string($legacy)) {
         $usable = (bbf_auth_token_usable($legacy) ? 1 : 0)
@@ -325,7 +425,7 @@ function bbf_auth_config_problems(array $config): array {
     $smoke = $config['smoke_token'] ?? '';
     if ($smoke !== '' && $smoke !== null && bbf_smoke_token($config) === null)
         $out[] = ['level' => 'warn', 'message' => 'smoke_token is not a usable credential (shorter than ' . BBF_AUTH_MIN_TOKEN
-            . ' characters, a guessable pattern, not a string, or with spaces/control characters) and is ignored: HTTP smoke tests are off. Set a long random value.'];
+            . ' characters, too easy to guess, not a string, or with spaces/control characters) and is ignored: HTTP smoke tests are off. Set a random value, e.g. php -r "echo bin2hex(random_bytes(16));"'];
     $proxies = $config['trusted_proxies'] ?? [];
     $bad = array_filter(is_array($proxies) ? $proxies : [$proxies], static fn($e): bool => !bbf_proxy_entry_valid($e));
     if ($bad !== []) $out[] = ['level' => 'error', 'message' => 'trusted_proxies has invalid entries that are ignored: '
@@ -333,16 +433,35 @@ function bbf_auth_config_problems(array $config): array {
     return $out;
 }
 
-function bbf_auth_session(): void {
+/**
+ * Path of the session cookies: the installation folder as the browser sees it. PHP knows only its own path, so behind
+ * a reverse proxy that serves the folder under another path (/forms/ -> /bbf/) set 'cookie_path' => '/forms/'.
+ */
+function bbf_cookie_path(array $config): string {
+    $path = $config['cookie_path'] ?? '';
+    if (is_string($path) && preg_match('~\A/[A-Za-z0-9._\~!$&\'()*+,=:@%/-]*\z~', $path)) return rtrim($path, '/') . '/';
+    return rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/'))), '/') . '/';
+}
+
+/**
+ * The browser talks HTTPS. A proxy that ends TLS (Cloudflare, a load balancer) talks plain HTTP to PHP; its
+ * X-Forwarded-Proto is believed only from an address listed in trusted_proxies (anyone else could forge it).
+ */
+function bbf_request_https(array $config): bool {
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') return true;
+    $trusted = bbf_trusted_proxies($config);
+    if ($trusted === [] || !bbf_ip_in_list((string)($_SERVER['REMOTE_ADDR'] ?? ''), $trusted)) return false;
+    return strtolower(trim(explode(',', (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0])) === 'https';
+}
+
+function bbf_auth_session(array $config = []): void {
     if (session_status() !== PHP_SESSION_ACTIVE) {
         ini_set('session.use_strict_mode', '1');
         ini_set('session.use_only_cookies', '1');
         ini_set('session.use_trans_sid', '0');
         // Own cookie name and path: other PHP apps on the domain (PHPSESSID) neither see nor overwrite the sign-in.
         session_name(BBF_AUTH_SESSION_NAME);
-        $path = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/'))), '/') . '/';
-        session_set_cookie_params(['lifetime' => 0, 'path' => $path, 'secure' =>
-            (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+        session_set_cookie_params(['lifetime' => 0, 'path' => bbf_cookie_path($config), 'secure' => bbf_request_https($config),
             'httponly' => true, 'samesite' => 'Strict']);
         if (!session_start()) bbf_auth_fail(503);
     }
@@ -357,7 +476,7 @@ function bbf_auth_session(): void {
 function bbf_authenticate(array $config, bool $session = true, bool $html = false): ?array {
     bbf_auth_headers();
     $registry = bbf_auth_registry($config);
-    if ($session) bbf_auth_session();
+    if ($session) bbf_auth_session($config);
     // HTML management pages accept the sign-in form POST so the token stays out of URLs and logs.
     $formLogin = $html && $session && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && array_key_exists('token', $_POST);
     if ($html) $GLOBALS['bbf_auth_login_page'] = ['configured' => $registry !== []];
@@ -370,6 +489,7 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
     // ?token= is only for stateless API calls (scripts, CSV links). It never signs a browser session in (login CSRF
     // through a link), and a cross-site <img>/link cannot spend the victim address's wrong-token budget.
     $queryToken = !$session && array_key_exists('token', $_GET) && bbf_auth_query_token_usable();
+    if (!$session && array_key_exists('token', $_GET) && !$queryToken) $GLOBALS['bbf_auth_cross_site_token'] = true;
     if ($html && array_key_exists('token', $_GET) && !$formLogin && !array_key_exists('HTTP_X_BBF_TOKEN', $_SERVER))
         $GLOBALS['bbf_auth_login_page']['url_token'] = true;
     $explicit = array_key_exists('HTTP_X_BBF_TOKEN', $_SERVER) || $queryToken || $formLogin;
@@ -383,6 +503,9 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
             $fp = hash('sha256', $provided);
             foreach ($registry as $r) if (hash_equals($r['fingerprint'], $fp)) $principal = $r;
         }
+        // An expired or revoked token is a wrong token: answered like one (429 when blocked), so the answer does not
+        // reveal that it once was valid (review 2.1.6).
+        if ($principal && ($principal['revoked'] || $principal['expires'] <= $now)) $principal = null;
         if (!$principal && !bbf_auth_throttle($config, true)) bbf_auth_throttled(bbf_auth_retry_after($config));
     } elseif ($session) {
         $s = $_SESSION['bbf_access'] ?? [];

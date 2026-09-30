@@ -23,6 +23,7 @@ BBF.registerLang('hi', {
     tooLong:           '{label} अधिकतम {max} अक्षर होने चाहिए।',
     invalidFormat:     '{label} का प्रारूप अमान्य है।',
     emailMismatch:    '{label} पते मेल नहीं खाते।',
+    emailConfirm:     '{label} की पुष्टि करें',
     dateMin:          '{label} {min} या उसके बाद होना चाहिए।',
     dateMax:          '{label} {max} या उससे पहले होना चाहिए।',
     nextPage:         'अगला',

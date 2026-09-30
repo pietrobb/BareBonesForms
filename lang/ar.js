@@ -23,6 +23,7 @@ BBF.registerLang('ar', {
     tooLong:           '{label} يجب ألا يتجاوز {max} حرفاً.',
     invalidFormat:     '{label} بتنسيق غير صالح.',
     emailMismatch:    'عناوين {label} غير متطابقة.',
+    emailConfirm:     'تأكيد {label}',
     dateMin:          '{label} يجب أن يكون في {min} أو بعده.',
     dateMax:          '{label} يجب أن يكون في {max} أو قبله.',
     nextPage:         'التالي',

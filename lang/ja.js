@@ -23,6 +23,7 @@ BBF.registerLang('ja', {
     tooLong:           '{label}は{max}文字以下でなければなりません。',
     invalidFormat:     '{label}の形式が無効です。',
     emailMismatch:    '{label}のアドレスが一致しません。',
+    emailConfirm:     '{label}（確認用）',
     dateMin:          '{label}は{min}以降の日付にしてください。',
     dateMax:          '{label}は{max}以前の日付にしてください。',
     nextPage:         '次へ',

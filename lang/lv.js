@@ -21,6 +21,7 @@ BBF.registerLang('lv', {
     tooLong:           '{label} nedrīkst pārsniegt {max} rakstzīmes.',
     invalidFormat:     '{label} formāts nav derīgs.',
     emailMismatch:    '{label} adreses nesakrīt.',
+    emailConfirm:     'Apstipriniet: {label}',
     dateMin:          '{label} jābūt {min} vai vēlāk.',
     dateMax:          '{label} jābūt {max} vai agrāk.',
     nextPage:         'Tālāk',

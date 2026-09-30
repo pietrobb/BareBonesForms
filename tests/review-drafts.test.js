@@ -36,8 +36,9 @@ class Element {
     matches(selector) {
         const cls = selector.match(/^\.([\w-]+)$/)?.[1];
         if (cls) return this.classList.contains(cls);
-        const attr = selector.match(/^\[([\w-]+)="([^"]*)"\]$/);
-        if (attr) return String(attr[1] === 'name' ? this.name : this.getAttribute(attr[1])) === attr[2];
+        const attr = selector.match(/^(\w*)\[([\w-]+)="([^"]*)"\]$/);
+        if (attr) return (!attr[1] || this.tagName === attr[1].toUpperCase())
+            && String(attr[2] === 'name' ? this.name : this.getAttribute(attr[2])) === attr[3];
         return false;
     }
     querySelectorAll(selector) {
@@ -149,6 +150,40 @@ test('save sends only client allowlisted nonsensitive values and stores returned
     assert.equal(h.byClass('bbf-draft-code').value, 'A'.repeat(43));
     assert.equal([...h.store.values()][0], 'A'.repeat(43));
     assert.match(h.byClass('bbf-draft-status').textContent, /saved until/i);
+});
+
+test('review 2.1.6: a draft request answered 403 refreshes the CSRF token once and is repeated', async () => {
+    const h = harness();
+    const hidden = h.form.appendChild(new Element('input'));
+    hidden.name = '_bbf_csrf'; hidden.setAttribute('name', '_bbf_csrf'); hidden.type = 'hidden'; hidden.value = 'stale-token';
+    const waitFor = async count => { for (let i = 0; i < 50 && h.requests.length < count; i++) await new Promise(r => setImmediate(r)); };
+    const pending = h.byClass('bbf-draft-save').emit('click');
+    await waitFor(1);
+    assert.equal(JSON.parse(h.requests[0].options.body)._bbf_csrf, 'stale-token', 'the current hidden-field token is sent, not the one from form creation');
+    h.respond(0, { status: 'error', message: 'Session expired' }, false, 403);
+    await waitFor(2);
+    assert.match(String(h.requests[1].url), /action=csrf/);
+    h.respond(1, { csrf_token: 'fresh-token' });
+    await waitFor(3);
+    assert.match(String(h.requests[2].url), /action=draft_save/);
+    assert.equal(JSON.parse(h.requests[2].options.body)._bbf_csrf, 'fresh-token');
+    assert.equal(JSON.parse(h.requests[2].options.body).name, 'Alice', 'the answers are still sent');
+    h.respond(2, { status: 'ok', handle: 'B'.repeat(43), expires_at: '2026-09-10T00:00:00Z' });
+    await pending;
+    assert.equal(hidden.value, 'fresh-token', 'the form keeps the refreshed token for the submit');
+    assert.equal(h.byClass('bbf-draft-code').value, 'B'.repeat(43));
+
+    const second = h.byClass('bbf-draft-delete').emit('click');
+    await waitFor(4);
+    assert.equal(JSON.parse(h.requests[3].options.body)._bbf_csrf, 'fresh-token');
+    h.respond(3, { status: 'error', message: 'Session expired' }, false, 403);
+    await waitFor(5);
+    h.respond(4, { csrf_token: 'fresh-token-2' });
+    await waitFor(6);
+    h.respond(5, { status: 'error', message: 'still forbidden' }, false, 403);
+    await second;
+    assert.equal(h.requests.length, 6, 'only one refresh per request');
+    assert.match(h.byClass('bbf-draft-status').textContent, /still forbidden/);
 });
 
 test('6129-F07 draft restore follows the main Other selection and clears stale companion text', () => {

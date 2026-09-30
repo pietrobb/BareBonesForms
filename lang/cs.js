@@ -23,6 +23,7 @@ BBF.registerLang('cs', {
     tooLong:           '{label} nesmí mít více než {max} znaků.',
     invalidFormat:     '{label} má neplatný formát.',
     emailMismatch:    'Adresy {label} se neshodují.',
+    emailConfirm:     'Potvrďte {label}',
     dateMin:          '{label} musí být {min} nebo později.',
     dateMax:          '{label} musí být {max} nebo dříve.',
     nextPage:         'Další',

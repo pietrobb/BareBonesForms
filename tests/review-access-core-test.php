@@ -95,6 +95,9 @@ try {
     // A cross-site request (an <img> on another site) cannot use ?token= at all, so it cannot spend the address's wrong-token budget.
     for ($i = 0; $i < 12; $i++) $cross = core_http('submissions.php?form=alpha&token=cross-guess-' . $i, ['headers' => ['Sec-Fetch-Site' => 'cross-site']]);
     core_check($cross['code'] === 403, 'cross-site ?token= is ignored (403, never 429)');
+    core_check(str_contains($cross['body'], 'opened from another site') && !str_contains($cross['body'], 'cross-guess'),
+        'review 2.1.6: the cross-site CSV link explains why it is refused, without echoing the token');
+    core_check(core_http('submissions.php?form=alpha')['body'] === '{"error":"Access denied."}', 'a request without ?token= keeps the plain message');
     core_check(core_http('submissions.php?form=alpha&token=fixture-secret-reader-76543210', ['headers' => ['Sec-Fetch-Site' => 'cross-site']])['code'] === 403,
         'even a right token is ignored on a cross-site request');
     core_check(core_http('submissions.php?form=alpha&token=fixture-secret-reader-76543210', ['headers' => ['Sec-Fetch-Site' => 'none']])['code'] === 200,
@@ -281,6 +284,17 @@ try {
     core_check($right['seconds'] < 1.5, sprintf('the right token is not delayed in PHP (%.1f s)', $right['seconds']));
     core_check(core_http('submissions.php?form=alpha', core_header('reader'))['code'] === 200, 'API integrations with a valid token keep working too');
     core_check(core_http('submissions.php?form=alpha', $guessHeader('guess-99'))['code'] === 429, 'a success does not reset the wrong-token limit');
+    // Review 2.1.6: an expired or revoked token is answered like a wrong one while blocked (it once was valid).
+    $staleConfig = $baseConfig;
+    $staleConfig['access_tokens'][] = ['id' => 'expired', 'token' => 'fixture-8Hq3Lz6Wn1Vx', 'forms' => ['alpha'], 'permissions' => ['read'],
+        'expires_at' => '2001-01-01T00:00:00Z', 'revoked' => false];
+    $staleConfig['access_tokens'][] = ['id' => 'revoked', 'token' => 'fixture-2Pk7Tm4Yc9Rb', 'forms' => ['alpha'], 'permissions' => ['read'],
+        'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => true];
+    file_put_contents("$root/config.php", '<?php defined("BBF_LOADED") || exit; return ' . var_export($staleConfig, true) . ';'); // keeps the block
+    clearstatcache();
+    core_check(core_http('submissions.php?form=alpha', $guessHeader('fixture-8Hq3Lz6Wn1Vx'))['code'] === 429
+        && core_http('submissions.php?form=alpha', $guessHeader('fixture-2Pk7Tm4Yc9Rb'))['code'] === 429,
+        'review 2.1.6: an expired or revoked token gets 429 like any wrong token while blocked, not a 403 that reveals it');
     $weakConfig = $baseConfig; $weakConfig['api_token'] = 'abcdefghijklmnopqrstuvwxyz';
     core_config($weakConfig);
     core_check(core_http('viewer.php', $guessHeader('abcdefghijklmnopqrstuvwxyz'))['code'] !== 200, 'a patterned api_token ("abcd…") is never accepted');

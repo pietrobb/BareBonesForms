@@ -96,8 +96,10 @@ test('2.1.3 "Back" from the redirect target (bfcache) re-enables the submit butt
 });
 
 test('2.1.6 a redirect that never leaves the page (#done, 204) does not leave the button disabled', async () => {
-    const hash = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '#done' });
-    assert.equal(hash.context.window.location.href, '#done', 'the page still jumps to the anchor');
+    let pageUrl = '';
+    const hash = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '#done' }, true, {}, runtime => { pageUrl = String(runtime.context.location.href).split('#')[0]; });
+    assert.equal(hash.context.window.location.href, pageUrl + '#done',
+        'the page still jumps to the anchor; review 2.1.6: as an absolute URL, so a <base href> (SPA) cannot send it to another page');
     assert.equal(hash.form.querySelector('.bbf-submit').disabled, false, '#done on this page: the button is usable again');
     assert.match(hash.form.querySelector('.bbf-message').className, /bbf-success/);
     const sameUrl = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: 'https://example.test/demo.html#thanks' });

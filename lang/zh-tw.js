@@ -23,6 +23,7 @@ BBF.registerLang('zh-tw', {
     tooLong:           '{label}不能超過{max}個字元。',
     invalidFormat:     '{label}格式無效。',
     emailMismatch:    '{label}地址不相符。',
+    emailConfirm:     '確認{label}',
     dateMin:          '{label}必須在{min}或之後。',
     dateMax:          '{label}必須在{max}或之前。',
     nextPage:         '下一步',

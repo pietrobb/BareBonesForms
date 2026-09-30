@@ -180,7 +180,7 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Download the release ZIP and `SHA256SUMS` from the [GitHub release page](https://github.com/pietrobb/BareBonesForms/releases), upload the ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.6.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
+php maintenance.php upgrade --package=../barebonesforms-v2.1.7.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
 ```
 
 This is a dry run — nothing changes. `--checksum` proves the ZIP is the published release (a wrong ZIP is refused); `gh attestation verify barebonesforms-vX.Y.Z.zip -R pietrobb/BareBonesForms` proves the same with the signed build provenance. **Only a verified package's code runs in the dry run.** Then the upgrader inside the new package plans and applies the upgrade (from 2.1.3 on; the result says `"upgrader": "package X.Y.Z"`), so fixes to the upgrade itself already apply to it, and the new version's smoke test runs against **your** forms and templates. Without `--checksum` (since 2.1.5) the dry run only checks the files against the package's own manifest and their PHP syntax, runs none of the new code (`"check": {"status": "skipped"}`) and says how to verify; `--apply` then uses the installed upgrader. For a package you built yourself, `--trust-package` has the effect of `--checksum`. PHP notices printed along the way (e.g. `display_errors=On` on XAMPP) are listed under `php_messages` and do not fail the upgrade. The dry run checks the new PHP files for syntax errors and prints:
@@ -201,7 +201,7 @@ To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing   # or compare the ZIP's SHA-256 by hand
-unzip barebonesforms-v2.1.6.zip            # creates ./barebonesforms
+unzip barebonesforms-v2.1.7.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 
@@ -738,7 +738,7 @@ Use `lang/en.js` and `lang/en.php` as reference — they contain every key with 
 
 Examples use `&token=` for brevity. In scripts, prefer the header `X-BBF-Token: YOUR_TOKEN` so the token doesn't end up in server logs or browser history. `?token=` works only for `submissions.php`, and a browser ignores it when the request comes from another site (`Sec-Fetch-Site: cross-site`). `viewer.php`, `editor.php` and `sandbox.php` never accept a token in the URL — sign in with their form.
 
-**Sign-in limit.** After 10 wrong tokens from one address within 15 minutes, further wrong tokens from that address are answered `429` at once with `Retry-After`. The right token is always checked and accepted, so someone sharing your address cannot lock you out; guessing is defeated by the token itself (at least 16 random characters, no obvious pattern). Behind Cloudflare or another proxy, list its ranges in `trusted_proxies`, otherwise all visitors share the proxy address for this limit (`check.php` warns about it).
+**Sign-in limit.** After 10 wrong tokens from one address within 15 minutes, further wrong tokens from that address are answered `429` at once with `Retry-After`. The right token is always checked and accepted, so someone sharing your address cannot lock you out; guessing is defeated by the token itself (at least 16 random characters, no words, sample values, runs or repetition). Behind Cloudflare or another proxy, list its ranges in `trusted_proxies`, otherwise all visitors share the proxy address for this limit (`check.php` warns about it).
 
 ```bash
 # List all (JSON, paginated)
@@ -774,9 +774,9 @@ GET submissions.php?form=kontakt&format=csv&token=YOUR_TOKEN&last=50
 
 Time-based values set `from` automatically. Plain numbers set `limit`. Ignored if `from` is already provided.
 
-Set `api_token` in `config.php`. Pass via header (recommended) or query param:
+Set `api_token` in `config.php` to a random value (`php -r "echo bin2hex(random_bytes(16));"`); a sample value such as `your-secret-token`, words, keyboard runs or repetition are refused. Pass via header (recommended) or query param:
 ```bash
-curl -H "X-BBF-Token: your-secret-token" "submissions.php?form=kontakt"
+curl -H "X-BBF-Token: $BBF_TOKEN" "submissions.php?form=kontakt"
 ```
 
 ---
@@ -903,7 +903,7 @@ Run `check.php` after installation to verify your setup. It tests:
 - Sandbox mode state
 - Leftover diagnostic files (`phpinfo.php`, `test.php`, etc.)
 
-Access control: `api_token` is required everywhere, including localhost. `check.php`, `viewer.php` and `editor.php` show a sign-in form; scripts can send the `X-BBF-Token` header instead. Tokens shorter than 16 characters or with an obvious pattern (`aaaa…`, `1234…`) are never accepted; use a random value. After 10 wrong tokens from one address within 15 minutes, further wrong tokens get HTTP 429 at once; the right token is always checked and signs in, so nobody sharing the address can lock you out. The sign-in uses its own `BBFADMIN` session cookie limited to the installation folder, and the sign-in form is CSRF-protected. Behind Cloudflare or a reverse proxy, list the proxy ranges in `trusted_proxies` so that this limit, the submission rate limit and stored IPs use the visitor's address.
+Access control: `api_token` is required everywhere, including localhost. `check.php`, `viewer.php` and `editor.php` show a sign-in form; scripts can send the `X-BBF-Token` header instead. Tokens shorter than 16 characters or too easy to guess (sample values such as `your-secret-token`, common words, keyboard or number runs such as `qwerty` or `1234`, repetition) are never accepted; use a random value (`php -r "echo bin2hex(random_bytes(16));"`). After 10 wrong tokens from one address within 15 minutes, further wrong tokens get HTTP 429 at once; the right token is always checked and signs in, so nobody sharing the address can lock you out. The sign-in uses its own `BBFADMIN` session cookie limited to the installation folder, and the sign-in form is CSRF-protected. Behind Cloudflare or a reverse proxy, list the proxy ranges in `trusted_proxies` so that this limit, the submission rate limit and stored IPs use the visitor's address (a listed proxy's `X-Forwarded-Proto: https` also makes the cookies `Secure`). If the proxy serves the folder under another path than PHP sees (`/forms/` → `/bbf/`), set `cookie_path` to the public one.
 
 **Delete `check.php` after verification** — it exposes PHP version, extensions, directory paths, storage details, and form structure.
 

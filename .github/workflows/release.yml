@@ -120,3 +120,15 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}.zip" \
             "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" "$RUNNER_TEMP/SHA256SUMS" \
             --title "$GITHUB_REF_NAME" --notes-file "$notes"
+      - name: Verify the published files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # What users download must be what was built and attested, not only what crossed between the jobs.
+          set -euo pipefail
+          check="$RUNNER_TEMP/published"
+          mkdir "$check"
+          gh release download "$GITHUB_REF_NAME" --dir "$check"
+          cmp "$RUNNER_TEMP/SHA256SUMS" "$check/SHA256SUMS"
+          (cd "$check" && sha256sum -c SHA256SUMS)

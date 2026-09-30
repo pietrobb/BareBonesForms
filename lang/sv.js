@@ -23,6 +23,7 @@ BBF.registerLang('sv', {
     tooLong:           '{label} får vara högst {max} tecken.',
     invalidFormat:     '{label} har ogiltigt format.',
     emailMismatch:    '{label}-adresserna matchar inte.',
+    emailConfirm:     'Bekräfta {label}',
     dateMin:          '{label} måste vara {min} eller senare.',
     dateMax:          '{label} måste vara {max} eller tidigare.',
     nextPage:         'Nästa',

@@ -23,6 +23,7 @@ BBF.registerLang('th', {
     tooLong:           '{label} ต้องมีไม่เกิน {max} ตัวอักษร',
     invalidFormat:     '{label} มีรูปแบบไม่ถูกต้อง',
     emailMismatch:    'ที่อยู่ {label} ไม่ตรงกัน',
+    emailConfirm:     'ยืนยัน {label}',
     dateMin:          '{label} ต้องเป็นวันที่ {min} หรือหลังจากนั้น',
     dateMax:          '{label} ต้องเป็นวันที่ {max} หรือก่อนหน้านั้น',
     nextPage:         'ถัดไป',

@@ -126,3 +126,14 @@ test('review 2.1.5: draft, upload and cross-field answers are translated too', (
         assert.ok(phpPack(file).crossFieldInvalid && phpPack(file).crossFieldInvalid !== en.crossFieldInvalid, `${file} translates crossFieldInvalid`);
     }
 });
+
+test('review 2.1.6: the e-mail confirmation box is labelled from the pack, not guessed from emailMismatch', () => {
+    const js = read('bbf.js');
+    assert.ok(!js.includes(".includes('match')") && !js.includes("' (confirm)'"), 'no English guess left');
+    assert.ok(js.includes("this._t('emailConfirm'"));
+    const en = jsPack('en.js').emailConfirm;
+    for (const lang of langs.filter(l => l !== 'en')) {
+        const text = jsPack(`${lang}.js`).emailConfirm;
+        assert.ok(text && text !== en && text.includes('{label}'), `${lang}.js translates emailConfirm`);
+    }
+});

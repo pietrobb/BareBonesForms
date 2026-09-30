@@ -23,6 +23,7 @@ BBF.registerLang('nb', {
     tooLong:           '{label} kan være maks {max} tegn.',
     invalidFormat:     '{label} har ugyldig format.',
     emailMismatch:    '{label}-adressene samsvarer ikke.',
+    emailConfirm:     'Bekreft {label}',
     dateMin:          '{label} må være {min} eller senere.',
     dateMax:          '{label} må være {max} eller tidligere.',
     nextPage:         'Neste',

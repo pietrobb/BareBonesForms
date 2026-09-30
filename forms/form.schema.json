@@ -127,15 +127,15 @@
                         "field": { "type": "string", "description": "Name of the field to watch." },
                         "value": {
                             "oneOf": [
-                                { "type": "string" },
-                                { "type": "array", "items": { "type": "string" } }
+                                { "type": ["string", "number", "boolean", "null"] },
+                                { "type": "array", "items": { "type": ["string", "number", "boolean"] } }
                             ],
-                            "description": "Value(s) that trigger visibility."
+                            "description": "Value(s) that trigger visibility. Numbers and true/false compare as text (5 equals \"5\"); null means not set."
                         },
                         "op": {
-                            "type": "string",
-                            "enum": ["not", "gt", "gte", "lt", "lte", "contains", "empty", "not_empty"],
-                            "description": "Comparison operator. Default: equals."
+                            "type": ["string", "null"],
+                            "enum": ["not", "gt", "gte", "lt", "lte", "contains", "empty", "not_empty", null],
+                            "description": "Comparison operator. Default (missing or null): equals."
                         }
                     },
                     "required": ["field"]

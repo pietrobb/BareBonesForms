@@ -30,6 +30,7 @@ BBF.registerLang('en', {
     tooLong:           '{label} must be at most {max} characters.',
     invalidFormat:     '{label} has invalid format.',
     emailMismatch:    '{label} addresses do not match.',
+    emailConfirm:     'Confirm {label}',
     dateMin:          '{label} must be on or after {min}.',
     dateMax:          '{label} must be on or before {max}.',
     nextPage:         'Next',

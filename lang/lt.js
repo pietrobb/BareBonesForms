@@ -21,6 +21,7 @@ BBF.registerLang('lt', {
     tooLong:           '{label} negali viršyti {max} simbolių.',
     invalidFormat:     '{label} turi neteisingą formatą.',
     emailMismatch:     '{label} adresai nesutampa.',
+    emailConfirm:     'Patvirtinkite: {label}',
     dateMin:           '{label} turi būti {min} arba vėliau.',
     dateMax:           '{label} turi būti {max} arba anksčiau.',
     nextPage:          'Toliau',

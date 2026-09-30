@@ -165,6 +165,12 @@ function bbfConditionErrors(mixed $cond, string $path, int $depth = 0): array {
     if (array_key_exists('op', $cond) && !is_string($cond['op'])) {
         $errors[] = "$path.op: Expected a string: not, contains, empty, not_empty, gt, gte, lt or lte.";
     }
+    // An object or nested list is compared differently by bbf.js and the server, so the field would show in the
+    // browser but be treated as hidden on submit (or the other way round).
+    $value = $cond['value'] ?? null;
+    if (is_array($value) && (!array_is_list($value) || array_filter($value, static fn($v) => !is_scalar($v)) !== [])) {
+        $errors[] = "$path.value: Expected text, a number, true/false or a list of them, e.g. \"value\": [\"a\", \"b\"].";
+    }
     return $errors;
 }
 
@@ -420,7 +426,7 @@ function renderTemplate(string $templateFile, array $vars): string {
 function bbf_redirect_url(string $template, array $data, array $system = []): ?string {
     if (preg_match('/\A\s*\{\{\s*[\w-]+\s*\}\}\s*\z/', $template)) return null;
     $encoded = [];
-    foreach (array_merge($data, $system) as $key => $value) {
+    foreach (array_replace($data, $system) as $key => $value) { // array_merge would renumber a field named "7"
         if (is_array($value)) $value = implode(',', array_filter($value, 'is_scalar'));
         if (is_bool($value)) $value = $value ? '1' : '';
         if (is_string($value) || is_numeric($value)) $encoded[$key] = rawurlencode((string)$value);

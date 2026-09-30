@@ -155,7 +155,13 @@ function bbf_upgrade_breaking(string $changelog, string $from, string $to): arra
             if (str_starts_with($line, '### ')) { $breaking = stripos($line, 'breaking') !== false; continue; }
             if (str_starts_with($line, '- ') && ($breaking || str_starts_with($line, '- **Breaking'))) {
                 $text = substr($line, 2);
-                $notes[] = "$version: " . (strlen($text) > 300 ? rtrim(substr($text, 0, 297)) . '...' : $text);
+                // Long notes end at the last full sentence that fits, so the instruction in them is never cut off.
+                if (strlen($text) > 700) {
+                    $cut = substr($text, 0, 700);
+                    $end = max((int)strrpos($cut, '. '), (int)strrpos($cut, '.) '));
+                    $text = ($end > 200 ? substr($cut, 0, $end + 1) : rtrim(substr($cut, 0, 697))) . ' ...';
+                }
+                $notes[] = "$version: $text";
             }
         }
     }
@@ -224,11 +230,16 @@ function bbf_upgrade_lint(string $stageDir, array $paths): ?array {
  */
 function bbf_upgrade_access_warnings(string $stageDir, string $install): array {
     if (!function_exists('proc_open') || PHP_BINARY === '' || !is_file("$stageDir/bbf_auth.php") || !is_file("$install/config.php")) return [];
-    $script = 'define("BBF_LOADED", true); require $argv[1]; $c = require $argv[2];'
+    $script = 'ini_set("display_errors", "stderr"); define("BBF_LOADED", true); require $argv[1]; $c = require $argv[2];'
         . ' echo json_encode(is_array($c) && function_exists("bbf_auth_config_problems") ? array_column(bbf_auth_config_problems($c), "message") : []);';
     $run = bbf_upgrade_run([PHP_BINARY, '-r', $script, "$stageDir/bbf_auth.php", "$install/config.php"], $install);
-    $warnings = json_decode($run['out'] ?? '', true);
-    return is_array($warnings) ? array_values(array_filter($warnings, 'is_string')) : [];
+    if ($run === null) return [];
+    $warnings = json_decode($run['out'], true);
+    if ($run['exit'] !== 0 || !is_array($warnings)) {
+        $why = trim(strtok(trim($run['err'] . "\n" . $run['out']), "\n") ?: '');
+        return ["The access tokens in config.php could not be checked (exit code {$run['exit']}" . ($why !== '' ? ": $why" : '') . '). Run php check.php after the upgrade.'];
+    }
+    return array_values(array_filter($warnings, 'is_string'));
 }
 
 /** What an upgrade to the staged package would do. Nothing is changed. */
@@ -275,13 +286,16 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
     // Only rule lines count: a release that just reworded comments has nothing for you to copy (review 2.1.5).
     $lacking = array_diff(bbf_htaccess_rule_lines((string)@file_get_contents("{$stage['dir']}/.htaccess")),
         bbf_htaccess_rule_lines((string)@file_get_contents("$install/.htaccess")));
-    if (in_array('.htaccess', $files['keep_yours'], true) && $htaccess !== ($old['files']['.htaccess']['sha256'] ?? null) && $lacking !== []) {
-        $dist = is_file("$install/.htaccess.dist") ? hash_file('sha256', "$install/.htaccess.dist") : null;
+    $dist = is_file("$install/.htaccess.dist") ? hash_file('sha256', "$install/.htaccess.dist") : null;
+    if (in_array('.htaccess', $files['keep_yours'], true) && $htaccess !== null && $htaccess !== ($old['files']['.htaccess']['sha256'] ?? null)
+        && ($lacking !== [] || ($dist !== null && $dist !== $htaccess))) {
+        // An .htaccess.dist already there is always brought up to this release, even when only comments changed;
+        // otherwise selfcheck would take it for an earlier release's file (review 2.1.6).
         if ($dist !== $htaccess) {
             if (!copy("{$stage['dir']}/.htaccess", "{$stage['dir']}/.htaccess.dist")) throw new RuntimeException('Cannot stage .htaccess.dist');
             $files[$dist === null ? 'add' : 'replace'][] = '.htaccess.dist';
         }
-        $notices[] = 'Your .htaccess has lines of your own, so it is kept. This release changed its security rules: compare .htaccess with .htaccess.dist and copy the new rules over (selfcheck reports rules still missing).';
+        if ($lacking !== []) $notices[] = 'Your .htaccess has lines of your own, so it is kept. This release changed its security rules: compare .htaccess with .htaccess.dist and copy the new rules over (selfcheck reports rules still missing).';
     }
 
     $lint = $problems === [] ? bbf_upgrade_lint($stage['dir'], array_merge($files['add'], $files['replace'])) : [];
@@ -359,10 +373,13 @@ function bbf_upgrade_delegate(string $package, ?string $confirm, string $install
         ['out' => $out, 'err' => $err] = $run;
         $at = strrpos($out, BBF_UPGRADE_RESULT);
         $result = $at === false ? null : json_decode(substr($out, $at + strlen(BBF_UPGRADE_RESULT)), true);
-        if (!is_array($result)) throw new RuntimeException(trim($err . "\n" . $out) !== '' ? trim($err . "\n" . $out) : 'the upgrader of the package ' . $stage['manifest']['version'] . ' gave no result.');
+        if (!is_array($result)) throw new RuntimeException((trim($err . "\n" . $out) !== '' ? trim($err . "\n" . $out) : 'the upgrader of the package ' . $stage['manifest']['version'] . ' gave no result.')
+            . ($run['exit'] !== 0 ? " (exit code {$run['exit']})" : ''));
         $result['upgrader'] = 'package ' . $stage['manifest']['version'];
         // PHP notices printed along the way are shown, but they do not turn a finished upgrade into a failure.
         $messages = array_values(array_filter(array_map('trim', explode("\n", trim($err . "\n" . substr($out, 0, $at)))), 'strlen'));
+        // A crash after the result was printed (e.g. in a shutdown function) is reported, not hidden.
+        if ($run['exit'] !== 0) $messages[] = "The package upgrader ended with exit code {$run['exit']} after reporting its result: run php smoketest.php and php maintenance.php selfcheck.";
         if ($messages !== []) $result['php_messages'] = array_slice($messages, 0, 20);
         return $result;
     } finally {
@@ -433,6 +450,8 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
         'files' => $plan['files'],
         'new_config_settings' => $plan['new_config_settings'],
         'breaking' => $plan['breaking'],
+        // Judged by the code now installed, so a token it rejects is named again right after the upgrade.
+        'access_warnings' => bbf_upgrade_access_warnings($install, $install),
         'notices' => $plan['notices'],
         'check' => $after === null ? 'skipped: run php smoketest.php' : $after['summary'],
         'backup' => $backup,
@@ -570,7 +589,10 @@ function bbf_htaccess_missing_rules(string $install): array {
     }
     $wanted = is_string($dist) && !$stale ? [...bbf_htaccess_rule_lines($dist), ...$essential] : $essential;
     $missing = array_values(array_filter(array_unique($wanted), static fn(string $line): bool => !isset($have[$line])));
-    $out = $stale ? ['.htaccess.dist is from an earlier release and is ignored; delete it (the current rules are in the release ZIP\'s .htaccess / .htaccess.dist).'] : [];
+    // A stale .htaccess.dist whose rules your .htaccess already has (a later release only reworded comments) is
+    // harmless: it recommends nothing, so it is not reported every day (review 2.1.6).
+    $staleRecommends = $stale && array_filter(bbf_htaccess_rule_lines($dist), static fn(string $line): bool => !isset($have[$line])) !== [];
+    $out = $staleRecommends ? ['.htaccess.dist is from an earlier release and is ignored; delete it (the current rules are in the release ZIP\'s .htaccess / .htaccess.dist).'] : [];
     if ($missing === []) return $out;
     return [...$out, count($missing) . ' rule line(s) of this release are missing from .htaccess' . (is_string($dist) && !$stale ? ' (compare it with .htaccess.dist and copy them over)' : '')
         . ': ' . implode(' | ', array_slice($missing, 0, 5)) . (count($missing) > 5 ? ' | ...' : '')];

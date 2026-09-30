@@ -23,6 +23,7 @@ BBF.registerLang('et', {
     tooLong:           '{label} tohib olla kuni {max} tähemärki.',
     invalidFormat:     '{label} vorming on kehtetu.',
     emailMismatch:    '{label} aadressid ei kattu.',
+    emailConfirm:     'Kinnitage: {label}',
     dateMin:          '{label} peab olema {min} või hiljem.',
     dateMax:          '{label} peab olema {max} või varem.',
     nextPage:         'Järgmine',

@@ -23,6 +23,7 @@ BBF.registerLang('nl', {
     tooLong:           '{label} mag maximaal {max} tekens bevatten.',
     invalidFormat:     '{label} heeft een ongeldig formaat.',
     emailMismatch:    'De {label}-adressen komen niet overeen.',
+    emailConfirm:     'Bevestig {label}',
     dateMin:          '{label} moet op of na {min} zijn.',
     dateMax:          '{label} moet op of voor {max} zijn.',
     nextPage:         'Volgende',

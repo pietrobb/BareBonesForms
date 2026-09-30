@@ -23,6 +23,7 @@ BBF.registerLang('hu', {
     tooLong:           '{label} legfeljebb {max} karakter hosszú lehet.',
     invalidFormat:     '{label} formátuma érvénytelen.',
     emailMismatch:    'A(z) {label} címek nem egyeznek.',
+    emailConfirm:     '{label} megerősítése',
     dateMin:          '{label} legkorábban {min} lehet.',
     dateMax:          '{label} legkésőbb {max} lehet.',
     nextPage:         'Következő',

@@ -133,7 +133,7 @@ function httpGet(string $url): array {
 
 function getSubmissions(string $formId): ?array {
     global $baseUrl;
-    $url = "$baseUrl/submissions.php?form=$formId&token=test-token-0123456789";
+    $url = "$baseUrl/submissions.php?form=$formId&token=fixture-7Qm2xK9pLw4Zr8Tn";
     $result = httpGet($url);
     if ($result['code'] === 0) {
         warn("server unresponsive on GET, restarting...");
@@ -198,7 +198,7 @@ function writeConfig(): void {
         . "        'from_name'  => 'Test',\n"
         . "    ],\n"
         . "    'webhook_secret' => 'test-secret',\n"
-        . "    'api_token'      => 'test-token-0123456789',\n"
+        . "    'api_token'      => 'fixture-7Qm2xK9pLw4Zr8Tn',\n"
         . "    'forms_dir'      => '" . addslashes($projectDir) . "/forms',\n"
         . "    'submissions_dir' => '" . addslashes($testSubmissionsDir) . "',\n"
         . "    'templates_dir'  => '" . addslashes($projectDir) . "/templates',\n"
@@ -1011,7 +1011,7 @@ $quizSubs = getSubmissions('demo-quiz');
 
 if ($quizSubs === null) {
     // Debug: try raw fetch to see what API returns
-    $debugUrl = "$baseUrl/submissions.php?form=demo-quiz&token=test-token-0123456789";
+    $debugUrl = "$baseUrl/submissions.php?form=demo-quiz&token=fixture-7Qm2xK9pLw4Zr8Tn";
     $debugResp = httpGet($debugUrl)['body'];
     fail("demo-quiz: cannot read submissions via API", "raw response: " . substr($debugResp ?: 'FALSE', 0, 300));
 } else {

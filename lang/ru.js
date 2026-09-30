@@ -23,6 +23,7 @@ BBF.registerLang('ru', {
     tooLong:           '{label} должен содержать не более {max} символов.',
     invalidFormat:     '{label} имеет неверный формат.',
     emailMismatch:    'Адреса {label} не совпадают.',
+    emailConfirm:     'Подтвердите {label}',
     dateMin:          '{label} должно быть {min} или позже.',
     dateMax:          '{label} должно быть {max} или раньше.',
     nextPage:         'Далее',

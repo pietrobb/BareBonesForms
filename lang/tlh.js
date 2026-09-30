@@ -25,6 +25,7 @@ BBF.registerLang('tlh', {
     tooLong:           '{label} {max} ngutlh DIp ghap nIS.',
     invalidFormat:     '{label} nab mughato\'.',
     emailMismatch:    '{label} Daq rap Hutlh.',
+    emailConfirm:     '{label} yItob',
     dateMin:          '{label} {min} pagh law\' nIS.',
     dateMax:          '{label} {max} pagh puS nIS.',
     nextPage:         'veb',

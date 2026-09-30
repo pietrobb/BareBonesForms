@@ -125,14 +125,15 @@ function ensureSession(): void {
     // The respondent session holds only the CSRF secret: scripts never need it, so keep it HttpOnly.
     // Own cookie name limited to the installation folder: with strict session IDs a shared PHPSESSID on "/" would
     // replace another PHP application's session on the same domain and sign its users out.
-    // On HTTPS it is SameSite=None; Secure, so a form embedded in an iframe on another site can be submitted
-    // (the CSRF token, not the cookie, is what stops a foreign page from posting).
-    $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    // On HTTPS (also behind a TLS-ending proxy listed in trusted_proxies) it is SameSite=None; Secure, so a form
+    // embedded in an iframe on another site can be submitted (the CSRF token, not the cookie, stops a foreign page).
+    $config = $GLOBALS['config'] ?? [];
+    $https = bbf_request_https($config);
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
     ini_set('session.use_trans_sid', '0');
     session_name('BBFSID');
-    session_set_cookie_params(['lifetime' => 0, 'path' => rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/'))), '/') . '/',
+    session_set_cookie_params(['lifetime' => 0, 'path' => bbf_cookie_path($config),
         'secure' => $https, 'httponly' => true, 'samesite' => $https ? 'None' : '']);
     session_start();
     if (empty($_SESSION['bbf_secret'])) {
@@ -853,10 +854,17 @@ function bbf_submit_upload_field(array $config, string $formId): array {
     return $fields[$name];
 }
 
+/** Upload storage not ready: the respondent gets a translated message, the setup advice goes to the error log (the sandbox is the admin). */
+function bbf_submit_upload_unavailable(array $root, bool $isSandbox): never {
+    if ($isSandbox) respond($root['code'], $root['error']);
+    error_log('BareBonesForms uploads: ' . $root['error']);
+    respond($root['code'], msg('uploadCannotStore'));
+}
+
 function bbf_submit_upload(array $config, string $formId, bool $isSandbox): never {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, 'Method not allowed.');
     $root = bbf_uploads_root($config, !$isSandbox);
-    if (!$root['ok']) respond($root['code'], $root['error']);
+    if (!$root['ok']) bbf_submit_upload_unavailable($root, $isSandbox);
     $ip = bbf_client_ip($config);
     // Every request counts, including ones rejected below.
     if (!$isSandbox && !bbf_uploads_rate_limit($config, $ip)) respond(429, msg('uploadRateLimit'), ['retry_after' => 60]);
@@ -915,7 +923,7 @@ function bbf_submit_json_body(): mixed {
 function bbf_submit_upload_delete(array $config, string $formId, bool $isSandbox): never {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(405, 'Method not allowed.');
     $root = bbf_uploads_root($config, false);
-    if (!$root['ok']) respond($root['code'], $root['error']);
+    if (!$root['ok']) bbf_submit_upload_unavailable($root, $isSandbox);
     if (!$isSandbox) bbf_submit_upload_csrf($config, $formId);
     $body = bbf_submit_json_body();
     $token = is_array($body) ? ($body['token'] ?? null) : null;

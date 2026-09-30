@@ -3,6 +3,32 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.7] — 2026-09-30
+
+Fixes from the review of 2.1.6.
+
+### Security
+- **Breaking: a token that is easy to guess is refused.** Sample values (`your-secret-token`, `change-me`), words, names, years, keyboard runs (`qwerty`) and repeats are ignored like a too-short token. Set a random one: `php -r "echo bin2hex(random_bytes(24));"`. After the upgrade run `php check.php` or `php maintenance.php selfcheck`: they name every ignored token. Details: the right token always signs in, even from an address blocked for wrong tokens, so the token itself must withstand fast guessing (about 1500 tries per second were measured). Each token now gets a pessimistic estimate of the guessing work, where words (also Capitalised or in leetspeak), sample-value parts, runs, years and repeats cost only a few bits; it needs at least 44 bits (2^44 guesses at 1500/s take about 370 years) and must not consist of such parts only. `password12345678`, `adminadminadmin1`, `qwertyuiopasdfgh`, `Summer2026!Summer` and `my-super-secret-api-token` are refused; of 1 000 000 random tokens of each kind (16 and 32 hex digits, base64, UUID, password-manager output) none was. The documentation no longer shows a sample token.
+- **An expired or revoked token** sent from a blocked address is answered `429` like any other wrong token, instead of `403`, which told that it had once been valid.
+- **A CSV/export link opened from another site** (webmail, chat) explains why its `?token=` is ignored instead of a bare "Access denied.".
+- **Release workflow:** after publishing, the release files are downloaded again from GitHub and checked against the `SHA256SUMS` made when they were built, not only between the build and publish jobs.
+
+### Fixed
+- **Drafts and file uploads after an expired session:** saving, loading or deleting a draft, uploading and removing a file refresh the CSRF token once after `403` and repeat the request, as sending the form does. Before, every draft save failed in a tab opened before the upgrade to 2.1.6 (cookie `BBFSID`) or more than 24 minutes ago, and the advice to reload lost the answers the draft was meant to keep.
+- **A field with a numeric name** (`"7"`, `"2024"`) is filled into `redirect` again (`{{7}}`); 2.1.6 left it empty.
+- **Security-rules notice after an upgrade:** an `.htaccess.dist` left by any earlier release is replaced by this release's, and `.htaccess` is compared by its rules only, so a release that changes only comments raises no daily "Security rules missing".
+- **`docs.html`** no longer shows a version in its title (a code-only upgrade does not replace it, so it showed an old one).
+- **Behind a reverse proxy:** new `cookie_path` for a proxy that serves the folder under another path (`/forms/` → `/bbf/`), where every submission used to fail with `403`. `X-Forwarded-Proto: https` from a proxy listed in `trusted_proxies` counts as HTTPS, so cookies are `Secure` and forms in iframes on other sites work behind a proxy that ends TLS.
+- **`"redirect": "#done"` on a page with `<base href>`** (single-page apps) stays on the page instead of navigating to the base address.
+- **`show_if` with an object as `value`** is reported by the definition check (the browser and the server compared it differently). `form.schema.json` accepts `"value": 5`, `true` and `"op": null`, which the engine has accepted since 2.1.6.
+- **Restoring a backup made with a now-refused token** names that token and says how to replace it, instead of "Restore access policy does not match".
+- **Upgrade:** the `--apply` result repeats the access warnings, judged by the code just installed. A token check or package upgrader that crashes reports its exit code instead of looking like success. A long **Breaking** note ends at a full sentence instead of being cut in the middle.
+- **Upload storage not ready** (folder in the web root, not writable): the respondent gets "The server cannot store uploads right now." in their language; the setup advice goes to the PHP error log (and still to the editor's sandbox).
+- **E-mail confirmation box** is labelled from the language pack (`emailConfirm`, all 34 languages) instead of an English "Confirm …" guessed from another message.
+
+### Upgrading from 2.1.6 or older
+Use `--checksum`: then the 2.1.7 upgrader inside the package plans and applies the upgrade and names every token 2.1.7 will ignore, in the dry run and again in the `--apply` result. Without it the installed upgrader does all the work and judges tokens by its own, older rules. The process you start is always the installed version, so under 2.1.5 or older it can still hang on very many PHP notices (turn `display_errors` off for the command: `php -d display_errors=0 maintenance.php upgrade …`). In any case run `php check.php` or `php maintenance.php selfcheck` after the upgrade.
+
 ## [2.1.6] — 2026-09-30
 
 Fixes from the review of 2.1.5.

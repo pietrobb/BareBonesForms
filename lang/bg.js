@@ -23,6 +23,7 @@ BBF.registerLang('bg', {
     tooLong:           '{label} трябва да съдържа най-много {max} символа.',
     invalidFormat:     '{label} има невалиден формат.',
     emailMismatch:    'Адресите за {label} не съвпадат.',
+    emailConfirm:     'Потвърдете {label}',
     dateMin:          '{label} трябва да бъде на или след {min}.',
     dateMax:          '{label} трябва да бъде на или преди {max}.',
     nextPage:         'Напред',

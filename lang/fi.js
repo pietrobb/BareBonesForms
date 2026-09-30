@@ -23,6 +23,7 @@ BBF.registerLang('fi', {
     tooLong:           '{label} saa olla enintään {max} merkkiä.',
     invalidFormat:     '{label} on virheellisessä muodossa.',
     emailMismatch:    '{label}-osoitteet eivät täsmää.',
+    emailConfirm:     'Vahvista {label}',
     dateMin:          '{label} on oltava {min} tai myöhempi.',
     dateMax:          '{label} on oltava {max} tai aikaisempi.',
     nextPage:         'Seuraava',

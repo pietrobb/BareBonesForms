@@ -23,6 +23,7 @@ BBF.registerLang('ko', {
     tooLong:           '{label}은(는) {max}자 이하여야 합니다.',
     invalidFormat:     '{label}의 형식이 올바르지 않습니다.',
     emailMismatch:    '{label} 주소가 일치하지 않습니다.',
+    emailConfirm:     '{label} 확인',
     dateMin:          '{label}은(는) {min} 이후여야 합니다.',
     dateMax:          '{label}은(는) {max} 이전이어야 합니다.',
     nextPage:         '다음',

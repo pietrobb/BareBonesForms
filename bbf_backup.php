@@ -53,6 +53,31 @@ function bbf_backup_access_policy(array $config, string $formId): array {
     return ['legacy_admin' => $legacy !== '', 'principals' => $principals];
 }
 
+/**
+ * Names of tokens (api_token, access_tokens ids) that are long enough but now rejected as guessable, when counting
+ * them back in reproduces the backup's policy exactly: a bundle from 2.1.6 or older made with such a token.
+ */
+function bbf_backup_newly_weak(array $config, string $formId, $bundlePolicy): array {
+    $legacy = $config['api_token'] ?? '';
+    $records = $config['access_tokens'] ?? [];
+    if (!is_string($legacy) || !is_array($records) || !is_array($bundlePolicy)) return [];
+    $longWeak = static fn($t): bool => is_string($t) && strlen($t) >= BBF_AUTH_MIN_TOKEN && bbf_auth_token_weak($t);
+    $names = $longWeak($legacy) ? ['api_token'] : [];
+    try { $policy = bbf_backup_access_policy($config, $formId); } catch (RuntimeException $e) { return []; }
+    if ($names !== []) $policy['legacy_admin'] = true;
+    foreach ($records as $r) {
+        if (!is_array($r) || !$longWeak($r['token'] ?? null) || !is_string($r['id'] ?? null)) continue;
+        $names[] = $r['id'];
+        if (!in_array($formId, (array)($r['forms'] ?? []), true)) continue;
+        $permissions = (array)($r['permissions'] ?? []);
+        sort($permissions, SORT_STRING);
+        $policy['principals'][] = ['id' => $r['id'], 'permissions' => $permissions,
+            'expires_at' => $r['expires_at'] ?? null, 'revoked' => $r['revoked'] ?? null];
+    }
+    usort($policy['principals'], static fn(array $a, array $b): int => strcmp($a['id'], $b['id']));
+    return $names !== [] && $policy === $bundlePolicy ? $names : [];
+}
+
 function bbf_backup_audit_capture(array $config, string $formId): array {
     $path = rtrim($config['logs_dir'] ?? __DIR__ . '/logs', '/\\') . '/access-audit.php';
     if (!is_file($path)) return [];
@@ -347,6 +372,10 @@ function bbf_backup_restore_plan(array $config, string $path): array {
         throw new RuntimeException('Restore backend does not match the logical backup source.');
     }
     if (bbf_backup_access_policy($config, $payload['form']) !== $payload['access']) {
+        $weak = bbf_backup_newly_weak($config, $payload['form'], $payload['access']);
+        if ($weak !== []) throw new RuntimeException('The backup was made while ' . implode(', ', $weak)
+            . ' had a token that this version rejects as easy to guess, so the access policy no longer matches.'
+            . ' Set a random token in config.php (php -r "echo bin2hex(random_bytes(24));") and restore again.');
         throw new RuntimeException('Restore access policy does not match the protected target.');
     }
     $empty = bbf_backup_target_empty($effective, $payload);

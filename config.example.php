@@ -76,7 +76,12 @@ return [
     // stored IPs would lump everyone together. List the proxy addresses / CIDR ranges here to use the visitor
     // address from X-Forwarded-For instead (only trusted when the request really comes from one of them).
     // An invalid entry (e.g. "10.0.0.0/") is ignored and reported by check.php; it never widens to "everyone".
+    // A listed proxy's X-Forwarded-Proto: https also counts as HTTPS (Secure cookies, forms in iframes on other sites).
     // 'trusted_proxies' => ['173.245.48.0/20', '103.21.244.0/22', '2400:cb00::/32'],
+
+    // Path of the session cookies. Empty = the folder PHP runs in. Set it when a reverse proxy serves this folder
+    // under another path (visitors open /forms/, PHP runs in /bbf/): 'cookie_path' => '/forms/'.
+    // 'cookie_path' => '',
 
     // Honeypot field name (anti-spam, hidden field)
     'honeypot_field' => '_bbf_hp',
@@ -151,8 +156,8 @@ return [
     // Optional per-form tokens with limited permissions (read, export, delete, review). Example:
     // ['id'=>'reader-1', 'token'=>'RANDOM_SECRET', 'forms'=>['contact'], 'permissions'=>['read'], 'expires_at'=>'2027-01-01T00:00:00Z', 'revoked'=>false]
     // read+export for CSV/forward, read+delete for deletion, read+review for inbox metadata; empty lists grant nothing.
-    // Every token needs at least 16 random characters; a shorter one or an obvious pattern ("aaaa…", "1234…")
-    // is ignored on its own (check.php names it).
+    // Every token needs at least 16 random characters; a shorter one or one that is easy to guess (sample values
+    // such as "your-secret-token", words, "qwerty", "1234…", repetition) is ignored on its own (check.php names it).
     // A malformed or duplicate record disables ALL access, including api_token. The editor accepts only api_token.
     'access_tokens' => [],
 

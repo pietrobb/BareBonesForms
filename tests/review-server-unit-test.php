@@ -140,7 +140,8 @@ server_check(isset($m[0]), 'ensureSession() found in submit.php');
 if (isset($m[0])) {
     // Fresh process: sessions cannot start once this test has printed output.
     // No cookies in CLI: session_set_cookie_params() then warns, which must not end up in the JSON on stdout.
-    $child = 'ini_set("display_errors", "stderr"); ini_set("session.save_path", ' . var_export($root, true) . '); ini_set("session.use_cookies", "0"); ini_set("session.cache_limiter", "");'
+    $child = 'define("BBF_LOADED", true); require ' . var_export(dirname(__DIR__) . '/bbf_auth.php', true) . ';'
+        . ' ini_set("display_errors", "stderr"); ini_set("session.save_path", ' . var_export($root, true) . '); ini_set("session.use_cookies", "0"); ini_set("session.cache_limiter", "");'
         . $m[0] . ' ensureSession(); $secret = $_SESSION["bbf_secret"] ?? ""; $file = ' . var_export($root, true) . ' . "/sess_" . session_id();'
         . ' $lock = fopen($file, "r+"); $free = $lock && flock($lock, LOCK_EX | LOCK_NB); if ($lock) { flock($lock, LOCK_UN); fclose($lock); }'
         . ' $closed = session_status() === PHP_SESSION_NONE; ensureSession();'
@@ -181,6 +182,26 @@ server_check(bbf_redirect_url('/t?tags={{tags}}&x={{missing}}', ['tags' => []]) 
 server_check(bbf_redirect_url('/t?ok={{ok}}', ['ok' => true]) === '/t?ok=1', 'a boolean becomes 1');
 server_check(bbf_redirect_url('/thanks?ref={{_id}}&f={{_form}}', ['_id' => 'spoofed'], ['_id' => 'bbf_0a1b', '_form' => 'Kontakt & more']) === '/thanks?ref=bbf_0a1b&f=Kontakt%20%26%20more',
     'review 2.1.5: {{_id}} and {{_form}} fill in the redirect and win over a field of that name');
+server_check(bbf_redirect_url('/t?a={{7}}&y={{2024}}&r={{_id}}', ['7' => 'seven', '2024' => 'year'], ['_id' => 'bbf_1']) === '/t?a=seven&y=year&r=bbf_1',
+    'review 2.1.6: a field with a numeric name ("7", "2024") still fills the redirect');
+
+// ─── Review 2.1.6: cookies behind a reverse proxy ───────────────────
+$serverBefore = $_SERVER;
+$_SERVER['SCRIPT_NAME'] = '/bbf/submit.php';
+server_check(bbf_cookie_path([]) === '/bbf/' && bbf_cookie_path(['cookie_path' => '/forms']) === '/forms/'
+    && bbf_cookie_path(['cookie_path' => '/forms/']) === '/forms/', 'cookie_path overrides the folder PHP sees (proxy maps /forms/ to /bbf/)');
+server_check(bbf_cookie_path(['cookie_path' => 'forms/']) === '/bbf/' && bbf_cookie_path(['cookie_path' => "/x;\n"]) === '/bbf/'
+    && bbf_cookie_path(['cookie_path' => ['/x']]) === '/bbf/', 'an invalid cookie_path falls back to the installation folder');
+unset($_SERVER['HTTPS']);
+$_SERVER['REMOTE_ADDR'] = '10.0.0.5'; $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+server_check(bbf_request_https(['trusted_proxies' => ['10.0.0.0/8']]), 'X-Forwarded-Proto: https from a trusted proxy counts as HTTPS (Secure, SameSite=None cookie)');
+server_check(!bbf_request_https([]) && !bbf_request_https(['trusted_proxies' => ['192.0.2.0/24']]),
+    'the header from an address that is not a trusted proxy is ignored');
+$_SERVER['HTTP_X_FORWARDED_PROTO'] = 'http';
+server_check(!bbf_request_https(['trusted_proxies' => ['10.0.0.0/8']]), 'X-Forwarded-Proto: http stays plain HTTP');
+$_SERVER['HTTPS'] = 'on';
+server_check(bbf_request_https([]), 'direct HTTPS is HTTPS');
+$_SERVER = $serverBefore;
 $submitSource = (string)file_get_contents(dirname(__DIR__) . '/submit.php');
 server_check(preg_match_all('/bbf_redirect_url\(\$onSubmit\[\'redirect\'\], \$data\)/', $submitSource) === 0, 'every redirect in submit.php passes the template variables');
 

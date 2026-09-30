@@ -147,7 +147,7 @@ function httpGet(string $url): array {
 
 function getSubmissions(string $formId): ?array {
     global $baseUrl;
-    $url = "$baseUrl/submissions.php?form=$formId&token=test-token-0123456789";
+    $url = "$baseUrl/submissions.php?form=$formId&token=fixture-7Qm2xK9pLw4Zr8Tn";
     $result = httpGet($url);
     if ($result['code'] === 0) {
         // Server may have died — restart and retry once
@@ -213,7 +213,7 @@ function writeConfig(string $storage): void {
         . "        'from_name'  => 'BBF Test',\n"
         . "    ],\n"
         . "    'webhook_secret' => 'test-secret',\n"
-        . "    'api_token'      => 'test-token-0123456789',\n"
+        . "    'api_token'      => 'fixture-7Qm2xK9pLw4Zr8Tn',\n"
         . "    'forms_dir'      => '" . addslashes($projectDir) . "/forms',\n"
         . "    'submissions_dir' => '" . addslashes($testSubmissionsDir) . "',\n"
         . "    'templates_dir'  => '" . addslashes($projectDir) . "/templates',\n"

@@ -23,6 +23,7 @@ BBF.registerLang('tr', {
     tooLong:           '{label} en fazla {max} karakter olmalıdır.',
     invalidFormat:     '{label} geçersiz biçimde.',
     emailMismatch:    '{label} adresleri eşleşmiyor.',
+    emailConfirm:     '{label} (tekrar)',
     dateMin:          '{label} en erken {min} olmalıdır.',
     dateMax:          '{label} en geç {max} olmalıdır.',
     nextPage:         'Sonraki',

@@ -23,6 +23,7 @@ BBF.registerLang('el', {
     tooLong:           'Το {label} πρέπει να έχει το πολύ {max} χαρακτήρες.',
     invalidFormat:     'Το {label} έχει μη έγκυρη μορφή.',
     emailMismatch:    'Οι διευθύνσεις {label} δεν ταιριάζουν.',
+    emailConfirm:     'Επιβεβαίωση: {label}',
     dateMin:          '{label} πρέπει να είναι στις {min} ή μετά.',
     dateMax:          '{label} πρέπει να είναι στις {max} ή πριν.',
     nextPage:         'Επόμενο',

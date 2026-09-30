@@ -789,7 +789,9 @@ try {
     up_check($codes === [422, 422, 429], 'upload rate limit counts rejected requests too');
     up_config($root, "$root/uploads-inside");
     $inside = up_upload($server, 'up', 'cv', 'a.pdf', $pdf);
-    up_check($inside['code'] === 503 && str_contains($inside['json']['message'] ?? '', 'inside the web root'), 'upload directory inside the web root without the flag → refused');
+    up_check($inside['code'] === 503 && ($inside['json']['message'] ?? '') === 'The server cannot store uploads right now.',
+        'upload directory inside the web root without the flag → refused; review 2.1.6: the respondent gets no setup advice ('
+        . ($inside['json']['message'] ?? '') . ')');
     up_config($root, $data, [], ['enabled' => false]);
     up_check(up_upload($server, 'up', 'cv', 'a.pdf', $pdf)['code'] === 404, 'uploads disabled → refused');
     up_config($root, $data);

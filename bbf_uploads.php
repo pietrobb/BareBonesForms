@@ -1166,7 +1166,11 @@ function bbf_uploads_plan(array $config, string $formId, string $submissionId, a
     }
     if ($wanted === []) return ['ok' => true, 'plan' => null];
     $root = bbf_uploads_root($config, !$sandbox);
-    if (!$root['ok']) return ['ok' => false, 'code' => 503, 'errors' => ['_uploads' => $root['error']]];
+    if (!$root['ok']) {
+        // Setup advice ("move uploads.dir …") is for the admin: the log and the sandbox, not the respondent.
+        if (!$sandbox) error_log('BareBonesForms uploads: ' . $root['error']);
+        return ['ok' => false, 'code' => 503, 'errors' => ['_uploads' => $sandbox ? $root['error'] : bbf_uploads_t('uploadCannotStore')]];
+    }
     $root = $root['root'];
     $u = bbf_uploads_config($config);
     $errors = [];

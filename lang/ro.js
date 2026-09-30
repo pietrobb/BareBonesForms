@@ -23,6 +23,7 @@ BBF.registerLang('ro', {
     tooLong:           '{label} trebuie să aibă cel mult {max} caractere.',
     invalidFormat:     '{label} are un format invalid.',
     emailMismatch:    'Adresele {label} nu se potrivesc.',
+    emailConfirm:     'Confirmați {label}',
     dateMin:          '{label} trebuie să fie {min} sau după.',
     dateMax:          '{label} trebuie să fie {max} sau înainte.',
     nextPage:         'Următor',

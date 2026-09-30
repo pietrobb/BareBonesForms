@@ -155,6 +155,29 @@ async function browserChecks() {
 
     const required = BBF._validate([definition.fields[1]], form, 'en');
     check('required file field without an uploaded file fails client validation', () => required.cv === 'CV is required.');
+
+    // Review 2.1.6: an expired session (403) refreshes the CSRF token once and uploads again.
+    const csrfForm = BBF._buildForm({ id: 'renew', name: 'Renew', fields: [{ name: 'doc', type: 'file', label: 'Doc', _bbf_accept: ['.pdf'], _bbf_max_size: 1000 }] },
+        'renew', './', {}, 'old-csrf', 'en', true);
+    document.body.appendChild(csrfForm);
+    const csrfWrap = csrfForm.querySelector('[data-field="doc"]');
+    const csrfInput = csrfWrap.querySelector('input[type="file"]');
+    const pick = new DataTransfer(); pick.items.add(pdf('renew.pdf'));
+    csrfInput.files = pick.files; csrfInput.dispatchEvent(new Event('change', { bubbles: true }));
+    const stale = uploads[uploads.length - 1];
+    const uploadCount = uploads.length, fetchCount = fetches.length;
+    stale.answer(403, { status: 'error', message: 'Session expired. Please reload the page.' });
+    await waitFor(() => fetches.length === fetchCount + 1);
+    check('a 403 upload asks for a fresh CSRF token', () => fetches[fetchCount].url === './submit.php?form=renew&action=csrf');
+    fetches[fetchCount].resolve(response(200, { csrf_token: 'new-csrf' }));
+    await waitFor(() => uploads.length === uploadCount + 1);
+    const renewed = uploads[uploadCount];
+    check('the upload is repeated once with the fresh token, and the form keeps it', () =>
+        renewed.headers['X-BBF-CSRF'] === 'new-csrf' && renewed.body.get('file').name === 'renew.pdf'
+        && csrfForm.querySelector('input[name="_bbf_csrf"]').value === 'new-csrf');
+    renewed.answer(200, { token: 'c'.repeat(32), expires_at: soon, file: { name: 'renew.pdf', size: 10, type: 'application/pdf' } });
+    check('the repeated upload completes without an error row', () =>
+        csrfWrap.querySelectorAll('.bbf-file-done').length === 1 && csrfWrap.querySelectorAll('.bbf-file-error').length === 0);
     check('no script errors', () => window.__errors.length === 0);
     const output = document.createElement('pre'); output.id = 'upload-ui-result';
     output.textContent = JSON.stringify(results); document.body.appendChild(output);
@@ -184,7 +207,7 @@ test('file upload client in real Chromium', () => {
         const browserResults = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
         const failures = browserResults.filter(check => !check.ok);
         assert.equal(failures.length, 0, JSON.stringify({ passed: browserResults.length - failures.length, failures }, null, 2));
-        assert.equal(browserResults.length, 17, 'all upload browser checks executed');
+        assert.equal(browserResults.length, 20, 'all upload browser checks executed');
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }

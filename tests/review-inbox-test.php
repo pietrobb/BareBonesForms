@@ -245,7 +245,7 @@ try {
             'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false],
         ['id' => 'reviewer', 'token' => 'reviewer-secret-123456789', 'forms' => ['alpha'],
             'permissions' => ['read', 'export', 'delete', 'review'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false],
-        ['id' => 'other', 'token' => 'other-secret-123456789', 'forms' => ['alpha'], 'permissions' => ['read', 'review'],
+        ['id' => 'other', 'token' => 'other-4Vd8Rk2Nq7Xw', 'forms' => ['alpha'], 'permissions' => ['read', 'review'],
             'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false],
     ];
     $endpointConfig = ['api_token' => '', 'access_tokens' => $tokens, 'storage' => 'file',

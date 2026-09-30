@@ -329,6 +329,16 @@ try {
     check_upgrade(($commentsOnly['ok'] ?? false) && in_array('.htaccess', $commentsOnly['files']['keep_yours'] ?? [], true)
         && !in_array('.htaccess.dist', $commentsOnly['added'] ?? [], true) && !str_contains(implode(' ', $commentsOnly['notices'] ?? []), 'security rules'),
         'changed comments only: your .htaccess is kept without a security-rules notice');
+    // Review 2.1.6: an .htaccess.dist of the previous release is brought up to date even when only comments changed.
+    upgrade_copy("$tmp/site", "$tmp/hta4");
+    file_put_contents("$tmp/hta4/.htaccess", "AddHandler application/x-httpd-php84 .php\n", FILE_APPEND);
+    copy("$tmp/new/.htaccess", "$tmp/hta4/.htaccess.dist");
+    $distPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly3"], "$tmp/hta4")['json'] ?? [];
+    $distRefresh = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly3", '--apply', '--confirm=' . ($distPlan['confirm'] ?? '')], "$tmp/hta4")['json'] ?? [];
+    check_upgrade(($distRefresh['ok'] ?? false) && in_array('.htaccess.dist', $distPlan['replaced'] ?? [], true)
+        && @file_get_contents("$tmp/hta4/.htaccess.dist") === file_get_contents("$tmp/codeonly3/.htaccess.dist")
+        && !str_contains(implode(' ', $distPlan['notices'] ?? []), 'security rules'),
+        'review 2.1.6: an older .htaccess.dist is replaced by this release\'s, without a security-rules notice');
     $missingScript = "$tmp/missing-rules.php";
     file_put_contents($missingScript, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true) . '; echo json_encode(bbf_htaccess_missing_rules($argv[1]));');
     $missing = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
@@ -351,6 +361,11 @@ try {
     copy("$tmp/new/.htaccess", "$tmp/hta/.htaccess.dist");
     $recent = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
     check_upgrade(str_contains(implode(' ', $recent ?? []), 'earlier release'), 'an .htaccess.dist of an earlier release with all essential rules is recognized by its hash');
+    $htaBefore = file_get_contents("$tmp/hta/.htaccess");
+    file_put_contents("$tmp/hta/.htaccess", file_get_contents("$tmp/new/.htaccess") . "AddHandler application/x-httpd-php84 .php\n");
+    check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [],
+        'review 2.1.6: an earlier release\'s .htaccess.dist whose rules your .htaccess already has raises no daily warning');
+    file_put_contents("$tmp/hta/.htaccess", $htaBefore);
     file_put_contents("$tmp/hta/.htaccess.dist", str_replace("\n", "\r\n", (string)file_get_contents("$tmp/codeonly2/.htaccess.dist")));
     $current = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
     check_upgrade(!str_contains(implode(' ', $current ?? []), 'earlier release') && str_contains(implode(' ', $current ?? []), 'compare it with .htaccess.dist'),
@@ -464,6 +479,24 @@ try {
     check_upgrade(($unverifiedPlan['check']['status'] ?? '') === 'skipped' && str_contains(implode(' ', $unverifiedPlan['access_warnings'] ?? []), 'short-one')
         && str_starts_with((string)($unverifiedPlan['access_warnings_by'] ?? ''), 'installed version'),
         'a dry run without --checksum still names the ignored token (judged by the installed code): ' . json_encode($unverifiedPlan['access_warnings'] ?? null));
+    // Review 2.1.6: the result of --apply names the ignored token again, judged by the code now installed.
+    $tokenApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new", '--apply', '--confirm=' . ($tokenPlan['confirm'] ?? '')], "$tmp/tokens")['json'] ?? [];
+    check_upgrade(($tokenApply['ok'] ?? false) === true && str_contains(implode(' ', $tokenApply['access_warnings'] ?? []), 'short-one'),
+        'the --apply result repeats the access warnings: ' . json_encode($tokenApply['access_warnings'] ?? $tokenApply));
+    // A token check that cannot run (config.php dies) says so instead of reporting "no problems".
+    upgrade_copy("$tmp/site", "$tmp/deadcfg");
+    file_put_contents("$tmp/deadcfg/config.php", "<?php\nfwrite(STDERR, 'config exploded'); exit(3);\n");
+    $unitScript = "$tmp/upgrade-unit.php";
+    file_put_contents($unitScript, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true) . ';'
+        . ' $long = "## [9.9.9]\n### Breaking\n- " . str_repeat("Filler sentence here. ", 40) . "Set a random token.\n";'
+        . ' echo json_encode(["dead" => bbf_upgrade_access_warnings($argv[1], $argv[2]), "note" => bbf_upgrade_breaking($long, "9.9.8", "9.9.9")[0] ?? ""]);');
+    $unit = upgrade_run([PHP_BINARY, $unitScript, $repo, "$tmp/deadcfg"], $tmp)['json'] ?? [];
+    $dead = $unit['dead'] ?? [];
+    check_upgrade(count($dead) === 1 && str_contains($dead[0], 'exit code 3') && str_contains($dead[0], 'config exploded'),
+        'a crashed token check is reported with its exit code: ' . json_encode($dead));
+    // A long Breaking note ends at a full sentence, not in the middle of the instruction.
+    $note = (string)($unit['note'] ?? '');
+    check_upgrade(str_ends_with($note, 'here. ...') && strlen($note) < 720, 'a long Breaking note is cut at a sentence end: ' . substr($note, -40));
 
     // ─── First upgrade of a pre-2.1 installation (no manifest), run from the unpacked release ─
     upgrade_copy("$tmp/site", "$tmp/legacy");

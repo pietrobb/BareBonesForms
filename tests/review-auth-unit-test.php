@@ -50,15 +50,34 @@ auth_check(bbf_auth_config_problems($good) === [], 'a valid configuration report
 // ─── Review 2.1.5: guessable patterns are no credential ────────────
 foreach ([str_repeat('a', 32), '1234567890123456', 'abcdefghijklmnopqrstuvwxyz', '9876543210987654', 'abababababababababab', 'abcabcabcabcabcabc', 'aaaabbbbccccdddd'] as $weak)
     auth_check(bbf_auth_token_weak($weak) && !bbf_auth_token_usable($weak), "weak token rejected: $weak");
-foreach (['9f2c7a41e0b83d56', 'rd-5Kq8zW2mXv7Lp3', 'smoke-token-long-0123', 'Tr0ub4dor&3-horse-battery'] as $strong)
+foreach (['9f2c7a41e0b83d56', 'rd-5Kq8zW2mXv7Lp3', 'smoke-token-long-0123', 'Tr0ub4dor&3-horse-battery', 'correct horse battery staple'] as $strong)
     auth_check(!bbf_auth_token_weak($strong), "random-looking token accepted: $strong");
-$falsePositives = 0;
-for ($i = 0; $i < 20000; $i++) if (bbf_auth_token_weak(bin2hex(random_bytes(8)))) $falsePositives++;
-auth_check($falsePositives <= 1, "random 16-hex-digit tokens are practically never flagged ($falsePositives of 20000)");
+// ─── Review 2.1.6: dictionary words, placeholders and keyboard runs are no credential ─
+foreach (['password12345678', 'adminadminadmin1', 'qwertyuiopasdfgh', 'Summer2026!Summer', 'your-secret-token', 'YOUR_SECRET_TOKEN',
+    'my-super-secret-api-token', 'LONG_RANDOM_SECRET', 'change-me-please-now', 'P4ssw0rd!P4ssw0rd', 'Heslo2026Heslo2026',
+    'test-token-0123456789', 'zxcvbnm,./asdfgh', 'Password2026Password'] as $weak)
+    auth_check(bbf_auth_token_weak($weak) && !bbf_auth_token_usable($weak), "dictionary/keyboard token rejected: $weak");
+$rand = static function (int $len, string $set): string { $s = ''; for ($i = 0; $i < $len; $i++) $s .= $set[random_int(0, strlen($set) - 1)]; return $s; };
+$printable = implode('', array_map('chr', range(33, 126)));
+$generators = [
+    '16 hex digits' => static fn(): string => bin2hex(random_bytes(8)),
+    '32 hex digits' => static fn(): string => bin2hex(random_bytes(16)),
+    '16 base64url' => static fn(): string => rtrim(strtr(base64_encode(random_bytes(12)), '+/', '-_'), '='),
+    'UUID' => static fn(): string => vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex(random_bytes(16)), 4)),
+    '16 printable (password manager)' => static fn(): string => $rand(16, $printable),
+];
+foreach ($generators as $kind => $generate) {
+    $falsePositives = 0;
+    for ($i = 0; $i < 20000; $i++) if (bbf_auth_token_weak($generate())) $falsePositives++;
+    auth_check($falsePositives === 0, "random tokens ($kind) are never flagged ($falsePositives of 20000)");
+}
 $weakAdmin = ['api_token' => '1234567890123456'] + $good;
 $wm = implode(' ', array_column(bbf_auth_config_problems($weakAdmin), 'message'));
-auth_check(str_contains($wm, 'guessable pattern') && !str_contains($wm, '1234567890123456') && count(bbf_auth_registry($weakAdmin)) === 1,
+auth_check(str_contains($wm, 'too easy to guess') && !str_contains($wm, '1234567890123456') && count(bbf_auth_registry($weakAdmin)) === 1,
     'a patterned api_token is reported (without its value) and ignored alone');
+$sampleAdmin = ['api_token' => 'your-secret-token'] + $good;
+auth_check(count(bbf_auth_registry($sampleAdmin)) === 1 && str_contains(implode(' ', array_column(bbf_auth_config_problems($sampleAdmin), 'message')), 'too easy to guess'),
+    'the old documentation sample your-secret-token is no admin credential and is reported');
 $weakRecord = $good; $weakRecord['access_tokens'][] = $token('seq', 'abcdefghijklmnop');
 auth_check(count(bbf_auth_registry($weakRecord)) === 2 && str_contains(implode(' ', array_column(bbf_auth_config_problems($weakRecord), 'message')), 'seq'),
     'a patterned access token is skipped and named by id');
@@ -84,6 +103,14 @@ try {
 } catch (Throwable $error) {
     auth_check(false, 'backup with a short token: ' . $error->getMessage());
 }
+// Review 2.1.6: a bundle made by 2.1.6 with the documented sample token names it, instead of a bare policy mismatch.
+$sample = ['api_token' => 'your-secret-token', 'access_tokens' => []];
+$oldBundle = ['legacy_admin' => true, 'principals' => []];
+auth_check(bbf_backup_access_policy($sample, 'a') !== $oldBundle && bbf_backup_newly_weak($sample, 'a', $oldBundle) === ['api_token'],
+    'a 2.1.6 bundle made with a now-rejected sample api_token is explained by name');
+auth_check(bbf_backup_newly_weak($sample, 'a', ['legacy_admin' => false, 'principals' => [['id' => 'x']]]) === [],
+    'an unrelated policy mismatch is not blamed on the weak token');
+auth_check(bbf_backup_newly_weak(['api_token' => bin2hex(random_bytes(16))], 'a', $oldBundle) === [], 'a strong token is never blamed');
 
 // ─── Throttle file stays bounded ───────────────────────────────────
 $logs = sys_get_temp_dir() . '/bbf-auth-unit-' . bin2hex(random_bytes(4));

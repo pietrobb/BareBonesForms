@@ -28,6 +28,7 @@ BBF.registerLang('de', {
     tooLong:           '{label} darf höchstens {max} Zeichen lang sein.',
     invalidFormat:     '{label} hat ein ungültiges Format.',
     emailMismatch:    '{label}-Adressen stimmen nicht überein.',
+    emailConfirm:     '{label} bestätigen',
     dateMin:          '{label} muss am oder nach dem {min} liegen.',
     dateMax:          '{label} muss am oder vor dem {max} liegen.',
     nextPage:         'Weiter',

@@ -71,7 +71,7 @@ return [
         'from_name'  => 'BBF Test',
     ],
     'webhook_secret' => 'test-secret',
-    'api_token'      => 'test-token-0123456789',
+    'api_token'      => 'fixture-7Qm2xK9pLw4Zr8Tn',
     'forms_dir'      => __DIR__ . '/forms',
     'submissions_dir' => __DIR__ . '/submissions',
     'templates_dir'  => __DIR__ . '/templates',
@@ -221,7 +221,7 @@ $serverProc = bbf_test_start_server($projectDir, $host, $port);
 bbf_test_verify_server($serverProc);
 pass("PHP dev server running on $host:$port");
 // Login once over owned HTTP; the fixture session survives server restarts.
-$login = bbf_test_http($serverProc, "$baseUrl/sandbox.php", null, ['headers' => ['X-BBF-Token' => 'test-token-0123456789']]);
+$login = bbf_test_http($serverProc, "$baseUrl/sandbox.php", null, ['headers' => ['X-BBF-Token' => 'fixture-7Qm2xK9pLw4Zr8Tn']]);
 preg_match('/^Set-Cookie:\s*(BBFADMIN=[^;\r\n]+)/mi', $login['headers'], $sessionCookie);
 preg_match('/const sandboxCsrf = ("[a-f0-9]{64}")/', $login['body'], $sessionCsrf);
 if ($login['code'] !== 200 || empty($sessionCookie[1]) || empty($sessionCsrf[1])) { fail('fixture admin login must return HTTP 200, session cookie and management CSRF'); exit(1); }

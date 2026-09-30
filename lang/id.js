@@ -23,6 +23,7 @@ BBF.registerLang('id', {
     tooLong:           '{label} harus maksimal {max} karakter.',
     invalidFormat:     '{label} memiliki format yang tidak valid.',
     emailMismatch:    'Alamat {label} tidak cocok.',
+    emailConfirm:     'Konfirmasi {label}',
     dateMin:          '{label} harus pada atau setelah {min}.',
     dateMax:          '{label} harus pada atau sebelum {max}.',
     nextPage:         'Berikutnya',

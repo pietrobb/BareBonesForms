@@ -229,6 +229,8 @@ try {
         if ($state === 'revoked') $c['access_tokens'][0]['revoked'] = true;
         if ($state === 'expired') $c['access_tokens'][0]['expires_at'] = '2000-01-01T00:00:00Z';
         sb_config($c);
+        // Since 2.1.7 a revoked/expired token counts as a wrong one; start each state with a clean wrong-token budget.
+        @unlink("$root/logs/.auth_failures.json");
         $scoped = ['headers' => ['X-BBF-Token' => $base['access_tokens'][0]['token']]];
         foreach (['sandbox.php', 'sandbox.php?action=forms', 'sandbox.php?action=definition&form=alpha'] as $path)
             sb_check(sb_http($path, $scoped)['code'] === 403, "$state scoped token denied $path");

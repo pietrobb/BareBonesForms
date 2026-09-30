@@ -23,6 +23,7 @@ BBF.registerLang('fr', {
     tooLong:           '{label} doit comporter au maximum {max} caractères.',
     invalidFormat:     '{label} a un format invalide.',
     emailMismatch:    'Les adresses {label} ne correspondent pas.',
+    emailConfirm:     'Confirmez {label}',
     dateMin:          '{label} doit être le {min} ou après.',
     dateMax:          '{label} doit être le {max} ou avant.',
     nextPage:         'Suivant',

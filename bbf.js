@@ -72,6 +72,7 @@
             tooLong:          '{label} must be at most {max} characters.',
             invalidFormat:    '{label} has invalid format.',
             emailMismatch:    '{label} addresses do not match.',
+            emailConfirm:     'Confirm {label}',
             dateMin:          '{label} must be on or after {min}.',
             dateMax:          '{label} must be on or before {max}.',
             nextPage:         'Next',
@@ -702,15 +703,18 @@
                     if (entry.xhr) entry.xhr.abort();
                     if (entry.token && !sandbox) {
                         const csrf = formEl.querySelector('input[name="_bbf_csrf"]');
-                        const headers = Object.assign({ 'Content-Type': 'application/json' }, csrf ? { 'X-BBF-CSRF': csrf.value } : {}, upload.headers || {});
-                        fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=upload_delete`,
-                            { method: 'POST', headers, body: JSON.stringify({ token: entry.token }), credentials: 'same-origin' }).catch(() => {});
+                        const deleteRequest = () => fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=upload_delete`, {
+                            method: 'POST', body: JSON.stringify({ token: entry.token }), credentials: 'same-origin',
+                            headers: Object.assign({ 'Content-Type': 'application/json' }, csrf ? { 'X-BBF-CSRF': csrf.value } : {}, upload.headers || {}) });
+                        deleteRequest().then(async resp => {
+                            if (resp.status === 403 && csrf && await this._refreshCsrf(baseUrl, formId, formEl)) await deleteRequest();
+                        }).catch(() => {});
                     }
                     wrap._bbfFiles = wrap._bbfFiles.filter(f => f !== entry);
                     entry.row.remove();
                     changed();
                 };
-                const send = entry => {
+                const send = (entry, csrfRetried = false) => {
                     entry.state = 'uploading'; entry.message = ''; entry.progress = 0; entry.retryable = false;
                     render(entry); changed();
                     const xhr = new XMLHttpRequest();
@@ -728,7 +732,11 @@
                         render(entry); changed();
                         status.textContent = entry.message;
                     };
-                    xhr.addEventListener('load', () => {
+                    xhr.addEventListener('load', async () => {
+                        // Expired session or renamed cookie: refresh the token once and upload again.
+                        if (xhr.status === 403 && csrf && !csrfRetried && entry.xhr === xhr) {
+                            if (await this._refreshCsrf(baseUrl, formId, formEl) && entry.xhr === xhr) { send(entry, true); return; }
+                        }
                         let result = {};
                         try { result = JSON.parse(xhr.responseText); } catch (error) { /* non-JSON error page */ }
                         if (xhr.status === 200 && typeof result.token === 'string') {
@@ -940,14 +948,38 @@
             return 'bbf:draft:' + new URL(baseUrl, location.href).href + ':' + formId;
         },
 
-        _draftRequest: async function(baseUrl, formId, action, body, isSameOrigin, langCode) {
+        /** Fetches a fresh CSRF token (the session expired or its cookie changed) and stores it in the form's hidden field. */
+        _refreshCsrf: async function(baseUrl, formId, formEl) {
+            try {
+                const resp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`, { credentials: 'same-origin' });
+                const token = resp.ok ? (await resp.json()).csrf_token : null;
+                if (!token) return null;
+                const field = formEl && formEl.querySelector('input[name="_bbf_csrf"]');
+                if (field) field.value = token;
+                return token;
+            } catch (error) { return null; }
+        },
+
+        /** The form's current CSRF token: the hidden field is updated whenever a request refreshes it. */
+        _csrfValue: function(formEl, fallback) {
+            const field = formEl && formEl.querySelector('input[name="_bbf_csrf"]');
+            return field ? field.value : (fallback || '');
+        },
+
+        _draftRequest: async function(baseUrl, formId, action, body, isSameOrigin, langCode, formEl) {
             const options = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
             };
             if (isSameOrigin) options.credentials = 'same-origin';
-            const response = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=${action}${langCode ? '&lang=' + encodeURIComponent(langCode) : ''}`, options);
+            const url = `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=${action}${langCode ? '&lang=' + encodeURIComponent(langCode) : ''}`;
+            let response = await fetch(url, options);
+            // Expired session or renamed cookie: refresh the token once and repeat, so the answers are not lost.
+            if (response.status === 403 && isSameOrigin && formEl && '_bbf_csrf' in body) {
+                const token = await this._refreshCsrf(baseUrl, formId, formEl);
+                if (token) response = await fetch(url, Object.assign({}, options, { body: JSON.stringify(Object.assign({}, body, { _bbf_csrf: token })) }));
+            }
             const result = await response.json().catch(() => ({ status: 'error', message: this._t('errorDefault') }));
             if (!response.ok) {
                 const error = new Error(result.message || this._t('errorDefault'));
@@ -1052,9 +1084,9 @@
             save.addEventListener('click', async () => {
                 const current = ++request; const submittedHandle = code.value.trim(); busy(true); announce(this._t('draftSaving', {}, langCode));
                 const body = this._draftCollect(formEl, fields, policy.fields);
-                body._bbf_csrf = csrfToken || ''; if (submittedHandle) body._bbf_draft_handle = submittedHandle;
+                body._bbf_csrf = this._csrfValue(formEl, csrfToken); if (submittedHandle) body._bbf_draft_handle = submittedHandle;
                 try {
-                    const result = await this._draftRequest(baseUrl, formId, 'draft_save', body, isSameOrigin, langCode);
+                    const result = await this._draftRequest(baseUrl, formId, 'draft_save', body, isSameOrigin, langCode, formEl);
                     if (current !== request || code.value.trim() !== submittedHandle) return;
                     code.value = result.handle;
                     try { localStorage.setItem(storageKey, result.handle); } catch (error) { /* code remains visible */ }
@@ -1068,7 +1100,7 @@
             resume.addEventListener('click', async () => {
                 const current = ++request; const submittedHandle = code.value.trim(); busy(true); announce(this._t('draftLoading', {}, langCode));
                 try {
-                    const result = await this._draftRequest(baseUrl, formId, 'draft_load', { _bbf_csrf: csrfToken || '', _bbf_draft_handle: submittedHandle }, isSameOrigin, langCode);
+                    const result = await this._draftRequest(baseUrl, formId, 'draft_load', { _bbf_csrf: this._csrfValue(formEl, csrfToken), _bbf_draft_handle: submittedHandle }, isSameOrigin, langCode, formEl);
                     if (current !== request || code.value.trim() !== submittedHandle) return;
                     this._draftApply(formEl, fields, result.data, policy.fields);
                     try { localStorage.setItem(storageKey, submittedHandle); } catch (error) {}
@@ -1082,7 +1114,7 @@
             remove.addEventListener('click', async () => {
                 const current = ++request; const submittedHandle = code.value.trim(); busy(true); announce(this._t('draftDeleting', {}, langCode));
                 try {
-                    await this._draftRequest(baseUrl, formId, 'draft_delete', { _bbf_csrf: csrfToken || '', _bbf_draft_handle: submittedHandle }, isSameOrigin, langCode);
+                    await this._draftRequest(baseUrl, formId, 'draft_delete', { _bbf_csrf: this._csrfValue(formEl, csrfToken), _bbf_draft_handle: submittedHandle }, isSameOrigin, langCode, formEl);
                     if (current !== request || code.value.trim() !== submittedHandle) return;
                     code.value = ''; try { localStorage.removeItem(storageKey); } catch (error) {}
                     announce(this._t('draftDeleted', {}, langCode));
@@ -1374,15 +1406,8 @@
                         // Session expired on the new-submission path: refresh the token once, same key.
                         if (resp.status === 403 && !csrfRefreshed && isSameOrigin && '_bbf_csrf' in body) {
                             csrfRefreshed = true;
-                            try {
-                                const csrfResp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`, { credentials: 'same-origin' });
-                                const token = csrfResp.ok ? (await csrfResp.json()).csrf_token : null;
-                                if (token) {
-                                    body._bbf_csrf = token;
-                                    const csrfField = el.querySelector('input[name="_bbf_csrf"]'); if (csrfField) csrfField.value = token;
-                                    continue;
-                                }
-                            } catch (error) { /* keep the 403 */ }
+                            const token = await this._refreshCsrf(baseUrl, formId, el);
+                            if (token) { body._bbf_csrf = token; continue; }
                         }
                         break;
                     }
@@ -1412,7 +1437,8 @@
                             try { protocol = new URL(result.redirect, 'https://relative.invalid/').protocol; target = new URL(result.redirect, location.href); } catch (e) { /* invalid URL: show success instead */ }
                             // "#done" on this very page never unloads it: show the success state, then jump there.
                             const samePage = target && target.hash !== '' && target.href.split('#')[0] === String(location.href).split('#')[0];
-                            if (samePage) hashRedirect = result.redirect;
+                            // Absolute: a relative "#done" would resolve against a <base href> (SPAs) and leave the page.
+                            if (samePage) hashRedirect = target.href;
                             else if (protocol === 'https:' || protocol === 'http:') {
                                 // "Back" from the thank-you page restores this page from the back/forward cache, still
                                 // filled in and with the button disabled. Clear the stored answers (one click would
@@ -2009,9 +2035,7 @@
                 confirmInput.name = field.name + '_confirm';
                 confirmInput.id = fieldId + '-confirm';
                 confirmInput.className = 'bbf-input';
-                const confirmLabel = this._t('emailMismatch', { label: field.label || field.name }, langCode).includes('match')
-                    ? 'Confirm ' + (field.label || 'email')
-                    : (field.label || 'email') + ' (confirm)';
+                const confirmLabel = this._t('emailConfirm', { label: field.label || field.name }, langCode);
                 confirmInput.placeholder = confirmLabel;
                 confirmInput.setAttribute('aria-label', confirmLabel);
                 confirmInput.style.marginTop = '6px';
