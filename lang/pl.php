@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: plik jest większy niż {max}.',
     'uploadTotalTooLarge'   => 'Pliki łącznie przekraczają {max}.',
     'validationFailed'      => 'Popraw zaznaczone pola.',
+    'crossFieldInvalid'     => 'Odpowiedzi nie są ze sobą zgodne. Sprawdź je, proszę.',
     'csrfInvalid'           => 'Sesja wygasła. Odśwież stronę i spróbuj ponownie.',
     'invalidUtf8'           => 'Wysłany tekst zawiera nieprawidłowe znaki.',
     'draftExpired'          => 'Zapisany postęp wygasł.',

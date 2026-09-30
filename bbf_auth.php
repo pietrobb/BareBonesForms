@@ -7,9 +7,9 @@
 defined('BBF_LOADED') || exit;
 const BBF_AUTH_MIN_TOKEN = 16;
 const BBF_AUTH_MAX_FAILURES = 10;   // wrong tokens per client address ...
-const BBF_AUTH_FAILURE_WINDOW = 900; // ... per 15 minutes; then the client is blocked: wrong tokens get 429
-const BBF_AUTH_BLOCKED_INTERVAL = 2; // while blocked, one token per client is checked every 2 seconds (correct or not);
-                                     // other attempts get 429 + Retry-After at once. PHP never sleeps (no held worker or session).
+const BBF_AUTH_FAILURE_WINDOW = 900; // ... per 15 minutes; then the client is blocked: wrong tokens get 429 at once.
+                                     // A correct token is always accepted, so nobody sharing the address can lock the
+                                     // operator out; guessing is made pointless by the token strength (bbf_auth_token_weak).
 const BBF_AUTH_MAX_CLIENTS = 5000;   // cap on remembered client addresses in logs/.auth_failures.json
 const BBF_AUTH_SESSION_NAME = 'BBFADMIN'; // management sign-in cookie; public forms keep PHP's default session
 
@@ -66,7 +66,7 @@ function bbf_auth_fail(int $code = 403, string $detail = ''): void {
             . '<h1>Sign in</h1>'
             . (!empty($login['failed']) ? '<p role="alert" style="color:#c92a2a"><strong>Invalid token.</strong> It was not accepted for this page.</p>' : '')
             . (!empty($login['expired']) ? '<p role="alert" style="color:#c92a2a"><strong>The sign-in form expired.</strong> Enter the token again.</p>' : '')
-            . (!empty($login['throttled']) ? '<p role="alert" style="color:#c92a2a"><strong>Not checked.</strong> ' . htmlspecialchars($login['throttled'], ENT_QUOTES) . '</p>' : '')
+            . (!empty($login['throttled']) ? '<p role="alert" style="color:#c92a2a"><strong>Invalid token.</strong> ' . htmlspecialchars($login['throttled'], ENT_QUOTES) . '</p>' : '')
             . (!empty($login['url_token']) ? '<p role="alert" style="color:#c92a2a"><strong>Tokens in the address are not accepted.</strong> Sign in with this form (the <code>?token=</code> link no longer works).</p>' : '')
             . '<p>' . $hint . '</p>'
             . '<form method="post" action="' . htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? ''), ENT_QUOTES) . '">'
@@ -146,8 +146,8 @@ function bbf_ip_in_list(string $ip, array $list): bool {
 
 /**
  * Runs $fn($state, $key, $now) under an exclusive lock on logs/.auth_failures.json. $state is
- * ['failures' => [client => [unix times]], 'slots' => [client => next check time]] (a 2.1.2 file holds only the
- * failures map). $fn returns [result, changed]; a changed state is written back. $fallback when there is no file.
+ * ['failures' => [client => [unix times]]] (a 2.1.2 file holds only the failures map; 2.1.3–2.1.5 also kept
+ * 'slots', which are dropped). $fn returns [result, changed]; a changed state is written back. $fallback when there is no file.
  */
 function bbf_auth_throttle_state(array $config, callable $fn, $fallback) {
     $dir = rtrim((string)($config['logs_dir'] ?? __DIR__ . '/logs'), '/\\');
@@ -159,16 +159,12 @@ function bbf_auth_throttle_state(array $config, callable $fn, $fallback) {
         $now = microtime(true);
         $raw = json_decode((string)stream_get_contents($fp), true);
         $raw = is_array($raw) ? $raw : [];
-        $state = array_key_exists('failures', $raw) || array_key_exists('slots', $raw)
-            ? ['failures' => is_array($raw['failures'] ?? null) ? $raw['failures'] : [], 'slots' => is_array($raw['slots'] ?? null) ? $raw['slots'] : []]
-            : ['failures' => $raw, 'slots' => []];
+        $state = ['failures' => array_key_exists('failures', $raw) || array_key_exists('slots', $raw)
+            ? (is_array($raw['failures'] ?? null) ? $raw['failures'] : []) : $raw];
         foreach ($state['failures'] as $client => $times) {
             $times = array_values(array_filter(is_array($times) ? $times : [], static fn($t) => is_int($t) && $t > $now - BBF_AUTH_FAILURE_WINDOW));
             if ($times === []) unset($state['failures'][$client]); else $state['failures'][$client] = $times;
         }
-        // A slot only matters while its client is blocked and the slot is still ahead.
-        foreach ($state['slots'] as $client => $slot)
-            if (!isset($state['failures'][$client]) || !is_numeric($slot) || $slot <= $now) unset($state['slots'][$client]);
         // One IPv6 host usually owns a whole /64, so rotating addresses inside it counts as one client.
         $ip = bbf_client_ip($config);
         $packed = @inet_pton($ip);
@@ -179,7 +175,6 @@ function bbf_auth_throttle_state(array $config, callable $fn, $fallback) {
             if (count($state['failures']) > BBF_AUTH_MAX_CLIENTS) {
                 uasort($state['failures'], static fn(array $a, array $b): int => max($b) <=> max($a));
                 $state['failures'] = array_slice($state['failures'], 0, BBF_AUTH_MAX_CLIENTS, true);
-                $state['slots'] = array_intersect_key($state['slots'], $state['failures']);
             }
             ftruncate($fp, 0);
             rewind($fp);
@@ -202,27 +197,21 @@ function bbf_auth_throttle(array $config, bool $failed = true): bool {
     }, true);
 }
 
-/**
- * 0 = this client's token may be checked now; otherwise the seconds until it may. A blocked client gets one
- * check per BBF_AUTH_BLOCKED_INTERVAL, whether the token is right or wrong, so a guesser learns nothing faster
- * than that. The request that takes the free check claims it; every other one is answered 429 immediately.
- */
-function bbf_auth_throttle_slot(array $config): float {
-    return bbf_auth_throttle_state($config, static function (array &$state, string $key, float $now): array {
-        if (count($state['failures'][$key] ?? []) < BBF_AUTH_MAX_FAILURES) return [0.0, false];
-        $slot = (float)($state['slots'][$key] ?? 0);
-        if ($slot > $now) return [$slot - $now, false];
-        $state['slots'][$key] = $now + BBF_AUTH_BLOCKED_INTERVAL;
-        return [0.0, true];
-    }, 0.0);
+/** Seconds until the oldest recorded failure of this client leaves the window (Retry-After for a blocked client). */
+function bbf_auth_retry_after(array $config): int {
+    return (int)bbf_auth_throttle_state($config, static function (array &$state, string $key, float $now): array {
+        $times = $state['failures'][$key] ?? [];
+        return [$times === [] ? 1 : max(1, (int)ceil(min($times) + BBF_AUTH_FAILURE_WINDOW - $now)), false];
+    }, 1);
 }
 
-function bbf_auth_throttled(int $retryAfter = BBF_AUTH_BLOCKED_INTERVAL): void {
+/** The token was checked and was wrong; this address has too many recent wrong tokens. */
+function bbf_auth_throttled(int $retryAfter): void {
     $retryAfter = max(1, $retryAfter);
     http_response_code(429);
     header('Retry-After: ' . $retryAfter);
-    $message = 'Too many wrong access tokens from this address. One attempt is checked every '
-        . BBF_AUTH_BLOCKED_INTERVAL . ' seconds; try again in ' . $retryAfter . ' s.';
+    $message = 'Wrong access token, and too many wrong tokens came from this address. Wrong tokens are refused'
+        . ' for up to ' . (int)ceil($retryAfter / 60) . ' min; the correct token still works.';
     if (is_array($GLOBALS['bbf_auth_login_page'] ?? null)) {
         $GLOBALS['bbf_auth_login_page']['throttled'] = $message;
         bbf_auth_fail(429);
@@ -230,6 +219,23 @@ function bbf_auth_throttled(int $retryAfter = BBF_AUTH_BLOCKED_INTERVAL): void {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['error' => $message]);
     exit;
+}
+
+/**
+ * A guessable pattern rather than a random secret: fewer than 5 distinct characters ("aaaa…", "abab…") or at least
+ * 3/4 of the neighbouring characters repeating or counting up/down by one ("1234…", "abcd…", "9876…"). A random
+ * token of 16+ characters practically never trips this (16 hex digits: about 1 in a million).
+ */
+function bbf_auth_token_weak(string $token): bool {
+    if (count(array_unique(str_split($token))) < 5) return true;
+    $steps = 0;
+    for ($i = 1, $n = strlen($token); $i < $n; $i++) if (abs(ord($token[$i]) - ord($token[$i - 1])) <= 1) $steps++;
+    return $steps * 4 >= (strlen($token) - 1) * 3;
+}
+
+/** A token that may act as a credential: a string of at least BBF_AUTH_MIN_TOKEN characters and no weak pattern. */
+function bbf_auth_token_usable($token): bool {
+    return is_string($token) && strlen($token) >= BBF_AUTH_MIN_TOKEN && !bbf_auth_token_weak($token);
 }
 
 /** Browsers mark cross-site requests (an <img> or link on another site); only scripts, bookmarks and same-origin pages may use ?token=. */
@@ -249,16 +255,16 @@ function bbf_auth_registry(array $config): array {
     $registry = []; $secrets = [];
     $legacy = $config['api_token'] ?? '';
     if (!is_string($legacy)) return [];
-    // A guessable token ("admin123") is not a credential: shorter than BBF_AUTH_MIN_TOKEN it is never accepted.
-    if ($legacy !== '' && strlen($legacy) >= BBF_AUTH_MIN_TOKEN) {
+    // A guessable token ("admin123", "aaaaaaaaaaaaaaaa") is not a credential and is never accepted.
+    if (bbf_auth_token_usable($legacy)) {
         $fp = hash('sha256', $legacy);
         $registry['legacy-admin'] = ['id' => 'legacy-admin', 'fingerprint' => $fp, 'admin' => true,
             'forms' => [], 'permissions' => [], 'expires' => PHP_INT_MAX, 'revoked' => false];
         $secrets[$fp] = true;
     }
     foreach ($records as $r) {
-        // A too-short token is skipped like a short api_token; it must not take every other credential down with it.
-        if (is_array($r) && is_string($r['token'] ?? null) && strlen($r['token']) < BBF_AUTH_MIN_TOKEN) continue;
+        // A too-short or patterned token is skipped like such an api_token; it must not take every other credential down with it.
+        if (is_array($r) && is_string($r['token'] ?? null) && !bbf_auth_token_usable($r['token'])) continue;
         if (!is_array($r) || bbf_auth_id($r['id'] ?? null) === '' || ($r['id'] ?? '') === 'legacy-admin'
             || !is_string($r['token'] ?? null)
             || !is_array($r['forms'] ?? null) || !array_is_list($r['forms'])
@@ -282,12 +288,12 @@ function bbf_auth_registry(array $config): array {
     foreach ($registry as $r) if (isset($secrets[hash('sha256', $r['id'])])) return []; return $registry;
 }
 
-/** access_tokens records whose token is too short to be accepted (skipped by bbf_auth_registry). */
+/** access_tokens records whose token is too short or too predictable to be accepted (skipped by bbf_auth_registry). */
 function bbf_auth_short_records(array $config): array {
     $records = $config['access_tokens'] ?? [];
     if (!is_array($records)) return [];
     return array_values(array_filter($records, static fn($r): bool =>
-        is_array($r) && is_string($r['token'] ?? null) && strlen($r['token']) < BBF_AUTH_MIN_TOKEN));
+        is_array($r) && is_string($r['token'] ?? null) && !bbf_auth_token_usable($r['token'])));
 }
 
 /**
@@ -301,14 +307,16 @@ function bbf_auth_config_problems(array $config): array {
     if (!is_string($legacy)) $out[] = ['level' => 'error', 'message' => 'api_token must be a string; all access is disabled.'];
     elseif ($legacy !== '' && strlen($legacy) < BBF_AUTH_MIN_TOKEN)
         $out[] = ['level' => 'error', 'message' => 'api_token is shorter than ' . BBF_AUTH_MIN_TOKEN . ' characters and is ignored (viewer, editor, API and backup refuse it). Set a long random value.'];
+    elseif ($legacy !== '' && !bbf_auth_token_usable($legacy))
+        $out[] = ['level' => 'error', 'message' => 'api_token is a guessable pattern (repeated or consecutive characters such as "aaaa…" or "1234…") and is ignored (viewer, editor, API and backup refuse it). Set a long random value, e.g. php -r "echo bin2hex(random_bytes(16));"'];
     $short = bbf_auth_short_records($config);
     if ($short !== []) {
         $ids = array_map(static fn(array $r): string => bbf_auth_id($r['id'] ?? null) ?: '(no id)', $short);
         $out[] = ['level' => 'warn', 'message' => 'access_tokens: ' . implode(', ', $ids) . ' ha' . (count($ids) === 1 ? 's' : 've')
-            . ' a token shorter than ' . BBF_AUTH_MIN_TOKEN . ' characters and ' . (count($ids) === 1 ? 'is' : 'are') . ' ignored.'];
+            . ' a token shorter than ' . BBF_AUTH_MIN_TOKEN . ' characters or with a guessable pattern and ' . (count($ids) === 1 ? 'is' : 'are') . ' ignored.'];
     }
     if (is_string($legacy)) {
-        $usable = ($legacy !== '' && strlen($legacy) >= BBF_AUTH_MIN_TOKEN ? 1 : 0)
+        $usable = (bbf_auth_token_usable($legacy) ? 1 : 0)
             + (is_array($records) ? count($records) - count($short) : 0);
         if (!is_array($records) || !array_is_list($records) || ($usable > 0 && count(bbf_auth_registry($config)) !== $usable))
             $out[] = ['level' => 'error', 'message' => 'access_tokens contains a malformed or duplicate record; ALL tokens, including api_token, are disabled until it is fixed.'];
@@ -317,7 +325,7 @@ function bbf_auth_config_problems(array $config): array {
     $smoke = $config['smoke_token'] ?? '';
     if ($smoke !== '' && $smoke !== null && bbf_smoke_token($config) === null)
         $out[] = ['level' => 'warn', 'message' => 'smoke_token is not a usable credential (shorter than ' . BBF_AUTH_MIN_TOKEN
-            . ' characters, not a string, or with spaces/control characters) and is ignored: HTTP smoke tests are off. Set a long random value.'];
+            . ' characters, a guessable pattern, not a string, or with spaces/control characters) and is ignored: HTTP smoke tests are off. Set a long random value.'];
     $proxies = $config['trusted_proxies'] ?? [];
     $bad = array_filter(is_array($proxies) ? $proxies : [$proxies], static fn($e): bool => !bbf_proxy_entry_valid($e));
     if ($bad !== []) $out[] = ['level' => 'error', 'message' => 'trusted_proxies has invalid entries that are ignored: '
@@ -368,15 +376,14 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
     $provided = $_SERVER['HTTP_X_BBF_TOKEN'] ?? ($queryToken ? $_GET['token'] : ($formLogin ? $_POST['token'] : null));
     $principal = null; $now = time();
     if ($explicit) {
-        // A blocked client (too many wrong tokens) gets one check per BBF_AUTH_BLOCKED_INTERVAL, right token or
-        // wrong, so the 200/429 answer reveals a hit no faster than that. Other attempts: 429 at once, no waiting.
-        $wait = bbf_auth_throttle_slot($config);
-        if ($wait > 0) bbf_auth_throttled((int)ceil($wait));
+        // The correct token always gets in, so a guesser sharing the address (NAT, IPv6 /64, proxy without
+        // trusted_proxies) cannot lock the operator out. Only wrong tokens are limited; since the answer then shows
+        // whether a guess was right, strength rests on the token itself (random, >= 16 chars, bbf_auth_token_weak).
         if (is_string($provided) && $provided !== '') {
             $fp = hash('sha256', $provided);
             foreach ($registry as $r) if (hash_equals($r['fingerprint'], $fp)) $principal = $r;
         }
-        if (!$principal && !bbf_auth_throttle($config, true)) bbf_auth_throttled();
+        if (!$principal && !bbf_auth_throttle($config, true)) bbf_auth_throttled(bbf_auth_retry_after($config));
     } elseif ($session) {
         $s = $_SESSION['bbf_access'] ?? [];
         $idle = max(1, min(86400, (int)($config['auth_session_idle'] ?? 1800)));
@@ -471,10 +478,10 @@ function bbf_auth_csrf_valid(): bool {
     return is_string($provided) && bbf_auth_csrf() !== '' && hash_equals(bbf_auth_csrf(), $provided);
 }
 
-/** The configured smoke_token when it is usable as a credential: printable and at least BBF_AUTH_MIN_TOKEN long. */
+/** The configured smoke_token when it is usable as a credential: printable, at least BBF_AUTH_MIN_TOKEN long, no weak pattern. */
 function bbf_smoke_token(array $config): ?string {
     $token = $config['smoke_token'] ?? null;
-    return is_string($token) && strlen($token) >= BBF_AUTH_MIN_TOKEN && preg_match('/\A[\x21-\x7e]{1,512}\z/D', $token) ? $token : null;
+    return bbf_auth_token_usable($token) && preg_match('/\A[\x21-\x7e]{1,512}\z/D', $token) ? $token : null;
 }
 
 /** Configured tokens to redact from audit entries. Tokens shorter than BBF_AUTH_MIN_TOKEN (access tokens and

@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: filen er større enn {max}.',
     'uploadTotalTooLarge'   => 'Filene er til sammen større enn {max}.',
     'validationFailed'      => 'Rett de markerte feltene.',
+    'crossFieldInvalid'     => 'Svarene passer ikke sammen. Kontroller dem.',
     'csrfInvalid'           => 'Økten din er utløpt. Last inn siden på nytt og prøv igjen.',
     'invalidUtf8'           => 'Den innsendte teksten inneholder ugyldige tegn.',
     'draftExpired'          => 'Den lagrede fremdriften er utløpt.',

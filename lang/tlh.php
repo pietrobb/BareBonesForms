@@ -47,6 +47,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: De\'wI\' ghItlh tIn law\' {max} tIn puS.',
     'uploadTotalTooLarge'   => 'De\'wI\' ghItlhmey tIn law\' {max} tIn puS.',
     'validationFailed'      => 'Qaghmey tIchoH.',
+    'crossFieldInvalid'     => 'jangmeyvam rap ghobe\'. yInuD.',
     'csrfInvalid'           => 'poH natlh. nav yIchu\'qa\' \'ej yInIDqa\'.',
     'invalidUtf8'           => 'ghItlhDaq Degh waS tu\'lu\'.',
     'draftExpired'          => 'pol\'eghpu\'bogh ta\' poH natlh.',

@@ -47,6 +47,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: súbor je väčší ako {max}.',
     'uploadTotalTooLarge'   => 'Súbory spolu presahujú {max}.',
     'validationFailed'      => 'Opravte, prosím, označené polia.',
+    'crossFieldInvalid'     => 'Odpovede spolu nesúhlasia. Skontrolujte ich, prosím.',
     'csrfInvalid'           => 'Platnosť relácie vypršala. Znova načítajte stránku a skúste to znova.',
     'invalidUtf8'           => 'Odoslaný text obsahuje neplatné znaky.',
     'draftExpired'          => 'Platnosť uloženého postupu vypršala.',

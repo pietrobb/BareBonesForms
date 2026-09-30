@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: fișierul depășește {max}.',
     'uploadTotalTooLarge'   => 'Fișierele depășesc împreună {max}.',
     'validationFailed'      => 'Corectați câmpurile marcate.',
+    'crossFieldInvalid'     => 'Răspunsurile nu se potrivesc între ele. Vă rugăm să le verificați.',
     'csrfInvalid'           => 'Sesiunea a expirat. Reîncărcați pagina și încercați din nou.',
     'invalidUtf8'           => 'Textul trimis conține caractere nevalide.',
     'draftExpired'          => 'Progresul salvat a expirat.',

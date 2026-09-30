@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: dosya {max} boyutundan büyük.',
     'uploadTotalTooLarge'   => 'Dosyaların toplamı {max} boyutunu aşıyor.',
     'validationFailed'      => 'Lütfen işaretli alanları düzeltin.',
+    'crossFieldInvalid'     => 'Yanıtlar birbiriyle uyuşmuyor. Lütfen kontrol edin.',
     'csrfInvalid'           => 'Oturumunuzun süresi doldu. Sayfayı yeniden yükleyip tekrar deneyin.',
     'invalidUtf8'           => 'Gönderilen metin geçersiz karakterler içeriyor.',
     'draftExpired'          => 'Kaydedilen ilerlemenin süresi doldu.',

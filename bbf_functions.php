@@ -147,6 +147,8 @@ function bbfConditionErrors(mixed $cond, string $path, int $depth = 0): array {
     if ($depth === 0 && empty($cond)) return []; // "show_if": null / false / {} means no condition, as before
     if (!is_array($cond) || ($cond !== [] && array_is_list($cond))) return ["$path: Expected an object {field, op, value} or {all: [...]} / {any: [...]}."];
     if ($depth > 20) return ["$path: Conditions are nested too deeply."];
+    // A key set to null counts as missing: generators and editors write null for "not set" (2.1.4 accepted it).
+    $cond = array_filter($cond, static fn($v) => $v !== null);
     $errors = [];
     foreach (['all', 'any'] as $key) {
         if (!array_key_exists($key, $cond)) continue;
@@ -414,11 +416,11 @@ function renderTemplate(string $templateFile, array $vars): string {
  *  Field values are percent-encoded, so "Jana Nová" stays one query value and "&"/"#"/"/" cannot add parameters or change the target.
  *  Checkbox values are joined with ","; a field without a value becomes empty, never a literal "{{tags}}". A target that
  *  is only a field ("{{return_url}}") would let the respondent choose where to go (open redirect): no redirect then,
- *  the success message is shown. */
-function bbf_redirect_url(string $template, array $data): ?string {
+ *  the success message is shown. $system: template variables such as _id, _form and _time; they win over field values. */
+function bbf_redirect_url(string $template, array $data, array $system = []): ?string {
     if (preg_match('/\A\s*\{\{\s*[\w-]+\s*\}\}\s*\z/', $template)) return null;
     $encoded = [];
-    foreach ($data as $key => $value) {
+    foreach (array_merge($data, $system) as $key => $value) {
         if (is_array($value)) $value = implode(',', array_filter($value, 'is_scalar'));
         if (is_bool($value)) $value = $value ? '1' : '';
         if (is_string($value) || is_numeric($value)) $encoded[$key] = rawurlencode((string)$value);
@@ -1058,7 +1060,13 @@ function bbf_delivery_retry_due(array $config, int $quietSeconds = 120, ?int $no
             if (!is_array($entry) || ($entry[0] ?? null) !== $mtime || !is_bool($entry[1] ?? null)) {
                 $read = bbf_outbox_read($path);
                 $ledger = $read['ledger'] ?? null;
-                $open = ($read['ok'] ?? false) && is_array($ledger['jobs'] ?? null) && ($ledger['deleted'] ?? false) !== true
+                if (!($read['ok'] ?? false) || !is_array($ledger['jobs'] ?? null)) {
+                    // Unreadable (locked, damaged, half-written): it may still hold an undelivered job. Count it and
+                    // read it again next run; caching it would call it delivered forever.
+                    $report['skipped_old']++;
+                    continue;
+                }
+                $open = ($ledger['deleted'] ?? false) !== true
                     && array_filter($ledger['jobs'], static fn($job) => !is_array($job) || ($job['state'] ?? '') !== 'succeeded') !== [];
                 $entry = [$mtime, $open];
             }
@@ -2201,7 +2209,7 @@ function validateCrossFields(array $rules, array $data): array {
             $valid = $filled >= $minimum;
         }
         if (!$valid) {
-            $errors['_cross_' . implode('_', $fields)] = $rule['message'] ?? 'Validation failed';
+            $errors['_cross_' . implode('_', $fields)] = is_string($rule['message'] ?? null) && $rule['message'] !== '' ? $rule['message'] : msg('crossFieldInvalid');
         }
     }
     return $errors;

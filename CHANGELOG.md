@@ -3,6 +3,29 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.6] — 2026-09-30
+
+Fixes from the review of 2.1.5.
+
+### Security
+- **The right token always signs in again (as in 2.1.2).** In 2.1.3–2.1.5 a blocked address got one token check per 2 seconds, and whoever came first took it: someone sharing the admin's address (NAT, IPv6 /64, a proxy or Cloudflare without `trusted_proxies`) could keep the admin and scripts using `submissions.php` out by sending wrong tokens every fraction of a second. The claim in 2.1.5 that this was no longer possible was wrong. Now only wrong tokens are limited (10 per 15 minutes per address, then `429` at once with `Retry-After`); a correct token is always checked and accepted. The protection against guessing is the token itself, see the next item. A blocked wrong token says "Invalid token." instead of "Not checked.".
+- **Breaking: a token with an obvious pattern is refused.** `api_token`, `access_tokens` and `smoke_token` still need at least 16 characters, and now also must not be a pattern: fewer than 5 different characters (`aaaa…`, `abab…`) or mostly consecutive/repeated characters (`1234…`, `abcd…`, `9876…`). Such a token is ignored like a too-short one; check.php, selfcheck and the upgrade dry run name it. A random token (e.g. `php -r "echo bin2hex(random_bytes(16));"`) is never affected.
+- **Respondent cookie `BBFSID`.** The CSRF session cookie is now named `BBFSID` and limited to the installation folder. Before, it was the shared `PHPSESSID` on `/`, and strict session IDs replaced the session of another PHP application on the same domain, signing its users out whenever a page with a form was loaded. On HTTPS it is `SameSite=None; Secure`, so a form embedded in an iframe on another site can be submitted. 2.1.4/2.1.5 claimed this worked with the browser default, but it did not (browsers that block third-party cookies still block it; embed with `BBF.render` on the page instead).
+- **Nginx rules:** `forms/`, `README.md`, `CHANGELOG.md` and `.bbf-manifest.json` are denied by `^~` / `=` locations, which win over any regex location. A static-file cache rule such as `location ~* \.(css|js|json)$` placed earlier used to serve form definitions. Paste the remaining `location ~` lines above your other regex locations (see the comments in `.htaccess`).
+
+### Fixed
+- **`show_if` with `"op": null` or `"field": null`** (written by generators and editors for "not set") is treated as a missing key again. 2.1.5 rejected such a form and every submission answered 500.
+- **`show_if` with a number** (`"value": 5`) now matches the field value `"5"` in the browser too, as on the server. The field stayed hidden in the browser while the server required it, so the form could not be sent.
+- **Upgrade could hang** when the smoke test or the package upgrader printed more than about 64 KB of PHP notices (e.g. deprecations from `config.php`): the parent read one pipe to the end while the child waited on the other. stderr now goes to a temporary file.
+- **Upgrade dry run without `--checksum`** lists access warnings again (tokens that would be ignored), judged by the installed version (`access_warnings_by`).
+- **`.htaccess.dist`** left by any earlier release is recognised by comparing it with this release's checksum from the manifest (also after an FTP transfer changed line endings). A release that only changes comments in `.htaccess` no longer reports "changed security rules".
+- **Redirect that does not leave the page** (`"redirect": "#done"`, or a target answering 204 No Content) no longer leaves the submit button disabled: the success message is shown.
+- **`{{_id}}`, `{{_form}}` and `{{_time}}` in `redirect`** are filled in; `{{_id}}` used to come out empty.
+- **`maintenance.php deliveries-retry`:** an old record that cannot be read (locked, damaged) is counted as not checked and read again next time instead of being cached as delivered.
+- **Server messages in the respondent's language:** drafts, uploads and a cross-field rule without its own `message` (new text `crossFieldInvalid` in all 34 languages) no longer answer in English.
+- **Smoke test:** a `minlength` above 5000 characters (up to 1 MB) is met with plain text instead of always failing.
+- **Alert mail:** a report that only says "Update available" no longer claims the problem is repeated at most once an hour; it says "one notice per new version".
+
 ## [2.1.5] — 2026-09-29
 
 Fixes from the review of 2.1.4.

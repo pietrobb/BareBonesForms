@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: fail on suurem kui {max}.',
     'uploadTotalTooLarge'   => 'Failid on kokku suuremad kui {max}.',
     'validationFailed'      => 'Palun parandage märgitud väljad.',
+    'crossFieldInvalid'     => 'Vastused ei sobi omavahel kokku. Palun kontrollige neid.',
     'csrfInvalid'           => 'Seanss on aegunud. Laadige leht uuesti ja proovige uuesti.',
     'invalidUtf8'           => 'Saadetud tekst sisaldab sobimatuid märke.',
     'draftExpired'          => 'Salvestatud edenemine on aegunud.',

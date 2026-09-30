@@ -182,7 +182,8 @@ function smokePost(string $url, array $data, string $token): array {
 }
 
 // ─── Test data generator ────────────────────────────────────────
-const SMOKE_SAMPLE_MAX = 5000; // longest generated value: "(a{1000}){1000}" or minlength 10^9 must not exhaust memory
+const SMOKE_SAMPLE_MAX = 5000; // longest value built from a pattern: "(a{1000}){1000}" must not exhaust memory
+const SMOKE_TEXT_MAX = 1000000; // longest plain text for minlength (1 MB); minlength 10^9 must not exhaust memory
 /** First candidate that satisfies the field's pattern and length rules, checked like submit.php does. */
 function smokeTextValue(array $field, array $preferred = []): string {
     $min = (int)($field['minlength'] ?? 0);
@@ -190,7 +191,15 @@ function smokeTextValue(array $field, array $preferred = []): string {
     $pattern = is_string($field['pattern'] ?? null) ? $field['pattern'] : '';
     $candidates = $preferred;
     if (is_string($field['placeholder'] ?? null) && $field['placeholder'] !== '') $candidates[] = $field['placeholder'];
-    array_push($candidates, 'Test Value', str_repeat('Test data. ', (int)ceil(min(max($min, 11), SMOKE_SAMPLE_MAX) / 11)), 'REF-A1B2C3', 'test', 'ABC123');
+    // Plain text of exactly max(minlength, 11) characters (no trailing space, submit.php trims); a minlength above
+    // SMOKE_TEXT_MAX cannot be met without exhausting memory, so that form fails with the length error.
+    $candidates[] = 'Test Value';
+    $plainLength = max($min, 11);
+    if ($plainLength <= SMOKE_TEXT_MAX) {
+        $plain = substr(str_repeat('Test data. ', intdiv($plainLength, 11) + 1), 0, $plainLength);
+        $candidates[] = str_ends_with($plain, ' ') ? substr($plain, 0, -1) . '.' : $plain;
+    }
+    array_push($candidates, 'REF-A1B2C3', 'test', 'ABC123');
     foreach (range(1, 20) as $length) $candidates[] = substr(str_repeat('1234567890', 2), 0, $length);
     // A value built from the pattern itself, so a placeholder like "e.g. SK1234" is not needed to pass "^[A-Z]{2}\d{4}$".
     if ($pattern !== '') foreach (['min', 'more'] as $reps) {
@@ -358,10 +367,7 @@ function generateSmokeData(array $form, string $emailOverride = '', array &$prob
                 break;
             case 'date':     $data[$name] = $field['min'] ?? date('Y-m-d'); break;
             case 'textarea':
-                $minLen = (int)($field['minlength'] ?? 5);
-                $data[$name] = str_repeat('Smoke test data. ', (int)ceil(min(max($minLen, 10), SMOKE_SAMPLE_MAX) / 17));
-                if (!empty($field['pattern'])) $data[$name] = smokeTextValue($field, [$data[$name]]);
-                break;
+                $data[$name] = smokeTextValue($field, ['Smoke test data.']); break;
             case 'select':
             case 'radio':
                 if (!empty($field['options']) && is_array($field['options'])) $data[$name] = smokeFirstOption($field['options']);

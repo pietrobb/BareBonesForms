@@ -300,6 +300,10 @@ check('cross-field rules use only normalized visible data', function () {
         ['type' => 'min_filled', 'fields' => ['tags'], 'min' => 1, 'message' => 'Select one'],
     ], $data));
 });
+check('cross-field rule without message uses the translated default, not English', function () {
+    same(['_cross_amount' => 'crossFieldInvalid:'],
+        validateCrossFields([['type' => 'min_sum', 'fields' => ['amount'], 'min' => 5]], ['amount' => '2']));
+});
 check('sandbox applies cross-field rules to the same normalized data', function () {
     $fields = [['name' => 'amount', 'type' => 'number'], ['name' => 'note']];
     $rules = [['type' => 'min_sum', 'fields' => ['amount'], 'min' => 5, 'message' => 'Need five']];
@@ -473,6 +477,14 @@ check('malformed show_if never breaks a submission and is reported by the defini
     foreach ([null, false, [], ['field' => 'kind', 'value' => 'a', 'op' => 'eq'], ['all' => [], 'any' => [['field' => 'kind', 'op' => 'empty']]]] as $fine) {
         same([], $errors($fine));
     }
+    // Review 2.1.5: generators and editors write null for "not set"; 2.1.4 accepted it, so it must stay valid.
+    foreach ([['field' => 'kind', 'op' => null, 'value' => 'b'], ['field' => null], ['field' => 'kind', 'value' => 'b', 'all' => null, 'any' => null],
+              ['any' => [['field' => 'kind', 'op' => null, 'value' => 'b']]]] as $nulls) {
+        same([], $errors($nulls));
+    }
+    same(true, evalCondition(['field' => 'kind', 'op' => null, 'value' => 'b'], $input), 'op null means equals');
+    same(true, evalCondition(['field' => null, 'value' => 'x'], $input), 'field null means no condition');
+    same(true, evalCondition(['field' => 'n', 'value' => 5], ['n' => '5']), 'a numeric value matches the submitted text');
     foreach (glob(dirname(__DIR__) . '/forms/*.json') as $file) {
         $form = json_decode((string)file_get_contents($file), true);
         if (is_array($form) && isset($form['fields'])) same([], array_values(array_filter(validateFormDefinition($form), static fn($e) => str_contains($e, 'show_if'))));

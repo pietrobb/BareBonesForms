@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: 파일이 {max}보다 큽니다.',
     'uploadTotalTooLarge'   => '파일 합계가 {max}보다 큽니다.',
     'validationFailed'      => '표시된 항목을 수정해 주세요.',
+    'crossFieldInvalid'     => '답변이 서로 맞지 않습니다. 확인해 주세요.',
     'csrfInvalid'           => '세션이 만료되었습니다. 페이지를 새로 고친 후 다시 시도해 주세요.',
     'invalidUtf8'           => '전송된 텍스트에 잘못된 문자가 포함되어 있습니다.',
     'draftExpired'          => '저장된 진행 상황이 만료되었습니다.',

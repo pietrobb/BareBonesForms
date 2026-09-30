@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label} : le fichier dépasse {max}.',
     'uploadTotalTooLarge'   => 'Les fichiers dépassent {max} au total.',
     'validationFailed'      => 'Veuillez corriger les champs signalés.',
+    'crossFieldInvalid'     => 'Les réponses ne concordent pas. Veuillez les vérifier.',
     'csrfInvalid'           => 'Votre session a expiré. Rechargez la page et réessayez.',
     'invalidUtf8'           => 'Le texte envoyé contient des caractères non valides.',
     'draftExpired'          => 'La progression enregistrée a expiré.',

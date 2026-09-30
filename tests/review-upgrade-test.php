@@ -14,13 +14,14 @@ function check_upgrade(bool $condition, string $message): void {
 }
 
 function upgrade_run(array $command, string $cwd, array $env = []): array {
-    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $cwd, $env + getenv());
+    $errFile = tempnam(sys_get_temp_dir(), 'bbft'); // stderr in a file: two pipes read in turn can deadlock
+    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']], $pipes, $cwd, $env + getenv());
     fclose($pipes[0]);
     $out = stream_get_contents($pipes[1]);
-    $err = stream_get_contents($pipes[2]);
     fclose($pipes[1]);
-    fclose($pipes[2]);
     $code = proc_close($process);
+    $err = (string)file_get_contents($errFile);
+    unlink($errFile);
     return ['code' => $code, 'out' => $out, 'err' => $err, 'json' => json_decode((string)$out, true)];
 }
 
@@ -299,7 +300,7 @@ try {
 
     // ─── Code-only ZIP: .htaccess arrives as .htaccess.dist ──────────
     upgrade_copy("$tmp/codeonly", "$tmp/codeonly2");
-    file_put_contents("$tmp/codeonly2/.htaccess.dist", file_get_contents("$tmp/new/.htaccess") . "\n# 2.2.0 rule\nHeader always set X-BBF-Rule-220 \"1\"\n");
+    file_put_contents("$tmp/codeonly2/.htaccess.dist", str_replace("\r\n", "\n", (string)file_get_contents("$tmp/new/.htaccess")) . "\n# 2.2.0 rule\nHeader always set X-BBF-Rule-220 \"1\"\n");
     $coManifest2 = json_decode((string)file_get_contents("$tmp/codeonly2/.bbf-manifest.json"), true);
     $coManifest2['files']['.htaccess']['sha256'] = hash_file('sha256', "$tmp/codeonly2/.htaccess.dist");
     file_put_contents("$tmp/codeonly2/.bbf-manifest.json", json_encode($coManifest2, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -316,6 +317,18 @@ try {
     check_upgrade($htaApply['code'] === 0 && file_get_contents("$tmp/hta/.htaccess") === $htaOwn
         && @file_get_contents("$tmp/hta/.htaccess.dist") === file_get_contents("$tmp/codeonly2/.htaccess.dist")
         && str_contains(implode(' ', $htaApply['json']['notices'] ?? []), '.htaccess.dist'), 'the upgrade keeps your .htaccess, writes .htaccess.dist and repeats the notice');
+    // Review 2.1.5: a release that only rewords comments in .htaccess raises no alarm about security rules.
+    upgrade_copy("$tmp/codeonly", "$tmp/codeonly3");
+    file_put_contents("$tmp/codeonly3/.htaccess.dist", "# Reworded comment of a later release\n" . file_get_contents("$tmp/new/.htaccess"));
+    $coManifest3 = json_decode((string)file_get_contents("$tmp/codeonly3/.bbf-manifest.json"), true);
+    $coManifest3['files']['.htaccess']['sha256'] = hash_file('sha256', "$tmp/codeonly3/.htaccess.dist");
+    file_put_contents("$tmp/codeonly3/.bbf-manifest.json", json_encode($coManifest3, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    upgrade_copy("$tmp/site", "$tmp/hta3");
+    file_put_contents("$tmp/hta3/.htaccess", "AddHandler application/x-httpd-php84 .php\n", FILE_APPEND);
+    $commentsOnly = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/codeonly3"], "$tmp/hta3")['json'] ?? [];
+    check_upgrade(($commentsOnly['ok'] ?? false) && in_array('.htaccess', $commentsOnly['files']['keep_yours'] ?? [], true)
+        && !in_array('.htaccess.dist', $commentsOnly['added'] ?? [], true) && !str_contains(implode(' ', $commentsOnly['notices'] ?? []), 'security rules'),
+        'changed comments only: your .htaccess is kept without a security-rules notice');
     $missingScript = "$tmp/missing-rules.php";
     file_put_contents($missingScript, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true) . '; echo json_encode(bbf_htaccess_missing_rules($argv[1]));');
     $missing = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
@@ -334,6 +347,14 @@ try {
     $stale = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
     check_upgrade(str_contains(implode(' ', $stale ?? []), 'earlier release') && str_contains(implode(' ', $stale ?? []), '^bbf_.*\.php$')
         && !str_contains(implode(' ', $stale ?? []), '<FilesMatch "^config">'), 'a stale .htaccess.dist is ignored and named; the current rules are recommended');
+    // Review 2.1.5: a 2.1.4-era .htaccess.dist has every essential rule; the manifest still tells it from the current one.
+    copy("$tmp/new/.htaccess", "$tmp/hta/.htaccess.dist");
+    $recent = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
+    check_upgrade(str_contains(implode(' ', $recent ?? []), 'earlier release'), 'an .htaccess.dist of an earlier release with all essential rules is recognized by its hash');
+    file_put_contents("$tmp/hta/.htaccess.dist", str_replace("\n", "\r\n", (string)file_get_contents("$tmp/codeonly2/.htaccess.dist")));
+    $current = upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null;
+    check_upgrade(!str_contains(implode(' ', $current ?? []), 'earlier release') && str_contains(implode(' ', $current ?? []), 'compare it with .htaccess.dist'),
+        'the current release\'s .htaccess.dist is used, also with CRLF line endings from an FTP transfer');
     unlink("$tmp/hta/.htaccess.dist");
     file_put_contents("$tmp/hta/.htaccess", file_get_contents("$repo/.htaccess"));
     check_upgrade((upgrade_run([PHP_BINARY, $missingScript, "$tmp/hta"], $tmp)['json'] ?? null) === [], 'the shipped .htaccess has every essential rule');
@@ -394,6 +415,18 @@ try {
     check_upgrade($noisyApply['code'] === 0 && ($noisyApply['json']['ok'] ?? false)
         && trim(upgrade_run([PHP_BINARY, 'maintenance.php', 'version'], "$tmp/nsite")['out']) === 'BareBonesForms 2.2.0',
         'and --apply with the notice succeeds and says so' . ($noisyApply['code'] === 0 ? '' : ': ' . substr($noisyApply['out'] . $noisyApply['err'], 0, 300)));
+    // Review 2.1.5: more than a pipe buffer (~64 KB) of notices must not deadlock the parent reading stdout first.
+    upgrade_copy("$tmp/site", "$tmp/flood");
+    file_put_contents("$tmp/flood/config.php", preg_replace('/\A<\?php/', '<?php for ($i = 0; $i < 2000; $i++) trigger_error("bbf-test-flood " . str_repeat("x", 80), E_USER_DEPRECATED);',
+        file_get_contents("$tmp/flood/config.php"), 1));
+    $start = microtime(true);
+    $floodDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/deleg"], "$tmp/flood", $iniEnv);
+    check_upgrade($floodDry['code'] === 0 && ($floodDry['json']['upgrader'] ?? '') === 'package 2.2.0' && count($floodDry['json']['php_messages'] ?? []) === 20,
+        sprintf('200 KB of notices on stderr do not hang the upgrade (%.1f s)', microtime(true) - $start)
+        . ($floodDry['code'] === 0 ? '' : ': ' . substr($floodDry['out'] . $floodDry['err'], 0, 300)));
+    $floodApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/deleg", '--apply', '--confirm=' . ($floodDry['json']['confirm'] ?? '')], "$tmp/flood", $iniEnv);
+    check_upgrade($floodApply['code'] === 0 && ($floodApply['json']['ok'] ?? false),
+        'and --apply with the flood of notices (smoke test included) finishes' . ($floodApply['code'] === 0 ? '' : ': ' . substr($floodApply['out'] . $floodApply['err'], 0, 300)));
 
     // ─── Review 2.1.4: only maintenance.php may be written in place (Windows); a library never ─
     upgrade_copy("$tmp/deleg", "$tmp/lockpkg");
@@ -426,6 +459,11 @@ try {
     $tokenPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/tokens")['json'] ?? [];
     check_upgrade(str_contains(implode(' ', $tokenPlan['access_warnings'] ?? []), 'short-one') && !str_contains(json_encode($tokenPlan), "'abc'"),
         'the dry run names a token the new version will ignore');
+    // Review 2.1.5: an unverified package runs none of its code, but the installed code still reports the token.
+    $unverifiedPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/new"], "$tmp/tokens")['json'] ?? [];
+    check_upgrade(($unverifiedPlan['check']['status'] ?? '') === 'skipped' && str_contains(implode(' ', $unverifiedPlan['access_warnings'] ?? []), 'short-one')
+        && str_starts_with((string)($unverifiedPlan['access_warnings_by'] ?? ''), 'installed version'),
+        'a dry run without --checksum still names the ignored token (judged by the installed code): ' . json_encode($unverifiedPlan['access_warnings'] ?? null));
 
     // ─── First upgrade of a pre-2.1 installation (no manifest), run from the unpacked release ─
     upgrade_copy("$tmp/site", "$tmp/legacy");

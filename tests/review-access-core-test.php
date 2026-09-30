@@ -255,8 +255,8 @@ try {
     $guessHeader = static fn(string $t): array => ['headers' => ['X-BBF-Token' => $t]];
     for ($i = 0; $i < 10; $i++) $guess = core_http('submissions.php?form=alpha', $guessHeader('guess-' . $i));
     core_check($guess['code'] === 403, 'wrong tokens below the limit are plain denials');
-    // Review 2.1.4: while blocked, one token (right or wrong) is checked per 2 s and PHP never sleeps: every other
-    // attempt gets 429 + Retry-After at once, so no worker or session lock is held and there is no queue to fill.
+    // Review 2.1.5: no slot or wait. Wrong tokens get 429 at once, the right token always gets in, even while
+    // someone at the same address keeps sending wrong ones (2.1.3–2.1.5 let the guesser take the admin's slot).
     $timed = static function (string $path, array $options = []): array {
         $start = microtime(true); $r = core_http($path, $options); $r['seconds'] = microtime(true) - $start; return $r;
     };
@@ -266,19 +266,24 @@ try {
     core_check(array_unique(array_column($burst, 'code')) === [429], 'every wrong token while blocked is 429');
     core_check($burstSeconds < 6, sprintf('30 blocked attempts are answered without waiting (%.1f s total)', $burstSeconds));
     preg_match('/Retry-After: (\d+)/', $burst[29]['headers'], $retry);
-    core_check(isset($retry[1]) && (int)$retry[1] >= 1 && (int)$retry[1] <= 2, 'Retry-After names the seconds until the next check, not 15 minutes');
+    core_check(isset($retry[1]) && (int)$retry[1] >= 1 && (int)$retry[1] <= 900, 'Retry-After names when wrong tokens are counted again');
     $html = $timed('viewer.php', $guessHeader('guess-html'));
-    core_check($html['code'] === 429 && str_contains($html['body'], 'Not checked.') && str_contains($html['body'], 'name="login_csrf"'),
-        'a blocked HTML sign-in shows the form with the wait, not JSON');
+    core_check($html['code'] === 429 && str_contains($html['body'], 'Invalid token.') && !str_contains($html['body'], 'Not checked')
+        && str_contains($html['body'], 'name="login_csrf"'), 'a blocked HTML sign-in shows the form saying the token was wrong, not JSON');
     core_check(core_http('viewer.php', ['cookie' => $signedIn['cookie']])['code'] === 200, 'an already signed-in browser is not affected by the block');
-    usleep(2200000); // the burst stopped: the next check is free within 2 s, the right token gets in
-    $right = $timed('viewer.php', core_header('admin'));
-    core_check($right['code'] === 200, 'the right admin token works at the next free check after a burst (no lockout)');
+    $codes = [];
+    for ($i = 0; $i < 10; $i++) {
+        core_http('submissions.php?form=alpha', $guessHeader('attacker-' . $i)); // the guesser right before the admin
+        $right = $timed('viewer.php', core_header('admin'));
+        $codes[] = $right['code'];
+    }
+    core_check(array_unique($codes) === [200], 'the right admin token works on every attempt during an ongoing attack (' . implode(',', $codes) . ')');
     core_check($right['seconds'] < 1.5, sprintf('the right token is not delayed in PHP (%.1f s)', $right['seconds']));
-    usleep(2200000);
     core_check(core_http('submissions.php?form=alpha', core_header('reader'))['code'] === 200, 'API integrations with a valid token keep working too');
-    usleep(2200000);
     core_check(core_http('submissions.php?form=alpha', $guessHeader('guess-99'))['code'] === 429, 'a success does not reset the wrong-token limit');
+    $weakConfig = $baseConfig; $weakConfig['api_token'] = 'abcdefghijklmnopqrstuvwxyz';
+    core_config($weakConfig);
+    core_check(core_http('viewer.php', $guessHeader('abcdefghijklmnopqrstuvwxyz'))['code'] !== 200, 'a patterned api_token ("abcd…") is never accepted');
     core_config(['api_token' => 'short'] + $baseConfig);
     core_check(core_http('viewer.php', $guessHeader('short'))['code'] === 403, 'api_token shorter than 16 characters is never accepted');
     core_check(core_http('viewer.php', core_header('reader'))['code'] === 200, 'a short api_token does not disable the access_tokens');

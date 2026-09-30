@@ -199,6 +199,13 @@ check_alert(preg_match('/^BareBonesForms: 1 problem on [a-zA-Z0-9.-]+$/', $subje
 [$subject] = bbf_alert_message(['logs_dir' => $logs, 'mail' => ['from_email' => 'noreply@shop.example']], ['k' => ['form' => 'f', 'type' => 't', 'count' => 1, 'detail' => 'd']], 3600);
 check_alert(str_ends_with($subject, ' on shop.example'), 'the configured From domain beats the request Host header');
 if ($savedServer === null) unset($_SERVER['SERVER_NAME']); else $_SERVER['SERVER_NAME'] = $savedServer;
+$update = ['form' => '-', 'type' => 'Update available', 'count' => 1, 'detail' => 'd'];
+[, $body] = bbf_alert_message(['logs_dir' => $logs], ['u' => $update], 3600);
+check_alert(str_contains($body, 'one notice per new version') && !str_contains($body, 'at most once every'),
+    'an update-only report says one notice per new version, not the hourly limit');
+[, $body] = bbf_alert_message(['logs_dir' => $logs], ['u' => $update, 'k' => ['form' => 'f', 'type' => 't', 'count' => 1, 'detail' => 'd']], 3600);
+check_alert(str_contains($body, 'one notice per new version') && str_contains($body, 'at most once every 1 hour'),
+    'a mixed report states both rules');
 
 $capLogs = $root . '/cap-logs';
 mkdir($capLogs, 0700, true);

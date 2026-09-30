@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: a fájl nagyobb, mint {max}.',
     'uploadTotalTooLarge'   => 'A fájlok együtt nagyobbak, mint {max}.',
     'validationFailed'      => 'Javítsa a megjelölt mezőket.',
+    'crossFieldInvalid'     => 'A válaszok nem illenek össze. Kérjük, ellenőrizze őket.',
     'csrfInvalid'           => 'A munkamenet lejárt. Töltse újra az oldalt, és próbálja újra.',
     'invalidUtf8'           => 'A beküldött szöveg érvénytelen karaktereket tartalmaz.',
     'draftExpired'          => 'A mentett előrehaladás lejárt.',

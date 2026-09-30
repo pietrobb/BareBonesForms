@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: الملف أكبر من {max}.',
     'uploadTotalTooLarge'   => 'مجموع الملفات أكبر من {max}.',
     'validationFailed'      => 'يرجى تصحيح الحقول المحددة.',
+    'crossFieldInvalid'     => 'الإجابات لا تتوافق مع بعضها. يرجى التحقق منها.',
     'csrfInvalid'           => 'انتهت صلاحية الجلسة. أعد تحميل الصفحة وحاول مرة أخرى.',
     'invalidUtf8'           => 'يحتوي النص المرسل على أحرف غير صالحة.',
     'draftExpired'          => 'انتهت صلاحية التقدم المحفوظ.',

@@ -151,7 +151,8 @@ return [
     // Optional per-form tokens with limited permissions (read, export, delete, review). Example:
     // ['id'=>'reader-1', 'token'=>'RANDOM_SECRET', 'forms'=>['contact'], 'permissions'=>['read'], 'expires_at'=>'2027-01-01T00:00:00Z', 'revoked'=>false]
     // read+export for CSV/forward, read+delete for deletion, read+review for inbox metadata; empty lists grant nothing.
-    // Every token needs at least 16 characters; a shorter one is ignored on its own (check.php names it).
+    // Every token needs at least 16 random characters; a shorter one or an obvious pattern ("aaaa…", "1234…")
+    // is ignored on its own (check.php names it).
     // A malformed or duplicate record disables ALL access, including api_token. The editor accepts only api_token.
     'access_tokens' => [],
 

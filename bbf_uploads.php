@@ -958,7 +958,10 @@ function bbf_uploads_validate_file(array $config, array $field, string $tmp, str
     if ($ext === '' || bbf_uploads_hard_denied($ext, $name) || !in_array($ext, bbf_uploads_field_accept($config, $field), true)) {
         return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadType')];
     }
-    if (!class_exists('finfo')) return ['ok' => false, 'code' => 503, 'message' => 'The server cannot check uploads (fileinfo is missing).'];
+    if (!class_exists('finfo')) {
+        error_log('BareBonesForms: uploads refused, the PHP fileinfo extension is missing.');
+        return ['ok' => false, 'code' => 503, 'message' => bbf_uploads_t('uploadCannotStore')];
+    }
     $mime = (string)(new finfo(FILEINFO_MIME_TYPE))->file($tmp);
     // A password-protected OOXML file is an OLE compound file, not a ZIP.
     if (in_array($ext, ['docx', 'xlsx'], true) && (str_starts_with($mime, 'application/CDFV2')
@@ -1104,10 +1107,10 @@ function bbf_uploads_delete_staged(array $config, string $root, string $formId, 
         $bytes = "$root/staging/$hash";
         $metaPath = "$bytes.json";
         $meta = bbf_uploads_read_meta($metaPath);
-        if ($meta === null || ($meta['form'] ?? null) !== $formId) return ['ok' => false, 'code' => 404, 'message' => 'Upload not found.'];
+        if ($meta === null || ($meta['form'] ?? null) !== $formId) return ['ok' => false, 'code' => 404, 'message' => bbf_uploads_t('uploadExpired')];
         $listed = bbf_uploads_wal_paths($l);
         if (isset($listed["staging/$hash"]) || isset($listed["staging/$hash.json"])) {
-            return ['ok' => false, 'code' => 503, 'message' => 'This file is busy. Please try again.', 'retry_after' => 5];
+            return ['ok' => false, 'code' => 503, 'message' => bbf_uploads_t('uploadFilesBusy'), 'retry_after' => 5];
         }
         $unlinked = !is_file($bytes) || (bbf_uploads_hook('unlink') && @unlink($bytes));
         @unlink($metaPath);

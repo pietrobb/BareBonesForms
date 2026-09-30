@@ -865,6 +865,32 @@ test('2.1.3 empty any/all conditions evaluate the same in bbf.js and PHP', () =>
     }
 });
 
+test('2.1.6 numeric, boolean and null show_if values compare as text in bbf.js and PHP', () => {
+    const { BBF } = loadBBF();
+    const php = (cond, value) => {
+        const code = `define('BBF_LOADED', true); require $argv[1]; $in = json_decode(stream_get_contents(STDIN), true);`
+            + ` echo json_encode(evalCondition($in['cond'], ['x' => $in['value']]));`;
+        const r = spawnSync(process.env.PHP_BINARY || 'php', ['-r', code, path.join(__dirname, '..', 'bbf_functions.php')],
+            { input: JSON.stringify({ cond, value }), encoding: 'utf8', timeout: 10000, windowsHide: true });
+        assert.ifError(r.error); assert.equal(r.status, 0, r.stderr);
+        return JSON.parse(r.stdout);
+    };
+    for (const value of ['5', '5.0', '1', '', 'no']) {
+        const form = new MiniElement('form');
+        const input = form.appendChild(new MiniElement('input'));
+        input.name = 'x'; input.setAttribute('name', 'x'); input.value = value;
+        for (const cond of [{ field: 'x', value: 5 }, { field: 'x', value: [5, 6] }, { field: 'x', op: 'not', value: 5 },
+            { field: 'x', value: true }, { field: 'x', value: false }, { field: 'x', value: null }, { field: 'x', op: null, value: 5 },
+            { field: 'x', value: 5.0 }, { field: 'x', op: 'contains', value: 5 }]) {
+            assert.equal(BBF._evalCondition(cond, form), php(cond, value), `${JSON.stringify(cond)} with "${value}"`);
+        }
+    }
+    const form = new MiniElement('form');
+    const input = form.appendChild(new MiniElement('input'));
+    input.name = 'x'; input.setAttribute('name', 'x'); input.value = '5';
+    assert.equal(BBF._evalCondition({ field: 'x', value: 5 }, form), true, 'a field showing on "value": 5 is visible when 5 is entered');
+});
+
 test('2.1.3 field patterns with \\s, \\S, \\d and \\w give the same result in the browser and in PHP', () => {
     const patterns = ['^\\S+\\s\\S+$', '^[\\s\\w]+$', '^\\S+$', '^\\d{3}\\s?\\d{2}$', '^\\w+$', '^[^\\s]+$', '^a\\\\s$'];
     const values = ['Jana Nová', 'Jana\u00a0Nová', 'Jana\u2009Nová', 'ab\u3000cd', 'Jana', '811\u00a001', '811 01', '٨١١٠١', 'a\\s', 'a\ufeffb'];
@@ -925,7 +951,7 @@ test('6129-F09 cross-field zero, whitespace, arrays, and hidden values match PHP
     hiddenWrap.setAttribute('data-conditional-hidden', 'true');
     const hidden = hiddenWrap.appendChild(new MiniElement('input'));
     hidden.name = 'hidden'; hidden.setAttribute('name', 'hidden'); hidden.value = '100';
-    const phpCode = `define('BBF_LOADED', true); require $argv[1]; $payload=json_decode(stream_get_contents(STDIN),true); echo json_encode(validateCrossFields($payload['rules'],$payload['data']));`;
+    const phpCode = `define('BBF_LOADED', true); function msg($k) { return $k; } require $argv[1]; $payload=json_decode(stream_get_contents(STDIN),true); echo json_encode(validateCrossFields($payload['rules'],$payload['data']));`;
     const phpErrors = (rules, data) => {
         const result = spawnSync(process.env.PHP_BINARY || 'php', ['-r', phpCode,
             path.join(__dirname, '..', 'bbf_functions.php')], {

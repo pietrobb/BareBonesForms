@@ -122,13 +122,18 @@ header('Content-Type: application/json; charset=utf-8');
 function ensureSession(): void {
     static $loaded = false;
     if ($loaded || session_status() === PHP_SESSION_ACTIVE) return;
-    // The respondent session holds only the CSRF secret: scripts never need it, so keep it HttpOnly
-    // (and Secure on HTTPS). SameSite stays at the browser default so iframe embeds keep working.
+    // The respondent session holds only the CSRF secret: scripts never need it, so keep it HttpOnly.
+    // Own cookie name limited to the installation folder: with strict session IDs a shared PHPSESSID on "/" would
+    // replace another PHP application's session on the same domain and sign its users out.
+    // On HTTPS it is SameSite=None; Secure, so a form embedded in an iframe on another site can be submitted
+    // (the CSRF token, not the cookie, is what stops a foreign page from posting).
+    $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
     ini_set('session.use_trans_sid', '0');
-    ini_set('session.cookie_httponly', '1');
-    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ini_set('session.cookie_secure', '1');
+    session_name('BBFSID');
+    session_set_cookie_params(['lifetime' => 0, 'path' => rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/'))), '/') . '/',
+        'secure' => $https, 'httponly' => true, 'samesite' => $https ? 'None' : '']);
     session_start();
     if (empty($_SESSION['bbf_secret'])) {
         $_SESSION['bbf_secret'] = bin2hex(random_bytes(32));
@@ -296,7 +301,7 @@ $flatFields = flattenFields($form['fields']); $input = bbfSystemInput($flatField
 // ─── Opt-in respondent drafts ───────────────────────────────────
 $draftAction = $_GET['action'] ?? '';
 if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_delete'], true)) {
-    if (bbf_draft_policy($form) === null) respond(404, 'Respondent drafts are not enabled for this form.');
+    if (bbf_draft_policy($form) === null) respond(404, msg('draftNotFound'));
     bbf_draft_cleanup($config);
     $handle = is_string($input['_bbf_draft_handle'] ?? null) ? $input['_bbf_draft_handle'] : '';
     if ($draftAction === 'draft_save') {
@@ -312,7 +317,7 @@ if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_de
     if ($reason === 'not_found') respond(404, msg('draftNotFound'), ['reason' => $reason]);
     if ($reason === 'too_large') respond(413, msg('draftTooLarge'), ['reason' => $reason]);
     if ($reason === 'quota') respond(429, msg('draftQuota'), ['reason' => $reason] + (isset($result['retry_after']) ? ['retry_after' => $result['retry_after']] : []));
-    respond(500, 'Draft storage failed.', ['reason' => $reason]);
+    respond(500, msg('uploadTemporary'), ['reason' => $reason]);
 }
 
 // ─── Validate and normalize once for sandbox and production ─────
@@ -406,7 +411,7 @@ if ($isSandbox) {
     }
 
     if (!empty($onSubmit['redirect'])) {
-        $preview['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data);
+        $preview['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data, ['_id' => $submissionId, '_form' => $form['name'] ?? $formId, '_time' => $timestamp]);
     }
 
     if (!empty($onSubmit['payment'])) {
@@ -448,6 +453,7 @@ if (!empty($errors)) {
 $data = $normalizedData;
 $submissionId = 'bbf_' . bin2hex(random_bytes(8));
 $timestamp = date('c');
+$redirectVars = ['_id' => $submissionId, '_form' => $form['name'] ?? $formId, '_time' => $timestamp]; // {{_id}} etc. in on_submit.redirect
 
 // ─── Step C: plan the uploaded files; descriptors replace the tokens in the record ─
 $uploadPlan = null;
@@ -567,7 +573,7 @@ if (!$isPayment) {
             'note' => 'No submission or retry record was stored; delivery cannot be administered from the viewer.',
         ];
         $extra = ['delivery' => $deliveryStatus];
-        if (!empty($onSubmit['redirect'])) $extra['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data);
+        if (!empty($onSubmit['redirect'])) $extra['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data, $redirectVars);
         respond(202, 'OK', $extra);
     }
 }
@@ -600,7 +606,7 @@ if (!$storeEnabled) {
             $txState['checkout'] = $checkoutParams;
         } else {
             $txState['response'] = ['submission_id' => $submissionId];
-            if (!empty($onSubmit['redirect'])) $txState['response']['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data);
+            if (!empty($onSubmit['redirect'])) $txState['response']['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data, $redirectVars);
         }
         for ($attempt = 0; $tx === null; $attempt++) {
             bbf_tx_deadline_start($config);
@@ -710,7 +716,7 @@ if (!$storeEnabled) {
 $extra = $storeEnabled ? array_merge(['submission_id' => $submissionId], $actionResponse) : $actionResponse;
 // Form-level redirect (action redirect takes precedence if set)
 if (empty($extra['redirect']) && !empty($onSubmit['redirect'])) {
-    $extra['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data);
+    $extra['redirect'] = bbf_redirect_url($onSubmit['redirect'], $data, $redirectVars);
 }
 // Always assign the trusted projection last so actions cannot expose or replace delivery state.
 $extra['delivery'] = $deliveryStatus;
@@ -860,7 +866,7 @@ function bbf_submit_upload(array $config, string $formId, bool $isSandbox): neve
     $field = bbf_submit_upload_field($config, $formId);
     $file = $_FILES['file'] ?? null;
     if (count($_FILES) !== 1 || !is_array($file) || is_array($file['name'] ?? null) || !is_int($file['error'] ?? null)) {
-        respond(400, 'Send exactly one file in the "file" field.');
+        respond(400, msg('uploadNoFile'));
     }
     if ($file['error'] !== UPLOAD_ERR_OK) {
         $code = match ($file['error']) {

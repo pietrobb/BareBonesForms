@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: tiedosto on suurempi kuin {max}.',
     'uploadTotalTooLarge'   => 'Tiedostot ovat yhteensä suurempia kuin {max}.',
     'validationFailed'      => 'Korjaa merkityt kentät.',
+    'crossFieldInvalid'     => 'Vastaukset eivät sovi yhteen. Tarkista ne.',
     'csrfInvalid'           => 'Istuntosi on vanhentunut. Lataa sivu uudelleen ja yritä uudelleen.',
     'invalidUtf8'           => 'Lähetetty teksti sisältää virheellisiä merkkejä.',
     'draftExpired'          => 'Tallennettu edistyminen on vanhentunut.',

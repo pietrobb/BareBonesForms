@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: file lebih besar dari {max}.',
     'uploadTotalTooLarge'   => 'Total file melebihi {max}.',
     'validationFailed'      => 'Perbaiki kolom yang ditandai.',
+    'crossFieldInvalid'     => 'Jawaban tidak saling sesuai. Silakan periksa kembali.',
     'csrfInvalid'           => 'Sesi Anda telah berakhir. Muat ulang halaman dan coba lagi.',
     'invalidUtf8'           => 'Teks yang dikirim berisi karakter yang tidak valid.',
     'draftExpired'          => 'Kemajuan yang disimpan telah kedaluwarsa.',

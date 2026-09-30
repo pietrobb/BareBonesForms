@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}：檔案超過 {max}。',
     'uploadTotalTooLarge'   => '檔案總大小超過 {max}。',
     'validationFailed'      => '請更正標示的欄位。',
+    'crossFieldInvalid'     => '這些回答彼此不一致，請檢查。',
     'csrfInvalid'           => '工作階段已過期。請重新載入頁面後再試一次。',
     'invalidUtf8'           => '送出的文字包含無效字元。',
     'draftExpired'          => '儲存的進度已過期。',

@@ -163,6 +163,28 @@ function bbf_upgrade_breaking(string $changelog, string $from, string $to): arra
 }
 
 /**
+ * Runs a PHP child and returns its exit code, stdout and stderr; null when it cannot start. stderr goes to a temporary
+ * file, not a second pipe: reading one pipe to the end while the child fills the other (> ~64 KB of notices) would
+ * leave both waiting forever, e.g. halfway through an upgrade.
+ * @return array{exit: int, out: string, err: string}|null
+ */
+function bbf_upgrade_run(array $command, string $cwd): ?array {
+    $errFile = tempnam(sys_get_temp_dir(), 'bbf');
+    if ($errFile === false) return null;
+    try {
+        $process = @proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']], $pipes, $cwd);
+        if (!is_resource($process)) return null;
+        fclose($pipes[0]);
+        $out = (string)stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        $exit = proc_close($process);
+        return ['exit' => $exit, 'out' => $out, 'err' => (string)@file_get_contents($errFile)];
+    } finally {
+        @unlink($errFile);
+    }
+}
+
+/**
  * Dry-run smoke test of the code in $codeDir against the live forms and templates of $install.
  * @return array{exit: int, failing: list<string>, summary: string}|null  null when child processes are unavailable
  */
@@ -174,14 +196,10 @@ function bbf_upgrade_smoke(string $codeDir, string $install): ?array {
         file_put_contents("$codeDir/config.php", "<?php\ndefined('BBF_LOADED') || exit;\n\$config = require " . var_export("$install/config.php", true)
             . ";\nreturn is_array(\$config) ? \$config + " . var_export($defaults, true) . " : \$config;\n");
     }
-    $process = @proc_open([PHP_BINARY, 'smoketest.php'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $codeDir);
-    if (!is_resource($process)) return null;
-    fclose($pipes[0]);
-    $output = (string)stream_get_contents($pipes[1]) . (string)stream_get_contents($pipes[2]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    $exit = proc_close($process);
-    $output = (string)preg_replace('/\e\[[0-9;]*m/', '', $output);
+    $run = bbf_upgrade_run([PHP_BINARY, 'smoketest.php'], $codeDir);
+    if ($run === null) return null;
+    $exit = $run['exit'];
+    $output = (string)preg_replace('/\e\[[0-9;]*m/', '', $run['out'] . $run['err']);
     preg_match_all('/^\s*\x{2717} (\S+) \(/mu', $output, $failing);
     $summary = preg_match('/\d+\/\d+ forms passed[^\n]*/', $output, $match) ? $match[0] : trim(substr($output, -300));
     return ['exit' => $exit, 'failing' => $failing[1], 'summary' => $summary];
@@ -193,12 +211,9 @@ function bbf_upgrade_lint(string $stageDir, array $paths): ?array {
     $errors = [];
     foreach ($paths as $path) {
         if (!str_ends_with($path, '.php')) continue;
-        $process = @proc_open([PHP_BINARY, '-l', "$stageDir/$path"], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $stageDir);
-        if (!is_resource($process)) return null;
-        $output = (string)stream_get_contents($pipes[1]) . (string)stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        if (proc_close($process) !== 0) $errors[] = "$path: " . trim(str_replace($stageDir . '/', '', $output));
+        $run = bbf_upgrade_run([PHP_BINARY, '-l', "$stageDir/$path"], $stageDir);
+        if ($run === null) return null;
+        if ($run['exit'] !== 0) $errors[] = "$path: " . trim(str_replace($stageDir . '/', '', $run['out'] . $run['err']));
     }
     return $errors;
 }
@@ -211,13 +226,8 @@ function bbf_upgrade_access_warnings(string $stageDir, string $install): array {
     if (!function_exists('proc_open') || PHP_BINARY === '' || !is_file("$stageDir/bbf_auth.php") || !is_file("$install/config.php")) return [];
     $script = 'define("BBF_LOADED", true); require $argv[1]; $c = require $argv[2];'
         . ' echo json_encode(is_array($c) && function_exists("bbf_auth_config_problems") ? array_column(bbf_auth_config_problems($c), "message") : []);';
-    $process = @proc_open([PHP_BINARY, '-r', $script, "$stageDir/bbf_auth.php", "$install/config.php"], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $install);
-    if (!is_resource($process)) return [];
-    $out = (string)stream_get_contents($pipes[1]);
-    fclose($pipes[1]);
-    fclose($pipes[2]);
-    proc_close($process);
-    $warnings = json_decode($out, true);
+    $run = bbf_upgrade_run([PHP_BINARY, '-r', $script, "$stageDir/bbf_auth.php", "$install/config.php"], $install);
+    $warnings = json_decode($run['out'] ?? '', true);
     return is_array($warnings) ? array_values(array_filter($warnings, 'is_string')) : [];
 }
 
@@ -262,7 +272,10 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
     // reach you: they are written next to it as .htaccess.dist and the plan says so.
     $notices = [];
     $htaccess = $new['files']['.htaccess']['sha256'] ?? null;
-    if (in_array('.htaccess', $files['keep_yours'], true) && $htaccess !== ($old['files']['.htaccess']['sha256'] ?? null)) {
+    // Only rule lines count: a release that just reworded comments has nothing for you to copy (review 2.1.5).
+    $lacking = array_diff(bbf_htaccess_rule_lines((string)@file_get_contents("{$stage['dir']}/.htaccess")),
+        bbf_htaccess_rule_lines((string)@file_get_contents("$install/.htaccess")));
+    if (in_array('.htaccess', $files['keep_yours'], true) && $htaccess !== ($old['files']['.htaccess']['sha256'] ?? null) && $lacking !== []) {
         $dist = is_file("$install/.htaccess.dist") ? hash_file('sha256', "$install/.htaccess.dist") : null;
         if ($dist !== $htaccess) {
             if (!copy("{$stage['dir']}/.htaccess", "{$stage['dir']}/.htaccess.dist")) throw new RuntimeException('Cannot stage .htaccess.dist');
@@ -307,7 +320,9 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
         'new_config_settings' => is_file("$install/config.example.php")
             ? array_values(array_diff(bbf_upgrade_config_keys("{$stage['dir']}/config.example.php"), bbf_upgrade_config_keys("$install/config.example.php"))) : [],
         'breaking' => bbf_upgrade_breaking((string)@file_get_contents("{$stage['dir']}/CHANGELOG.md"), $from, $to),
-        'access_warnings' => $runPackageCode ? bbf_upgrade_access_warnings($stage['dir'], $install) : [],
+        // Unverified package: the installed (trusted) code judges config.php, so token problems still show up.
+        'access_warnings' => bbf_upgrade_access_warnings($runPackageCode ? $stage['dir'] : $install, $install),
+        'access_warnings_by' => $runPackageCode ? "new version $to" : "installed version $from (the new version may be stricter; see breaking)",
         'notices' => $notices,
         'check' => $check,
         'problems' => $problems,
@@ -339,15 +354,9 @@ function bbf_upgrade_delegate(string $package, ?string $confirm, string $install
             . ' try { $r = bbf_upgrade($c, $argv[3], $argv[4] === "" ? null : $argv[4], $argv[5], true);'
             . ' echo ' . var_export(BBF_UPGRADE_RESULT, true) . ', json_encode($r, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE); }'
             . ' catch (Throwable $e) { fwrite(STDERR, $e->getMessage()); exit(1); }';
-        $process = @proc_open([PHP_BINARY, '-r', $script, $new, "$install/config.php", $package, $confirm ?? '', $install],
-            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $install);
-        if (!is_resource($process)) return null;
-        fclose($pipes[0]);
-        $out = (string)stream_get_contents($pipes[1]);
-        $err = (string)stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        proc_close($process);
+        $run = bbf_upgrade_run([PHP_BINARY, '-r', $script, $new, "$install/config.php", $package, $confirm ?? '', $install], $install);
+        if ($run === null) return null;
+        ['out' => $out, 'err' => $err] = $run;
         $at = strrpos($out, BBF_UPGRADE_RESULT);
         $result = $at === false ? null : json_decode(substr($out, $at + strlen(BBF_UPGRADE_RESULT)), true);
         if (!is_array($result)) throw new RuntimeException(trim($err . "\n" . $out) !== '' ? trim($err . "\n" . $out) : 'the upgrader of the package ' . $stage['manifest']['version'] . ' gave no result.');
@@ -434,7 +443,8 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
 /**
  * The manifest to record: what is actually on disk. A file the upgrade did not write (not in a code-only package,
  * kept because you edited it, a sample you do not have) keeps its previous checksum, so the next upgrade still
- * recognises an unchanged template as ours and updates it.
+ * recognises an unchanged template as ours and updates it. release_sha256 is this release's version of such a file
+ * (for a kept .htaccess: tells the current .htaccess.dist from one an earlier release left).
  */
 function bbf_upgrade_installed_manifest(array $new, ?array $old, string $install): array {
     $files = [];
@@ -442,7 +452,7 @@ function bbf_upgrade_installed_manifest(array $new, ?array $old, string $install
         if (is_file("$install/$path") && hash_file('sha256', "$install/$path") === $file['sha256']) {
             $files[$path] = $file;
         } elseif (isset($old['files'][$path])) {
-            $files[$path] = ['sha256' => $old['files'][$path]['sha256'], 'kind' => $file['kind']];
+            $files[$path] = ['sha256' => $old['files'][$path]['sha256'], 'kind' => $file['kind'], 'release_sha256' => $file['sha256']];
         }
     }
     $new['files'] = $files;
@@ -528,6 +538,12 @@ function bbf_upgrade_rollback(string $backup, ?string $confirm): array {
     return ['ok' => $result['ok'], 'rolled_back' => $plan['rollback'], 'errors' => $result['errors']];
 }
 
+/** Rule lines of an .htaccess text: whitespace-normalized, without blank lines and comments. */
+function bbf_htaccess_rule_lines(string $text): array {
+    $lines = array_map(static fn(string $line): string => (string)preg_replace('/\s+/', ' ', trim($line)), preg_split('/\R/', $text) ?: []);
+    return array_values(array_unique(array_filter($lines, static fn(string $line): bool => $line !== '' && $line[0] !== '#')));
+}
+
 /**
  * Rules of this release your .htaccess lacks, for check.php and selfcheck. Compared line by line with .htaccess.dist
  * when present (the upgrade writes it next to a .htaccess you edited), otherwise with the essential rules below.
@@ -536,18 +552,23 @@ function bbf_upgrade_rollback(string $backup, ?string $confirm): array {
 function bbf_htaccess_missing_rules(string $install): array {
     $own = @file_get_contents("$install/.htaccess");
     if (!is_string($own)) return [];
-    $norm = static fn(string $line): string => (string)preg_replace('/\s+/', ' ', trim($line));
-    $have = array_flip(array_map($norm, preg_split('/\R/', $own) ?: []));
+    $have = array_flip(bbf_htaccess_rule_lines($own));
     $dist = @file_get_contents("$install/.htaccess.dist");
     $essential = ['<FilesMatch "\.md$">', // README.md/CHANGELOG.md reveal the installed version
         '<FilesMatch "^config|^bbf_.*\.php$">', 'RewriteRule ^config/ - [F,L]']; // libraries and credentials (2.1.4)
     // An .htaccess.dist left by an earlier release (e.g. an older FTP upgrade) would recommend its older, weaker
-    // rules: one that lacks a rule every current release has is ignored and named.
-    $distLines = is_string($dist) ? array_flip(array_map($norm, preg_split('/\R/', $dist) ?: [])) : [];
-    $stale = is_string($dist) && array_diff_key(array_flip($essential), $distLines) !== [];
-    $wanted = is_string($dist) && !$stale
-        ? [...array_filter(array_map($norm, preg_split('/\R/', $dist) ?: []), static fn(string $line): bool => $line !== '' && $line[0] !== '#'), ...$essential]
-        : $essential;
+    // rules: it is ignored and named. When the manifest knows this release's .htaccess, only that exact file (also
+    // after an FTP transfer turned LF into CRLF) is current; otherwise it must at least carry every essential rule.
+    $stale = false;
+    if (is_string($dist)) {
+        $known = bbf_upgrade_manifest($install)['files']['.htaccess'] ?? null;
+        $release = $known['release_sha256'] ?? (is_string($known['sha256'] ?? null) && is_file("$install/.htaccess")
+            && hash_file('sha256', "$install/.htaccess") === $known['sha256'] ? $known['sha256'] : null);
+        $lf = str_replace("\r\n", "\n", $dist);
+        $stale = (is_string($release) && !in_array($release, [hash('sha256', $dist), hash('sha256', $lf), hash('sha256', str_replace("\n", "\r\n", $lf))], true))
+            || array_diff($essential, bbf_htaccess_rule_lines($dist)) !== [];
+    }
+    $wanted = is_string($dist) && !$stale ? [...bbf_htaccess_rule_lines($dist), ...$essential] : $essential;
     $missing = array_values(array_filter(array_unique($wanted), static fn(string $line): bool => !isset($have[$line])));
     $out = $stale ? ['.htaccess.dist is from an earlier release and is ignored; delete it (the current rules are in the release ZIP\'s .htaccess / .htaccess.dist).'] : [];
     if ($missing === []) return $out;

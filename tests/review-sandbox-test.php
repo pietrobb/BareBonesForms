@@ -44,7 +44,7 @@ try {
     file_put_contents("$root/templates/fixture.html", '<p>{answer}</p>');
     file_put_contents("$root/actions/sandbox-sentinel.php", '<?php file_put_contents($config["submissions_dir"] . "/action-ran", "executed"); $actionResponse["fixture_action"] = true;');
     // Fixture-only observer: exercises respondent state across management regeneration/revocation.
-    file_put_contents("$root/tests/session-probe.php", '<?php session_start(); if (isset($_GET["seed"])) $_SESSION["respondent_draft"] = ["answer" => "keep-me"]; header("Content-Type: application/json"); echo json_encode(["draft" => $_SESSION["respondent_draft"] ?? null, "secret" => $_SESSION["bbf_secret"] ?? null]);');
+    file_put_contents("$root/tests/session-probe.php", '<?php session_name("BBFSID"); session_start(); if (isset($_GET["seed"])) $_SESSION["respondent_draft"] = ["answer" => "keep-me"]; header("Content-Type: application/json"); echo json_encode(["draft" => $_SESSION["respondent_draft"] ?? null, "secret" => $_SESSION["bbf_secret"] ?? null]);');
     sb_config($base);
     $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
     function sb_http(string $path, array $options = []): array {
@@ -52,7 +52,7 @@ try {
         return bbf_test_http($server, 'http://127.0.0.1:' . $server['port'] . '/' . $path, null, $options);
     }
     function sb_cookie(array $r): string {
-        preg_match('/Set-Cookie:\s*((?:PHPSESSID|BBFADMIN)=[^;\r\n]+)/i', $r['headers'], $m);
+        preg_match('/Set-Cookie:\s*((?:BBFSID|BBFADMIN)=[^;\r\n]+)/i', $r['headers'], $m);
         if (!isset($m[1])) throw new RuntimeException('Missing session cookie');
         return $m[1];
     }
@@ -269,8 +269,8 @@ try {
     sb_check($public['code'] === 200 && !empty($public['json']['csrf_token']), 'public CSRF endpoint needs no admin');
     $before = sb_http('tests/session-probe.php?seed=1', ['cookie' => $cookie])['json'];
     $s = sb_login($cookie);
-    // The sign-in uses its own BBFADMIN cookie (limited to the install path); the public PHPSESSID is never touched.
-    sb_check(str_starts_with($s['cookie'], 'BBFADMIN=') && !preg_match('/Set-Cookie:\s*PHPSESSID=/i', $s['response']['headers'])
+    // The sign-in uses its own BBFADMIN cookie (limited to the install path); the public BBFSID is never touched.
+    sb_check(str_starts_with($s['cookie'], 'BBFADMIN=') && !preg_match('/Set-Cookie:\s*(?:PHPSESSID|BBFSID)=/i', $s['response']['headers'])
         && preg_match('/Set-Cookie:\s*BBFADMIN=[^\r\n]*;\s*path=\/;/i', $s['response']['headers']) === 1, 'management session has its own cookie name and path');
     $both = "$cookie; {$s['cookie']}";
     $c = $base; $c['api_token'] = ''; sb_config($c);

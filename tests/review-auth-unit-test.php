@@ -44,8 +44,25 @@ auth_check(auth_ip($mixed, '192.0.2.10', '198.51.100.7') === '198.51.100.7' && a
 // ─── Configuration problems ────────────────────────────────────────
 $token = static fn(string $id, string $secret): array => ['id' => $id, 'token' => $secret, 'forms' => ['a'], 'permissions' => ['read'],
     'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false];
-$good = ['api_token' => str_repeat('a', 32), 'access_tokens' => [$token('reader', str_repeat('r', 20))]];
+$good = ['api_token' => '9f2c7a41e0b83d56c4a1f7e2', 'access_tokens' => [$token('reader', 'rd-5Kq8zW2mXv7Lp3')]];
 auth_check(bbf_auth_config_problems($good) === [], 'a valid configuration reports nothing');
+
+// ─── Review 2.1.5: guessable patterns are no credential ────────────
+foreach ([str_repeat('a', 32), '1234567890123456', 'abcdefghijklmnopqrstuvwxyz', '9876543210987654', 'abababababababababab', 'abcabcabcabcabcabc', 'aaaabbbbccccdddd'] as $weak)
+    auth_check(bbf_auth_token_weak($weak) && !bbf_auth_token_usable($weak), "weak token rejected: $weak");
+foreach (['9f2c7a41e0b83d56', 'rd-5Kq8zW2mXv7Lp3', 'smoke-token-long-0123', 'Tr0ub4dor&3-horse-battery'] as $strong)
+    auth_check(!bbf_auth_token_weak($strong), "random-looking token accepted: $strong");
+$falsePositives = 0;
+for ($i = 0; $i < 20000; $i++) if (bbf_auth_token_weak(bin2hex(random_bytes(8)))) $falsePositives++;
+auth_check($falsePositives <= 1, "random 16-hex-digit tokens are practically never flagged ($falsePositives of 20000)");
+$weakAdmin = ['api_token' => '1234567890123456'] + $good;
+$wm = implode(' ', array_column(bbf_auth_config_problems($weakAdmin), 'message'));
+auth_check(str_contains($wm, 'guessable pattern') && !str_contains($wm, '1234567890123456') && count(bbf_auth_registry($weakAdmin)) === 1,
+    'a patterned api_token is reported (without its value) and ignored alone');
+$weakRecord = $good; $weakRecord['access_tokens'][] = $token('seq', 'abcdefghijklmnop');
+auth_check(count(bbf_auth_registry($weakRecord)) === 2 && str_contains(implode(' ', array_column(bbf_auth_config_problems($weakRecord), 'message')), 'seq'),
+    'a patterned access token is skipped and named by id');
+auth_check(bbf_smoke_token(['smoke_token' => 'aaaaaaaaaaaaaaaaaaaa']) === null, 'a patterned smoke_token is not a credential');
 $short = $good; $short['access_tokens'][] = $token('tiny', 'fourteen-chars');
 $msgs = implode(' | ', array_column(bbf_auth_config_problems($short), 'message'));
 auth_check(str_contains($msgs, 'tiny') && !str_contains($msgs, 'fourteen-chars'), 'a short access token is named by id, never by value');
@@ -79,29 +96,20 @@ try {
     auth_check(bbf_auth_throttle($c, true) === false, 'rotating addresses inside one IPv6 /64 counts as one client');
     $_SERVER['REMOTE_ADDR'] = '2001:db8:1:2::1';
     auth_check(bbf_auth_throttle($c, true) === true, 'a different /64 is a different client');
-    // ─── While blocked, tokens are checked one per interval (no instant 200/429 oracle) ───
-    $_SERVER['REMOTE_ADDR'] = '2001:db8:1:2::1';
-    auth_check(bbf_auth_throttle_slot($c) === 0.0, 'a client below the limit is checked without waiting');
+    // ─── Retry-After of a blocked client: until its oldest recorded failure leaves the window ───
     $_SERVER['REMOTE_ADDR'] = '2001:db8:1:1::1';
-    // Review 2.1.4: no queue and no sleeping. The first attempt claims the free check; the rest learn the exact wait.
-    $start = microtime(true);
-    $waits = [];
-    for ($i = 0; $i < 50; $i++) $waits[] = bbf_auth_throttle_slot($c);
-    auth_check(microtime(true) - $start < 1, 'deciding 50 blocked attempts takes no waiting');
-    auth_check($waits[0] === 0.0, 'a blocked client with a free check is checked now');
-    auth_check(count(array_filter(array_slice($waits, 1), fn($w) => $w > 0 && $w <= BBF_AUTH_BLOCKED_INTERVAL)) === 49,
-        'every other attempt gets the remaining wait (<= ' . BBF_AUTH_BLOCKED_INTERVAL . ' s), never a longer queue');
-    $state = json_decode(file_get_contents("$logs/.auth_failures.json"), true);
-    $state['slots'] = array_map(fn($s) => microtime(true) - 0.1, $state['slots']); // the interval has passed
-    file_put_contents("$logs/.auth_failures.json", json_encode($state));
-    auth_check(bbf_auth_throttle_slot($c) === 0.0, 'after the interval the next attempt (e.g. the right token) is checked at once');
-    $_SERVER['REMOTE_ADDR'] = '2001:db8:1:2::1';
-    auth_check(bbf_auth_throttle_slot($c) === 0.0, 'another client is not slowed by the blocked one');
+    $retry = bbf_auth_retry_after($c);
+    auth_check($retry > BBF_AUTH_FAILURE_WINDOW - 30 && $retry <= BBF_AUTH_FAILURE_WINDOW, "a blocked client is told when wrong tokens are counted again ($retry s)");
 
-    // A 2.1.2 file (a bare failures map) is still read.
+    // A 2.1.2 file (a bare failures map) and a 2.1.3–2.1.5 file with 'slots' are still read; slots are dropped.
     file_put_contents("$logs/.auth_failures.json", json_encode([hash('sha256', '198.51.100.5') => array_fill(0, 10, time() - 5)]));
     $_SERVER['REMOTE_ADDR'] = '198.51.100.5';
-    auth_check(bbf_auth_throttle($c, true) === false && bbf_auth_throttle_slot($c) === 0.0 && bbf_auth_throttle_slot($c) > 0, 'the 2.1.2 failure file format is still honoured');
+    auth_check(bbf_auth_throttle($c, true) === false, 'the 2.1.2 failure file format is still honoured');
+    file_put_contents("$logs/.auth_failures.json", json_encode(['failures' => [hash('sha256', '198.51.100.6') => array_fill(0, 10, time() - 5)],
+        'slots' => [hash('sha256', '198.51.100.6') => microtime(true) + 2]]));
+    $_SERVER['REMOTE_ADDR'] = '198.51.100.6';
+    auth_check(bbf_auth_throttle($c, true) === false && !array_key_exists('slots', json_decode((string)file_get_contents("$logs/.auth_failures.json"), true)),
+        'a 2.1.5 failure file is honoured and its slots are dropped');
 
     $state = [];
     for ($i = 0; $i < BBF_AUTH_MAX_CLIENTS + 50; $i++) $state[hash('sha256', "c$i")] = [time() - 5];

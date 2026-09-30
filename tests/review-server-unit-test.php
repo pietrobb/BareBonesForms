@@ -80,6 +80,16 @@ server_check($delivered['skipped_old'] === 0 && !isset($delivered['note']), 'onc
 $cache = json_decode((string)file_get_contents($root . '/submissions/.delivery/.old-ledgers.json'), true);
 server_check(is_array($cache) && count($cache) === 2 && $cache['contact/bbf_old.json'] === [$oldMtime + 1, false],
     'old ledgers are remembered by mtime, so they are read once, not on every cron run');
+// Review 2.1.5: an unreadable old ledger is counted and read again next run, never cached as delivered.
+$damaged = $root . '/submissions/.delivery/contact/bbf_damaged.json';
+file_put_contents($damaged, '{"jobs": [truncated');
+touch($damaged, $now - 8 * 86400);
+for ($run = 1; $run <= 2; $run++) {
+    $unreadable = bbf_delivery_retry_due(['submissions_dir' => $root . '/submissions', 'storage' => 'file'], 120, $now);
+    $cache = json_decode((string)file_get_contents($root . '/submissions/.delivery/.old-ledgers.json'), true);
+    server_check($unreadable['skipped_old'] === 1 && !isset($cache['contact/bbf_damaged.json']), "run $run: an unreadable old ledger counts as undelivered and is not cached");
+}
+unlink($damaged);
 $wide = bbf_delivery_retry_due(['submissions_dir' => $root . '/submissions', 'storage' => 'file'], 120, $now, 30 * 86400);
 server_check($wide['checked'] === 3 && $wide['skipped_old'] === 0 && !isset($wide['note']), 'a wider horizon includes the older ledgers');
 
@@ -129,7 +139,8 @@ preg_match('/function ensureSession\(\): void \{.*?\n\}/s', $submitSource, $m);
 server_check(isset($m[0]), 'ensureSession() found in submit.php');
 if (isset($m[0])) {
     // Fresh process: sessions cannot start once this test has printed output.
-    $child = 'ini_set("session.save_path", ' . var_export($root, true) . '); ini_set("session.use_cookies", "0"); ini_set("session.cache_limiter", "");'
+    // No cookies in CLI: session_set_cookie_params() then warns, which must not end up in the JSON on stdout.
+    $child = 'ini_set("display_errors", "stderr"); ini_set("session.save_path", ' . var_export($root, true) . '); ini_set("session.use_cookies", "0"); ini_set("session.cache_limiter", "");'
         . $m[0] . ' ensureSession(); $secret = $_SESSION["bbf_secret"] ?? ""; $file = ' . var_export($root, true) . ' . "/sess_" . session_id();'
         . ' $lock = fopen($file, "r+"); $free = $lock && flock($lock, LOCK_EX | LOCK_NB); if ($lock) { flock($lock, LOCK_UN); fclose($lock); }'
         . ' $closed = session_status() === PHP_SESSION_NONE; ensureSession();'
@@ -168,6 +179,10 @@ server_check(bbf_redirect_url('/t?n={{n}}', ['n' => 0]) === '/t?n=0', 'numeric z
 server_check(bbf_redirect_url('/t?tags={{tags}}&n={{name}}', ['tags' => ['a b', 'c&d'], 'name' => 'Ann']) === '/t?tags=a%20b%2Cc%26d&n=Ann', 'checkbox values are joined and encoded');
 server_check(bbf_redirect_url('/t?tags={{tags}}&x={{missing}}', ['tags' => []]) === '/t?tags=&x=', 'an empty checkbox or a missing field becomes empty');
 server_check(bbf_redirect_url('/t?ok={{ok}}', ['ok' => true]) === '/t?ok=1', 'a boolean becomes 1');
+server_check(bbf_redirect_url('/thanks?ref={{_id}}&f={{_form}}', ['_id' => 'spoofed'], ['_id' => 'bbf_0a1b', '_form' => 'Kontakt & more']) === '/thanks?ref=bbf_0a1b&f=Kontakt%20%26%20more',
+    'review 2.1.5: {{_id}} and {{_form}} fill in the redirect and win over a field of that name');
+$submitSource = (string)file_get_contents(dirname(__DIR__) . '/submit.php');
+server_check(preg_match_all('/bbf_redirect_url\(\$onSubmit\[\'redirect\'\], \$data\)/', $submitSource) === 0, 'every redirect in submit.php passes the template variables');
 
 // Cleanup.
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);

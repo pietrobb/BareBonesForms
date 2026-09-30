@@ -35,9 +35,10 @@ test('missing, throwing and rejected trackers cannot break submission events', a
     await new Promise(resolve => setImmediate(resolve));
 });
 
-async function submit(result, httpOk = true, options = {}, setup = () => {}) {
+async function submit(result, httpOk = true, options = {}, setup = () => {}, timers = []) {
     const events = [];
-    const runtime = loadBBF({ fetch: async () => ({ ok: httpOk, headers: { get: () => 'application/json' }, json: async () => result }) });
+    const runtime = loadBBF({ fetch: async () => ({ ok: httpOk, headers: { get: () => 'application/json' }, json: async () => result }),
+        setTimeout: fn => { timers.push(fn); return fn; }, clearTimeout: fn => { const i = timers.indexOf(fn); if (i >= 0) timers.splice(i, 1); } });
     const { BBF, document, context } = runtime;
     context.window.location = context.location;
     context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
@@ -92,6 +93,30 @@ test('2.1.3 "Back" from the redirect target (bfcache) re-enables the submit butt
     fire(true);
     assert.equal(resets, 1);
     assert.equal((context.window.listeners.pageshow || []).length, 1, 'the one-shot restore listener removed itself');
+});
+
+test('2.1.6 a redirect that never leaves the page (#done, 204) does not leave the button disabled', async () => {
+    const hash = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '#done' });
+    assert.equal(hash.context.window.location.href, '#done', 'the page still jumps to the anchor');
+    assert.equal(hash.form.querySelector('.bbf-submit').disabled, false, '#done on this page: the button is usable again');
+    assert.match(hash.form.querySelector('.bbf-message').className, /bbf-success/);
+    const sameUrl = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: 'https://example.test/demo.html#thanks' });
+    assert.equal(sameUrl.form.querySelector('.bbf-submit').disabled, false, 'an absolute URL of this page with an anchor counts too');
+
+    const timers = [];
+    const { context, form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/no-content' }, true, {}, () => {}, timers);
+    const btn = form.querySelector('.bbf-submit');
+    assert.equal(btn.disabled, true, 'disabled while the browser may be leaving');
+    assert.equal(timers.length, 1);
+    timers.shift()(); // the page is still here after the wait: the target answered 204 or was a download
+    assert.equal(btn.disabled, false, 'the button comes back when the page was never replaced');
+    assert.match(form.querySelector('.bbf-message').className, /bbf-success/);
+
+    const leave = [];
+    const left = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/thanks' }, true, {}, () => {}, leave);
+    [...(left.context.window.listeners.pagehide || [])].forEach(fn => fn({}));
+    assert.equal(leave.length, 0, 'once the page really unloads, the fallback is cancelled');
+    assert.equal(left.form.querySelector('.bbf-submit').disabled, true);
 });
 
 test('form id is URL-encoded in every submit.php request', async () => {

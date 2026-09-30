@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: het bestand is groter dan {max}.',
     'uploadTotalTooLarge'   => 'De bestanden samen zijn groter dan {max}.',
     'validationFailed'      => 'Corrigeer de gemarkeerde velden.',
+    'crossFieldInvalid'     => 'De antwoorden passen niet bij elkaar. Controleer ze alstublieft.',
     'csrfInvalid'           => 'Uw sessie is verlopen. Laad de pagina opnieuw en probeer het nogmaals.',
     'invalidUtf8'           => 'De verzonden tekst bevat ongeldige tekens.',
     'draftExpired'          => 'De opgeslagen voortgang is verlopen.',

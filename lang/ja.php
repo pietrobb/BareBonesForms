@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}：ファイルが{max}を超えています。',
     'uploadTotalTooLarge'   => 'ファイルの合計が{max}を超えています。',
     'validationFailed'      => 'マークされた項目を修正してください。',
+    'crossFieldInvalid'     => '回答の内容が一致しません。確認してください。',
     'csrfInvalid'           => 'セッションの有効期限が切れました。ページを再読み込みして、もう一度お試しください。',
     'invalidUtf8'           => '送信されたテキストに無効な文字が含まれています。',
     'draftExpired'          => '保存された入力内容の有効期限が切れました。',

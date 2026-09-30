@@ -113,3 +113,16 @@ test('review 2.1.4: answers a respondent can see (429, 413, 202, 503) are transl
         assert.notEqual(sk[key], phpPack('en.php')[key], `sk.php ${key} is Slovak`);
     }
 });
+
+test('review 2.1.5: draft, upload and cross-field answers are translated too', () => {
+    const sources = ['submit.php', 'bbf_uploads.php', 'bbf_functions.php'].map(read).join('\n');
+    for (const english of ['Draft storage failed', 'Respondent drafts are not enabled', 'Send exactly one file', 'Upload not found',
+        'This file is busy', 'fileinfo is missing).\'', "?? 'Validation failed'"]) {
+        assert.ok(!sources.includes(english), `English literal left: ${english}`);
+    }
+    const en = phpPack('en.php');
+    assert.ok(en.crossFieldInvalid);
+    for (const file of fs.readdirSync(path.join(root, 'lang')).filter(f => f.endsWith('.php') && f !== 'en.php')) {
+        assert.ok(phpPack(file).crossFieldInvalid && phpPack(file).crossFieldInvalid !== en.crossFieldInvalid, `${file} translates crossFieldInvalid`);
+    }
+});

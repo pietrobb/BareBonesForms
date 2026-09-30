@@ -500,14 +500,17 @@ preg_match_all('/<FilesMatch "([^"]+)">\s*Require all denied/', $htaccess, $file
 preg_match_all('/^RewriteRule (\S+) - \[F,L\]/m', $htaccess, $rewrite);
 // Nginx picks the longest ^~ prefix first (its nested "location ~ \.php$" applies inside it); otherwise the FIRST
 // matching regex wins. Review 2.1.4: simulate the worst paste position, the site's own "location ~ \.php$" (PHP runs)
-// before every BBF regex rule, so a .php path is protected only by a ^~ prefix.
+// before every BBF regex rule, so a .php path is protected only by a ^~ prefix. Review 2.1.5: a static-file cache
+// regex (json, md) may also come first, so forms/*.json and README/CHANGELOG need a ^~ or = location too.
 $nginxRules = static function (string $text): array {
+    preg_match_all('/^(?:# )?location = (\S+) \{ deny all; \}/m', $text, $e);
     preg_match_all('/^(?:# )?location \^~ (\S+) \{ (deny all;|location ~ \\\\\.php\$ \{ deny all; \}) \}/m', $text, $p);
     preg_match_all('/^(?:# )?location ~ "?(.+?)"? \{ deny all; \}/m', $text, $m);
     return [
+        'exact' => array_map(static fn(string $s): string => str_replace('BBF_BASE/', 'bbf/', $s), $e[1]),
         'prefix' => array_combine(array_map(static fn(string $s): string => str_replace('BBF_BASE/', 'bbf/', $s), $p[1]),
             array_map(static fn(string $body): bool => $body !== 'deny all;', $p[2])), // true = deny only *.php inside
-        'regex' => array_merge(['\.php$' => false], array_fill_keys(array_map(static fn(string $re): string => str_replace('BBF_BASE/', 'bbf/', $re), $m[1]), true)),
+        'regex' => array_merge(['\.php$' => false, '\.(?:css|js|json|md|txt|xml)$' => false], array_fill_keys(array_map(static fn(string $re): string => str_replace('BBF_BASE/', 'bbf/', $re), $m[1]), true)),
     ];
 };
 $apacheDenies = static function (string $path) use ($filesMatch, $rewrite): bool {
@@ -517,6 +520,7 @@ $apacheDenies = static function (string $path) use ($filesMatch, $rewrite): bool
 };
 $nginxDenies = static function (array $rules, string $path): bool {
     $uri = "/bbf/$path";
+    if (in_array($uri, $rules['exact'], true)) return true;
     $best = null;
     foreach ($rules['prefix'] as $prefix => $phpOnly) if (str_starts_with($uri, $prefix) && ($best === null || strlen($prefix) > strlen($best))) $best = $prefix;
     if ($best !== null) return !$rules['prefix'][$best] || str_ends_with($uri, '.php');
@@ -527,7 +531,7 @@ $libraries = array_map('basename', glob("$root/bbf_*.php"));
 $entryPoints = array_values(array_filter(array_map('basename', glob("$root/*.php")), static fn(string $f): bool => !str_starts_with($f, 'bbf_') && !str_starts_with($f, 'config')));
 $mustDeny = array_merge($libraries, ['config.php', 'config/google-ads-credentials.php', 'config/', 'config.example.php', 'lang/en.php',
     'tests/review-ci-test.php', 'actions/example.php', 'submissions/contact/bbf_1.json', 'logs/access-audit.php', 'templates/notify.html',
-    'backups/x.zip', 'data/x.sqlite', 'forms/contact.json', 'README.md', 'bbf_functions.php.bak', '.env']);
+    'backups/x.zip', 'data/x.sqlite', 'forms/contact.json', 'README.md', 'CHANGELOG.md', '.bbf-manifest.json', 'bbf_functions.php.bak', '.env']);
 $mustServe = array_merge($entryPoints, ['bbf.js', 'bbf-analytics.js', 'lang/en.js', 'lang/sk.js']);
 foreach (['.htaccess' => null, 'Nginx in .htaccess' => $nginxRules($htaccess), 'Nginx in docs.html' => $nginxRules(acceptance_source($root, 'docs.html'))] as $label => $rules) {
     $denies = static fn(string $path): bool => $rules === null ? $apacheDenies($path) : $nginxDenies($rules, $path);

@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: o ficheiro excede {max}.',
     'uploadTotalTooLarge'   => 'Os ficheiros excedem {max} no total.',
     'validationFailed'      => 'Corrija os campos assinalados.',
+    'crossFieldInvalid'     => 'As respostas não são coerentes entre si. Verifique-as, por favor.',
     'csrfInvalid'           => 'A sua sessão expirou. Recarregue a página e tente novamente.',
     'invalidUtf8'           => 'O texto enviado contém caracteres inválidos.',
     'draftExpired'          => 'O progresso guardado expirou.',

@@ -346,15 +346,22 @@ try {
         ['method' => 'POST', 'headers' => ['Content-Type' => 'application/json'], 'raw' => '{}']);
     drafts_check($mismatchPost['code'] === 500, 'draft endpoint rejects duplicate internal identity under another route');
     $csrfResponse = bbf_test_http($server, $baseUrl . '?form=consultation&action=csrf');
-    preg_match('/Set-Cookie:\s*(PHPSESSID=[^;\r\n]+)/i', $csrfResponse['headers'], $cookie);
+    preg_match('/Set-Cookie:\s*(BBFSID=[^;\r\n]+)/i', $csrfResponse['headers'], $cookie);
     $csrf = $csrfResponse['json']['csrf_token'] ?? '';
     drafts_check($csrfResponse['code'] === 200 && isset($cookie[1]) && is_string($csrf) && $csrf !== '',
         'draft HTTP flow obtains same-origin CSRF session');
-    drafts_check(preg_match('/^Set-Cookie:\s*PHPSESSID=[^\r\n]*;\s*HttpOnly/mi', $csrfResponse['headers']) === 1,
+    drafts_check(preg_match('/^Set-Cookie:\s*BBFSID=[^\r\n]*;\s*HttpOnly/mi', $csrfResponse['headers']) === 1,
         'respondent session cookie is HttpOnly (scripts cannot read the CSRF session)');
+    // Review 2.1.5: own name, limited to the installation folder, so another PHP app's PHPSESSID is never replaced.
+    $scriptDir = rtrim(dirname((string)parse_url($baseUrl, PHP_URL_PATH)), '/\\') . '/';
+    drafts_check(preg_match('/^Set-Cookie:\s*BBFSID=[^\r\n]*;\s*path=' . preg_quote($scriptDir, '/') . '[;\r\n]/mi', $csrfResponse['headers']) === 1
+        && !preg_match('/Set-Cookie:\s*PHPSESSID=/i', $csrfResponse['headers']), "respondent cookie is BBFSID on path $scriptDir, never PHPSESSID");
+    $other = bbf_test_http($server, $baseUrl . '?form=consultation&action=csrf', null,
+        ['headers' => ['Cookie' => 'PHPSESSID=other-app-session-id-1234567890']]);
+    drafts_check(!preg_match('/Set-Cookie:\s*PHPSESSID=/i', $other['headers']), 'another application\'s PHPSESSID is left alone');
     $forged = bbf_test_http($server, $baseUrl . '?form=consultation&action=csrf', null,
-        ['headers' => ['Cookie' => 'PHPSESSID=attackerchosenid1234567890']]);
-    drafts_check(preg_match('/Set-Cookie:\s*PHPSESSID=([^;\r\n]+)/i', $forged['headers'], $fresh) === 1
+        ['headers' => ['Cookie' => 'BBFSID=attackerchosenid1234567890']]);
+    drafts_check(preg_match('/Set-Cookie:\s*BBFSID=([^;\r\n]+)/i', $forged['headers'], $fresh) === 1
         && $fresh[1] !== 'attackerchosenid1234567890', 'strict mode replaces an uninitialised respondent session ID');
     $post = static function (string $formId, string $action, array $body, bool $withCsrf = true, string $token = '') use ($server, $baseUrl, $cookie, $csrf): array {
         if ($withCsrf) $body['_bbf_csrf'] = $token !== '' ? $token : $csrf;

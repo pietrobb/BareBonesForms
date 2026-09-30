@@ -47,6 +47,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: Die Datei ist größer als {max}.',
     'uploadTotalTooLarge'   => 'Die Dateien sind zusammen größer als {max}.',
     'validationFailed'      => 'Bitte korrigieren Sie die markierten Felder.',
+    'crossFieldInvalid'     => 'Die Angaben passen nicht zusammen. Bitte prüfen Sie sie.',
     'csrfInvalid'           => 'Ihre Sitzung ist abgelaufen. Laden Sie die Seite neu und versuchen Sie es erneut.',
     'invalidUtf8'           => 'Der gesendete Text enthält ungültige Zeichen.',
     'draftExpired'          => 'Der gespeicherte Fortschritt ist abgelaufen.',

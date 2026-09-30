@@ -43,6 +43,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: failas didesnis nei {max}.',
     'uploadTotalTooLarge'   => 'Bendras failų dydis viršija {max}.',
     'validationFailed'      => 'Pataisykite pažymėtus laukus.',
+    'crossFieldInvalid'     => 'Atsakymai nesuderinami tarpusavyje. Patikrinkite juos.',
     'csrfInvalid'           => 'Jūsų sesija baigėsi. Iš naujo įkelkite puslapį ir bandykite dar kartą.',
     'invalidUtf8'           => 'Pateiktame tekste yra netinkamų simbolių.',
     'draftExpired'          => 'Išsaugota pažanga nebegalioja.',

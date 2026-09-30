@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: filen är större än {max}.',
     'uploadTotalTooLarge'   => 'Filerna är tillsammans större än {max}.',
     'validationFailed'      => 'Rätta de markerade fälten.',
+    'crossFieldInvalid'     => 'Svaren stämmer inte överens. Kontrollera dem.',
     'csrfInvalid'           => 'Din session har gått ut. Ladda om sidan och försök igen.',
     'invalidUtf8'           => 'Den skickade texten innehåller ogiltiga tecken.',
     'draftExpired'          => 'De sparade framstegen har gått ut.',

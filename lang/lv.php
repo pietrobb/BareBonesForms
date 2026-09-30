@@ -43,6 +43,7 @@ return [
     'uploadFieldTooLarge'   => '{label}: fails pārsniedz {max}.',
     'uploadTotalTooLarge'   => 'Failu kopējais izmērs pārsniedz {max}.',
     'validationFailed'      => 'Lūdzu, izlabojiet atzīmētos laukus.',
+    'crossFieldInvalid'     => 'Atbildes nesaskan savā starpā. Lūdzu, pārbaudiet tās.',
     'csrfInvalid'           => 'Jūsu sesija ir beigusies. Pārlādējiet lapu un mēģiniet vēlreiz.',
     'invalidUtf8'           => 'Nosūtītais teksts satur nederīgas rakstzīmes.',
     'draftExpired'          => 'Saglabātā progresa derīgums ir beidzies.',

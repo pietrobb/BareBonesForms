@@ -45,6 +45,7 @@ return [
     'uploadFieldTooLarge'   => '{label}：文件超过 {max}。',
     'uploadTotalTooLarge'   => '文件总大小超过 {max}。',
     'validationFailed'      => '请更正标记的字段。',
+    'crossFieldInvalid'     => '这些回答彼此不一致，请检查。',
     'csrfInvalid'           => '会话已过期。请重新加载页面后重试。',
     'invalidUtf8'           => '提交的文本包含无效字符。',
     'draftExpired'          => '保存的进度已过期。',

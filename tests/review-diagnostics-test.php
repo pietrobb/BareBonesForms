@@ -490,6 +490,14 @@ PHP);
         [$exit, $output] = diagnostic_cli($root, ['extreme_diag'], $streams);
         diagnostic_check(str_contains($output, 'extreme_diag') && !str_contains($output, 'Allowed memory size') && !str_contains($output, 'Fatal'),
             "$mode extreme pattern/minlength is reported, memory is not exhausted");
+        // Review 2.1.5: a minlength above the 5000-character pattern cap is still met with plain text.
+        file_put_contents($root . '/forms/extreme_diag.json', json_encode([
+            'id' => 'extreme_diag', 'schema_version' => 1, 'name' => 'Long text smoke form',
+            'fields' => [['name' => 'long', 'type' => 'textarea', 'label' => 'Long', 'required' => true, 'minlength' => 6600, 'maxlength' => 6600]],
+            'on_submit' => ['store' => false],
+        ], JSON_THROW_ON_ERROR));
+        [$exit, $output] = diagnostic_cli($root, ['extreme_diag'], $streams);
+        diagnostic_check($exit === 0 && str_contains($output, '1/1 forms passed'), "$mode minlength 6600 (above the pattern cap, divisible by 11) passes" . ($exit === 0 ? '' : ': ' . substr($output, -600)));
         unlink($root . '/forms/extreme_diag.json');
         file_put_contents($root . '/forms/empty_diag.json', json_encode([
             'id' => 'empty_diag', 'schema_version' => 1, 'name' => 'Empty-value smoke form',

@@ -207,8 +207,11 @@ function bbf_alert_message(array $config, array $groups, int $interval): array {
             . ($count > 1 ? " — {$count}× since " . date('Y-m-d H:i', (int)($group['first_at'] ?? 0)) : '') . "\n"
             . '  ' . date('Y-m-d H:i:s', (int)($group['last_at'] ?? 0)) . ': ' . $group['detail'] . "\n\n";
     }
+    $types = array_column($groups, 'type');
     $body .= "Total incidents in this report: $total.\n"
-        . 'The same problem on the same form is reported at most once every ' . bbf_alert_duration($interval) . ".\n"
+        . (array_diff($types, ['Update available']) !== []
+            ? 'The same problem on the same form is reported at most once every ' . bbf_alert_duration($interval) . ".\n" : '')
+        . (in_array('Update available', $types, true) ? "Update available: one notice per new version.\n" : '')
         . 'Full history: incidents.log in logs_dir (' . bbf_alert_dir($config) . ").\n";
     return [$subject, $body];
 }

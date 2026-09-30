@@ -430,7 +430,10 @@
                 return Array.isArray(currentVal) ? currentVal.length > 0 : !!currentVal;
             }
 
-            const targets = Array.isArray(targetVal) ? targetVal : [targetVal];
+            // Targets compare as text, like PHP compareValues (strval): "value": 5 matches the field value "5".
+            const targets = (Array.isArray(targetVal) ? targetVal : [targetVal])
+                .filter(t => t !== null && t !== undefined)
+                .map(t => typeof t === 'boolean' ? (t ? '1' : '') : String(t));
 
             // String contains
             if (op === 'contains') {
@@ -1403,16 +1406,26 @@
                             return;
                         }
                         // Only http(s) targets: a redirect is never allowed to run script (javascript:, data:).
+                        let hashRedirect = null;
                         if (typeof result.redirect === 'string' && result.redirect) {
-                            let protocol = '';
-                            try { protocol = new URL(result.redirect, 'https://relative.invalid/').protocol; } catch (e) { /* invalid URL: show success instead */ }
-                            if (protocol === 'https:' || protocol === 'http:') {
+                            let protocol = '', target = null;
+                            try { protocol = new URL(result.redirect, 'https://relative.invalid/').protocol; target = new URL(result.redirect, location.href); } catch (e) { /* invalid URL: show success instead */ }
+                            // "#done" on this very page never unloads it: show the success state, then jump there.
+                            const samePage = target && target.hash !== '' && target.href.split('#')[0] === String(location.href).split('#')[0];
+                            if (samePage) hashRedirect = result.redirect;
+                            else if (protocol === 'https:' || protocol === 'http:') {
                                 // "Back" from the thank-you page restores this page from the back/forward cache, still
                                 // filled in and with the button disabled. Clear the stored answers (one click would
                                 // otherwise store them again under the new key), re-enable it and say it went through.
-                                const restore = event => {
-                                    if (!event.persisted) return;
+                                // A target that never replaces the page (204 No Content, a download) gets the same
+                                // treatment when the page is still here after a few seconds.
+                                let finished = false;
+                                const finish = () => {
+                                    if (finished) return;
+                                    finished = true;
+                                    clearTimeout(stuck);
                                     window.removeEventListener('pageshow', restore);
+                                    window.removeEventListener('pagehide', leaving);
                                     el.reset();
                                     this._resetCustomFields(el);
                                     this._stabilizeOptionConditions(el);
@@ -1426,7 +1439,11 @@
                                     msg.textContent = form.success_message || this._t('successDefault', {}, langCode);
                                     msg.style.display = 'block';
                                 };
+                                const restore = event => { if (event.persisted) finish(); };
+                                const leaving = () => clearTimeout(stuck);
+                                const stuck = setTimeout(finish, 5000);
                                 window.addEventListener('pageshow', restore);
+                                window.addEventListener('pagehide', leaving);
                                 window.location.href = result.redirect;
                                 return;
                             }
@@ -1446,6 +1463,7 @@
                         if (options.hideOnSuccess) {
                             Array.from(el.querySelectorAll('.bbf-field, .bbf-submit-wrap, .bbf-page, .bbf-page-nav')).forEach(f => f.style.display = 'none');
                         }
+                        if (hashRedirect) window.location.href = hashRedirect;
                     } else {
                         if (options.onError) options.onError(result);
                         // Errors with no field to sit under (cross-field rules, _payment) are the useful message here.
