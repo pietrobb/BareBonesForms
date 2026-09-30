@@ -146,6 +146,15 @@ async function settle() {
     for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
 }
 
+test('currentScript owns the renderer and stylesheet URLs even with later scripts', () => {
+    const { BBF, document } = loadBBF({ prelude: `
+        document.currentScript = { src: 'https://forms.test/installation/bbf.js' };
+        document.getElementsByTagName = () => [{ src: 'https://unrelated.test/later.js' }];
+    ` });
+    assert.equal(BBF.baseUrl, 'https://forms.test/installation/');
+    assert.equal(document.head.children[0].href, 'https://forms.test/installation/bbf.css');
+});
+
 test('latest render request owns its container when an older request fails late', async () => {
     const requests = new Map();
     const { BBF } = loadBBF({ fetch: url => {

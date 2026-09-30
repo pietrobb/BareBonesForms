@@ -72,27 +72,25 @@ test('redirect only follows http(s) or relative targets, never script URLs', asy
     }
 });
 
-test('2.1.3 "Back" from the redirect target (bfcache) re-enables the submit button', async () => {
+test('redirect resets stored answers before navigation, so Back cannot resubmit them', async () => {
     let resets = 0;
-    const { context, form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/thanks' });
-    form.reset = () => { resets++; };
-    form._bbfSubmitKey = 'key-of-the-stored-submission';
-    const btn = form.querySelector('.bbf-submit');
+    const originalKey = 'key-of-the-stored-submission';
+    const { context, form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/thanks' }, true, {}, runtime => {
+        const build = runtime.BBF._buildForm.bind(runtime.BBF);
+        runtime.BBF._buildForm = (...args) => {
+            const form = build(...args);
+            form._bbfSubmitKey = originalKey;
+            runtime.BBF._resetCustomFields = () => { resets++; };
+            return form;
+        };
+    });
     assert.equal(context.window.location.href, '/thanks');
-    assert.equal(btn.disabled, true, 'stays disabled while the browser navigates away');
-    const fire = persisted => [...(context.window.listeners.pageshow || [])].forEach(fn => fn({ persisted }));
-    fire(false);
-    assert.equal(btn.disabled, true, 'a normal load is not a bfcache restore');
-    fire(true);
-    assert.equal(btn.disabled, false);
-    assert.equal(btn.textContent, 'Submit');
+    assert.equal(form.querySelector('.bbf-submit').disabled, false);
     assert.equal(form._bbfSubmitting, false);
     assert.match(form.querySelector('.bbf-message').className, /bbf-success/);
-    assert.equal(resets, 1, 'review 2.1.4: the restored page is cleared, so one click cannot store the same answers twice');
-    assert.notEqual(form._bbfSubmitKey, 'key-of-the-stored-submission', 'the next fill gets its own key');
-    fire(true);
     assert.equal(resets, 1);
-    assert.equal((context.window.listeners.pageshow || []).length, 1, 'the one-shot restore listener removed itself');
+    assert.notEqual(form._bbfSubmitKey, originalKey);
+    assert.equal((context.window.listeners.pageshow || []).length, 1, 'only the standard idempotency-key listener remains');
 });
 
 test('2.1.6 a redirect that never leaves the page (#done, 204) does not leave the button disabled', async () => {
@@ -108,17 +106,26 @@ test('2.1.6 a redirect that never leaves the page (#done, 204) does not leave th
     const timers = [];
     const { context, form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/no-content' }, true, {}, () => {}, timers);
     const btn = form.querySelector('.bbf-submit');
-    assert.equal(btn.disabled, true, 'disabled while the browser may be leaving');
-    assert.equal(timers.length, 1);
-    timers.shift()(); // the page is still here after the wait: the target answered 204 or was a download
-    assert.equal(btn.disabled, false, 'the button comes back when the page was never replaced');
+    assert.equal(btn.disabled, false, 'the stored submission is complete even if navigation never leaves');
+    assert.equal(timers.length, 0, 'no five-second guess about redirect completion');
     assert.match(form.querySelector('.bbf-message').className, /bbf-success/);
 
     const leave = [];
     const left = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/thanks' }, true, {}, () => {}, leave);
     [...(left.context.window.listeners.pagehide || [])].forEach(fn => fn({}));
     assert.equal(leave.length, 0, 'once the page really unloads, the fallback is cancelled');
-    assert.equal(left.form.querySelector('.bbf-submit').disabled, true);
+    assert.equal(left.form.querySelector('.bbf-submit').disabled, false);
+});
+
+test('hideOnSuccess applies before every redirect, including slow targets and downloads', async () => {
+    for (const redirect of ['/thanks', '#done']) {
+        const timers = [];
+        const { form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect }, true, { hideOnSuccess: true }, () => {}, timers);
+        assert.equal(form._bbfHideOnSuccess, true);
+        assert.ok(form.querySelectorAll('.bbf-field, .bbf-submit-wrap').every(field => field.style.display === 'none'));
+        assert.equal(form.querySelector('.bbf-message').style.display, 'block');
+        assert.equal(timers.length, 0);
+    }
 });
 
 test('form id is URL-encoded in every submit.php request', async () => {

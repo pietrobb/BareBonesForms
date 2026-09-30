@@ -219,19 +219,29 @@ try {
     preg_match('/Set-Cookie:\s*(BBFSID=[^;\r\n]+)/i', $public['headers'], $publicMatch);
     $publicCookie = $publicMatch[1] ?? '';
     $publicToken = $public['json']['csrf_token'] ?? '';
+    $sessionPath = "$root/sessions/sess_" . substr($publicCookie, strlen('BBFSID='));
+    $oldActivity = time() - 120;
+    touch($sessionPath, $oldActivity);
     $valid = up_upload($server, 'up', 'cv', 'valid.pdf', $pdf, ['Cookie' => $publicCookie, 'X-BBF-CSRF' => $publicToken]);
+    clearstatcache(true, $sessionPath);
+    up_check(filemtime($sessionPath) > $oldActivity, 'valid upload CSRF renews the existing session mtime');
+    touch($sessionPath, $oldActivity);
+    $sessionBefore = (string)file_get_contents($sessionPath);
     up_check($valid['code'] === 200 && stripos($valid['headers'], 'Set-Cookie:') === false, 'valid existing-session upload succeeds after rejected CSRF without rotating its cookie');
     $rateBefore = (string)file_get_contents((glob("$root/logs/ratelimit_upload_*") ?: [''])[0]);
     $bad = up_upload($server, 'up', 'cv', 'bad.pdf', $pdf, ['Cookie' => $publicCookie, 'X-BBF-CSRF' => 'stale']);
     up_check($bad['code'] === 403 && stripos($bad['headers'], 'Set-Cookie:') === false
         && (string)file_get_contents((glob("$root/logs/ratelimit_upload_*") ?: [''])[0]) === $rateBefore, 'wrong token with an existing session does not spend quota or set a cookie');
+    clearstatcache(true, $sessionPath);
+    up_check(filemtime($sessionPath) === $oldActivity && (string)file_get_contents($sessionPath) === $sessionBefore,
+        'invalid upload CSRF leaves session mtime and payload unchanged');
     up_config($root, $data);
     up_delete($server, 'up', $valid['json']['token'] ?? '');
     foreach (glob("$root/logs/ratelimit_upload_*") ?: [] as $file) unlink($file);
     // Disabled drafts are not a missing bearer code.
     foreach (['draft_save', 'draft_load', 'draft_delete'] as $action) {
         $disabled = bbf_test_http($server, up_url($server, "form=up&action=$action"), [], ['method' => 'POST']);
-        up_check($disabled['code'] === 403 && ($disabled['json']['reason'] ?? '') === 'disabled'
+        up_check($disabled['code'] === 409 && ($disabled['json']['reason'] ?? '') === 'disabled'
             && !str_contains($disabled['json']['message'] ?? '', 'not found'), "$action distinguishes disabled drafts from an unknown code");
     }
 

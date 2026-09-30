@@ -180,7 +180,7 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Download the release ZIP and `SHA256SUMS` from the [GitHub release page](https://github.com/pietrobb/BareBonesForms/releases), upload the ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.8.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
+php maintenance.php upgrade --package=../barebonesforms-v2.1.9.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
 ```
 
 This is a dry run — nothing changes. `--checksum` proves the ZIP is the published release (a wrong ZIP is refused); `gh attestation verify barebonesforms-vX.Y.Z.zip -R pietrobb/BareBonesForms` proves the same with the signed build provenance. **Only a verified package's code runs in the dry run.** Then the upgrader inside the new package plans and applies the upgrade (from 2.1.3 on; the result says `"upgrader": "package X.Y.Z"`), so fixes to the upgrade itself already apply to it, and the new version's smoke test runs against **your** forms and templates. Without `--checksum` (since 2.1.5) the dry run only checks the files against the package's own manifest and their PHP syntax, runs none of the new code (`"check": {"status": "skipped"}`) and says how to verify; `--apply` then uses the installed upgrader. For a package you built yourself, `--trust-package` has the effect of `--checksum`. PHP notices printed along the way (e.g. `display_errors=On` on XAMPP) are listed under `php_messages` and do not fail the upgrade. The dry run checks the new PHP files for syntax errors and prints:
@@ -191,9 +191,13 @@ This is a dry run — nothing changes. `--checksum` proves the ZIP is the publis
 - `new_config_settings`: keys that appeared in `config.example.php`; all have safe defaults, add the ones you want;
 - `breaking`: every **Breaking** item from the CHANGELOG between your version and the new one;
 - `notices`: for example, your `.htaccess` has lines of your own, so it is kept and the release's new rules are written next to it as `.htaccess.dist` — copy them over (`check.php` and `selfcheck` list rule lines still missing);
-- `problems`: anything that blocks the upgrade — a damaged package, an older version, PHP too old, or a form that passes today and would fail with the new code.
+- `problems`: anything that blocks the upgrade — a damaged package, an older version, PHP too old, a form that passes today and would fail with the new code, or unusable administrative access (`access_blocked: true`). Fix access credentials and repeat preflight before applying.
 
 If it looks right, run the printed command with `--apply --confirm=<digest>`. The upgrade saves every file it overwrites or deletes to `logs_dir/upgrades/<date>-<from>-to-<to>-…/`, swaps files one by one (each file atomically), runs the smoke test again, and **rolls itself back** if anything fails. `config.php`, your own forms, templates, submissions, uploads and logs are never touched — the manifest lists only the files the release owns. Demo pages, docs and sample forms are updated where you have them, but never added to an installation that left them out, so a live site does not grow demo form endpoints.
+
+To get the new diagnostics when an older installed launcher mislabels a structured refusal as a subprocess crash, use the unpacked new release's `tools/upgrade.php --install=/path/to/bbf`. No failure message alone proves files changed: inspect `code_updated`, `rolled_back` and `access_blocked`.
+
+On Windows, an open `maintenance.php` can prevent atomic replacement. The upgrade fails safely instead of truncating the running file; use the unpacked release's `tools/upgrade.php --install=/path/to/bbf` as shown below. Active PHP security restrictions, resource limits and error-display settings are forwarded to upgrade subprocesses; arbitrary startup/extension settings are not.
 
 To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup=<folder printed by the upgrade>` (dry run first, then `--apply --confirm=…`).
 
@@ -201,7 +205,7 @@ To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing   # or compare the ZIP's SHA-256 by hand
-unzip barebonesforms-v2.1.8.zip            # creates ./barebonesforms
+unzip barebonesforms-v2.1.9.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 

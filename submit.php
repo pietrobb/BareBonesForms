@@ -136,13 +136,13 @@ function ensureSession(bool $create = true): void {
     session_set_cookie_params(['lifetime' => 0, 'path' => bbf_cookie_path($config),
         'secure' => $https, 'httponly' => true, 'samesite' => $https ? 'None' : '']);
     if (!$create) {
-        // Upload validation must only read an existing session, never rotate a stale cookie.
+        // Validate an existing session without emitting cookies; commit activity only after valid CSRF.
         $_SESSION = [];
         $id = $_COOKIE['BBFSID'] ?? '';
         if (!is_string($id) || !preg_match('/\A[a-zA-Z0-9,-]{1,256}\z/D', $id)) return;
         if (ini_get('session.save_handler') !== 'files') {
             session_id($id);
-            session_start(['read_and_close' => true, 'use_cookies' => false, 'use_strict_mode' => false]);
+            session_start(['use_cookies' => false, 'use_strict_mode' => false]);
             $loaded = true;
             return;
         }
@@ -151,20 +151,23 @@ function ensureSession(bool $create = true): void {
         $depth = $parts ? (int)$parts[0] : 0;
         if ($depth > strlen($id)) return;
         for ($i = 0; $i < $depth; $i++) $path .= '/' . $id[$i];
-        $sessionFile = @fopen($path . '/sess_' . $id, 'rb');
-        if (!$sessionFile || !flock($sessionFile, LOCK_SH)) { if (is_resource($sessionFile)) fclose($sessionFile); return; }
-        // A read-only handler prevents the files handler from creating a replacement if GC won the race.
+        $sessionFile = @fopen($path . '/sess_' . $id, 'r+b');
+        if (!$sessionFile || !flock($sessionFile, LOCK_EX)) { if (is_resource($sessionFile)) fclose($sessionFile); return; }
+        // An existing-file handler prevents creation if GC won the race; the lock covers validation and renewal.
         session_set_save_handler(new class($sessionFile) implements SessionHandlerInterface {
             public function __construct(private $file) {}
             public function open(string $path, string $name): bool { return true; }
             public function close(): bool { flock($this->file, LOCK_UN); fclose($this->file); return true; }
             public function read(string $id): string|false { return stream_get_contents($this->file); }
-            public function write(string $id, string $data): bool { return false; }
+            public function write(string $id, string $data): bool {
+                return rewind($this->file) && fwrite($this->file, $data) === strlen($data)
+                    && ftruncate($this->file, strlen($data)) && fflush($this->file);
+            }
             public function destroy(string $id): bool { return false; }
             public function gc(int $max_lifetime): int|false { return 0; }
         });
         session_id($id);
-        session_start(['read_and_close' => true, 'use_cookies' => false, 'use_strict_mode' => false]);
+        session_start(['use_cookies' => false, 'use_strict_mode' => false]);
         $loaded = true;
         return;
     }
@@ -176,6 +179,22 @@ function ensureSession(bool $create = true): void {
     // request never block other tabs of the same visitor. $_SESSION stays readable.
     session_write_close();
     $loaded = true;
+}
+
+/** Read/validate/renew under the handler's lock, then release it before any slow processing. */
+function bbf_submit_csrf_valid(string $formId, $token): bool {
+    ensureSession(false);
+    $secret = $_SESSION['bbf_secret'] ?? null;
+    $valid = session_status() === PHP_SESSION_ACTIVE && is_string($secret) && $secret !== ''
+        && is_string($token) && hash_equals(hash_hmac('sha256', $formId, $secret), $token);
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        if ($valid) {
+            // Force a handler write, including handlers without updateTimestamp/lazy-write support.
+            $_SESSION['bbf_activity'] = microtime(true);
+            session_write_close();
+        } else session_abort(); // no writes, new secrets or replacement cookies for rejected CSRF
+    }
+    return $valid;
 }
 
 // ─── CORS ───────────────────────────────────────────────────────
@@ -308,14 +327,16 @@ $_smokeAuth  = bbf_smoke_token($config) !== null // an invalid-format smoke_toke
 $isCorsRequest = !empty($origin) && !empty($config['allowed_origins'])
     && in_array($origin, $config['allowed_origins'], true);
 if (!$isSandbox && ($config['csrf'] ?? true) && !$isCorsRequest && !$_smokeAuth) {
-    ensureSession(false);
-    $csrfToken = is_string($input['_bbf_csrf'] ?? null) ? $input['_bbf_csrf'] : '';
-    if (empty($_SESSION['bbf_secret'])
-        || !hash_equals(hash_hmac('sha256', $formId, $_SESSION['bbf_secret']), $csrfToken)) {
+    $csrfToken = $input['_bbf_csrf'] ?? null;
+    if (!bbf_submit_csrf_valid($formId, $csrfToken)) {
         respond(403, msg('csrfInvalid'));
     }
 }
 unset($input['_bbf_csrf']);
+
+// A stale draft UI is a policy conflict, not expired CSRF; do not spend the submission budget.
+if (!$isSandbox && $isDraftAction && bbf_draft_policy($form) === null)
+    respond(409, msg('draftDisabled'), ['reason' => 'disabled']);
 
 // ─── Rate limiting (file-based, with locking) ───────────────────
 $ip = bbf_client_ip($config);
@@ -335,7 +356,7 @@ $flatFields = flattenFields($form['fields']); $input = bbfSystemInput($flatField
 // ─── Opt-in respondent drafts ───────────────────────────────────
 $draftAction = $_GET['action'] ?? '';
 if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_delete'], true)) {
-    if (bbf_draft_policy($form) === null) respond(403, msg('draftDisabled'), ['reason' => 'disabled']);
+    // Disabled policy was rejected before rate limiting; only enabled draft operations reach here.
     bbf_draft_cleanup($config);
     $handle = is_string($input['_bbf_draft_handle'] ?? null) ? $input['_bbf_draft_handle'] : '';
     if ($draftAction === 'draft_save') {
@@ -407,7 +428,7 @@ if ($isSandbox) {
             'template' => $ce['template'] ?? 'confirm.html',
             'body_preview' => renderTemplate(
                 $config['templates_dir'] . '/' . basename($ce['template'] ?? 'confirm.html'),
-                array_merge($data, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId])
+                array_replace($data, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId])
             ),
         ];
     }
@@ -423,7 +444,7 @@ if ($isSandbox) {
             'template' => $n['template'] ?? 'notify.html',
             'body_preview' => renderTemplate(
                 $config['templates_dir'] . '/' . basename($n['template'] ?? 'notify.html'),
-                array_merge($data, [
+                array_replace($data, [
                     '_form'    => $form['name'] ?? $formId,
                     '_id'      => $submissionId,
                     '_time'    => $timestamp,
@@ -859,10 +880,8 @@ function bbf_submit_upload_csrf(array $config, string $formId): void {
         && is_string($smoke) && $smoke !== '' && hash_equals(bbf_smoke_token($config), $smoke);
     $cors = !empty($origin) && in_array($origin, (array)($config['allowed_origins'] ?? []), true);
     if (!($config['csrf'] ?? true) || $cors || $smokeAuth) return;
-    ensureSession(false);
-    $token = $_SERVER['HTTP_X_BBF_CSRF'] ?? '';
-    if (empty($_SESSION['bbf_secret']) || !is_string($token)
-        || !hash_equals(hash_hmac('sha256', $formId, $_SESSION['bbf_secret']), $token)) {
+    $token = $_SERVER['HTTP_X_BBF_CSRF'] ?? null;
+    if (!bbf_submit_csrf_valid($formId, $token)) {
         respond(403, msg('csrfInvalid'));
     }
 }

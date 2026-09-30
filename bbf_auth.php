@@ -36,8 +36,8 @@ function bbf_auth_fail(int $code = 403, string $detail = ''): void {
     http_response_code($code);
     $login = $GLOBALS['bbf_auth_login_page'] ?? null;
     if ($code === 503) {
-        // The operator needs to know what to fix; the message names no filesystem path.
-        $message = 'Access audit unavailable.' . ($detail !== '' ? ' ' . $detail : '');
+        // HTTP failures are public, even when audit preflight fails before authorization.
+        $message = 'Access audit unavailable.' . (PHP_SAPI === 'cli' && $detail !== '' ? ' ' . $detail : '');
         if (is_array($login)) {
             header('Content-Type: text/html; charset=utf-8');
             echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>BareBonesForms: unavailable</title></head>'
@@ -57,10 +57,8 @@ function bbf_auth_fail(int $code = 403, string $detail = ''): void {
             if (!is_string($_SESSION['bbf_login_csrf'] ?? null)) $_SESSION['bbf_login_csrf'] = bin2hex(random_bytes(32));
             $loginCsrf = $_SESSION['bbf_login_csrf'];
         }
-        $hint = $login['configured']
-            ? 'Enter an access token from <code>config.php</code>. ' . htmlspecialchars($login['reason'] ?? '', ENT_QUOTES)
-            : 'No usable access token is configured. ' . htmlspecialchars($login['reason'] ?? '', ENT_QUOTES)
-                . ' Generate a random token with <code>php maintenance.php new-token</code> and set it in <code>config.php</code>.';
+        $hint = 'Enter your access token.'
+            . ' If sign-in is unavailable, ask the operator to run <code>php maintenance.php selfcheck</code>.';
         echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<title>BareBonesForms: sign in</title><style>body{font-family:system-ui,sans-serif;max-width:420px;margin:12vh auto;padding:0 20px;color:#1a1a2e}'
             . 'input,button{font:inherit;padding:8px 10px;width:100%;box-sizing:border-box;margin-top:8px}code{background:#f1f3f5;padding:1px 4px;border-radius:3px}</style></head><body>'
@@ -315,6 +313,14 @@ function bbf_auth_config_problems(array $config): array {
         elseif ($usable === 0) $out[] = ['level' => 'warn', 'message' => 'No usable access token: viewer, editor and submissions API are locked. Set api_token (at least ' . BBF_AUTH_MIN_TOKEN . ' hexadecimal characters). Generate a random value with php maintenance.php new-token.'];
     }
     $smoke = $config['smoke_token'] ?? '';
+    foreach (['api_token' => $legacy, 'smoke_token' => $smoke] as $name => $value) {
+        if (is_string($value) && $value !== '' && rtrim($value) !== $value)
+            $out[] = ['level' => 'warn', 'message' => $name . ' contains trailing whitespace; remove it from the configured value. Tokens are matched exactly, never trimmed.'];
+    }
+    foreach ($short as $record) {
+        if (rtrim($record['token']) !== $record['token'])
+            $out[] = ['level' => 'warn', 'message' => 'access_tokens: ' . (bbf_auth_id($record['id'] ?? null) ?: '(no id)') . ' contains trailing whitespace; remove it from the configured value. Tokens are matched exactly, never trimmed.'];
+    }
     if ($smoke !== '' && $smoke !== null && bbf_smoke_token($config) === null)
         $out[] = ['level' => 'warn', 'message' => 'smoke_token must be a string containing only hexadecimal characters (0-9, a-f, A-F), at least ' . BBF_AUTH_MIN_TOKEN
             . ' characters long; it is ignored: HTTP smoke tests are off. Generate a random value with php maintenance.php new-token.'];
@@ -379,10 +385,8 @@ function bbf_authenticate(array $config, bool $session = true, bool $html = fals
     // HTML management pages accept the sign-in form POST so the token stays out of URLs and logs.
     $formLogin = $html && $session && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && array_key_exists('token', $_POST);
     if ($html) {
-        $usable = array_filter($registry, static fn(array $r): bool => !$r['revoked'] && $r['expires'] > time());
-        $problems = bbf_auth_config_problems($config);
-        $GLOBALS['bbf_auth_login_page'] = ['configured' => $usable !== [],
-            'reason' => implode(' ', array_column($problems, 'message')) ?: ($usable === [] ? 'All configured access tokens are expired or revoked.' : '')];
+        // Configuration diagnostics belong to authenticated checks and CLI selfcheck, not sign-in.
+        $GLOBALS['bbf_auth_login_page'] = [];
     }
     // Login CSRF: the form carries a per-session value, so another site cannot sign the browser in with its token.
     if ($formLogin && !(is_string($_POST['login_csrf'] ?? null) && is_string($_SESSION['bbf_login_csrf'] ?? null)

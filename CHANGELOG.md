@@ -3,6 +3,24 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.9] — 2026-09-30
+
+Fixes from the review of 2.1.8. Production installations are not upgraded automatically.
+
+### Security
+- Anonymous sign-in responses no longer reveal access-token names, configuration errors or administrative access state. Detailed diagnostics remain available through `php maintenance.php selfcheck`.
+- Token validation remains a hexadecimal format check, not an entropy estimate. Continue generating credentials with `php maintenance.php new-token`.
+
+### Fixed
+- Respondent session activity is renewed only after successful CSRF validation, without replacing cookies on rejected or concurrent requests.
+- CSRF creation and recovery are serialized across forms in the same installation while retaining separate form-specific tokens. Disabled drafts do not trigger a CSRF refresh.
+- Upgrade preflight reports administrative lockout before replacing files. Expected structured refusals are distinguished from child-process crashes. PHP security restrictions, resource limits and diagnostics are forwarded to child processes. Windows replacement never truncates a held `maintenance.php`; use the unpacked release's `tools/upgrade.php` if the entry point is held open.
+- Security-rule comparisons recognize safe Apache directive casing and module wrappers without discarding conditional protection.
+- Redirect success state, answer reset and `hideOnSuccess` are applied when submission is confirmed, before navigation; no five-second timer guesses whether a redirect has finished.
+- Renderer and stylesheet URLs use `document.currentScript` rather than an unrelated script following the renderer.
+- Phone validation accepts Unicode spaces such as NBSP consistently with the browser; sandbox email previews preserve empty and escaped numeric field names.
+- Failed release verification removes only the draft created by that workflow run, never an already published release. Smoke diagnostics describe the current hexadecimal token policy. Operator diagnostics identify trailing token whitespace; authenticated proxy warnings never treat forwarding headers as trusted evidence.
+
 ## [2.1.8] — 2026-09-30
 
 Fixes from the review of 2.1.7.

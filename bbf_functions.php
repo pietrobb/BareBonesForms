@@ -2128,7 +2128,7 @@ function validate(array $fields, array $input): array {
                     }
                     break;
                 case 'tel':
-                    if (!preg_match('/^[+]?[0-9\s\-().]{6,20}$/', $value)) {
+                    if (!preg_match('/^[+]?[0-9\s\-().]{6,20}$/u', $value)) {
                         $errors[$name] = msg('invalidTel', ['label' => $label]);
                     }
                     break;

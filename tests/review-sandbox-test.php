@@ -206,6 +206,18 @@ try {
         sb_check($r['code'] === 200 && ($r['json']['sandbox'] ?? false) && ($r['json']['validation']['passed'] ?? false)
             && ($r['json']['on_submit_preview']['actions'][0]['file_exists'] ?? false), "authorized $id preview succeeds without real actions/delivery/payment");
     }
+    $numeric = $delivery;
+    $numeric['fields'][] = ['name' => '5', 'type' => 'text'];
+    file_put_contents("$root/forms/delivery.json", json_encode($numeric));
+    file_put_contents("$root/templates/fixture.html", '<p>{{5}}</p><p>{{answer}}</p>');
+    foreach (['' => '<p></p>', '<script>x</script>' => '<p>&lt;script&gt;x&lt;/script&gt;</p>'] as $value => $expected) {
+        $r = sb_http('submit.php?form=delivery&sandbox=1', sb_post($s, true, ['answer' => 'fixture answer', '5' => $value]));
+        foreach (['confirm_email', 'notify'] as $kind) sb_check($r['code'] === 200
+            && str_contains($r['json']['on_submit_preview'][$kind]['body_preview'] ?? '', $expected)
+            && !str_contains($r['json']['on_submit_preview'][$kind]['body_preview'] ?? '', '{{5}}'),
+            "numeric empty/escaped field survives sandbox $kind preview");
+    }
+    file_put_contents("$root/forms/delivery.json", json_encode($delivery));
     $paymentPreview = $previews['payment']['on_submit_preview']['payment'] ?? [];
     sb_check(($paymentPreview['amount_minor'] ?? null) === 1200 && ($paymentPreview['currency'] ?? null) === 'EUR'
         && ($paymentPreview['pricing_mode'] ?? null) === 'fixed' && ($paymentPreview['pricing_version'] ?? null) === 'sandbox-v1'

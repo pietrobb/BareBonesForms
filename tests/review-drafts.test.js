@@ -212,6 +212,36 @@ test('concurrent draft 403s share one refresh and late stale responses reuse its
     assert.equal(hidden.value, 'fresh');
 });
 
+test('different forms serialize CSRF creation per installation but keep form-specific tokens', async () => {
+    const h = harness();
+    const firstForm = new Element('form'), secondForm = new Element('form');
+    const firstField = firstForm.appendChild(new Element('input'));
+    const secondField = secondForm.appendChild(new Element('input'));
+    firstField.name = secondField.name = '_bbf_csrf';
+    firstField.value = secondField.value = 'old';
+    const first = h.BBF._refreshCsrf('./', 'first', firstForm, 'old');
+    const second = h.BBF._refreshCsrf('./', 'second', secondForm, 'old');
+    assert.equal(h.requests.length, 1, 'second form waits for the cookie from the first');
+    h.respond(0, { csrf_token: 'first-token' });
+    assert.equal(await first, 'first-token');
+    for (let i = 0; i < 10 && h.requests.length < 2; i++) await new Promise(r => setImmediate(r));
+    assert.equal(h.requests.length, 2);
+    assert.match(h.requests[1].url, /form=second/);
+    h.respond(1, { csrf_token: 'second-token' });
+    assert.equal(await second, 'second-token');
+    assert.equal(firstField.value, 'first-token');
+    assert.equal(secondField.value, 'second-token');
+    assert.equal(h.BBF._csrfRefreshQueues.size, 0);
+});
+
+test('disabled drafts do not trigger a CSRF refresh', async () => {
+    const h = harness();
+    const request = h.BBF._draftRequest('./', 'off', 'draft_save', { _bbf_csrf: 'valid' }, true, 'en', h.form);
+    h.respond(0, { message: 'Drafts disabled', code: 'drafts_disabled' }, false, 409);
+    await assert.rejects(request, error => error.status === 409);
+    assert.equal(h.requests.length, 1);
+});
+
 test('failed shared refresh settles all callers and a later attempt can refresh again', async () => {
     const h = harness();
     const first = h.BBF._refreshCsrf('./', 'consultation', h.form, 'old');

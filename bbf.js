@@ -24,14 +24,14 @@
     const BBF = {
         baseUrl: (function() {
             const scripts = document.getElementsByTagName('script');
-            const src = scripts[scripts.length - 1].src;
+            const src = (document.currentScript || scripts[scripts.length - 1]).src;
             return src.substring(0, src.lastIndexOf('/') + 1);
         })(),
 
         // ─── Auto-load bbf.css if not already present ───────
         _cssInjected: (function() {
             const scripts = document.getElementsByTagName('script');
-            const src = scripts[scripts.length - 1].src;
+            const src = (document.currentScript || scripts[scripts.length - 1]).src;
             const base = src.substring(0, src.lastIndexOf('/') + 1);
             const cssUrl = base + 'bbf.css';
             // Check if already loaded
@@ -217,16 +217,7 @@
                 // Fetch CSRF token for same-origin requests
                 let csrfToken = null;
                 if (isSameOrigin) {
-                    try {
-                        const csrfResp = await fetch(
-                            `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`,
-                            { credentials: 'same-origin' }
-                        );
-                        if (csrfResp.ok) {
-                            const csrfData = await csrfResp.json();
-                            csrfToken = csrfData.csrf_token || null;
-                        }
-                    } catch (e) { /* CSRF may be disabled */ }
+                    csrfToken = await this._refreshCsrf(baseUrl, formId, null);
                     if (!isCurrent()) return;
                 }
 
@@ -955,12 +946,16 @@
         /** Fetches a fresh CSRF token (the session expired or its cookie changed) and stores it in the form's hidden field. */
         _refreshCsrf: function(baseUrl, formId, formEl, rejectedToken) {
             const field = formEl && formEl.querySelector('input[name="_bbf_csrf"]');
-            const key = new URL(baseUrl, location.href).href + ':' + formId;
+            const installation = new URL(baseUrl, location.href).href;
+            const key = installation + ':' + formId;
+            const queues = this._csrfRefreshQueues || (this._csrfRefreshQueues = new Map());
             const pending = this._csrfRefreshes || (this._csrfRefreshes = new Map());
             let refresh = pending.get(key);
             if (!refresh && rejectedToken !== undefined && field && field.value && field.value !== rejectedToken) return Promise.resolve(field.value);
             if (!refresh) {
+                const previous = queues.get(installation);
                 refresh = (async () => {
+                    if (previous) await previous;
                     try {
                         const resp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`, { credentials: 'same-origin' });
                         const token = resp.ok ? (await resp.json()).csrf_token : null;
@@ -968,7 +963,11 @@
                     } catch (error) { return null; }
                 })();
                 pending.set(key, refresh);
-                refresh.finally(() => { if (pending.get(key) === refresh) pending.delete(key); });
+                queues.set(installation, refresh);
+                refresh.finally(() => {
+                    if (pending.get(key) === refresh) pending.delete(key);
+                    if (queues.get(installation) === refresh) queues.delete(installation);
+                });
             }
             return refresh.then(token => { if (token && field) field.value = token; return token; });
         },
@@ -1419,7 +1418,7 @@
                         // Session expired on the new-submission path: refresh the token once, same key.
                         if (resp.status === 403 && !csrfRefreshed && isSameOrigin && '_bbf_csrf' in body) {
                             csrfRefreshed = true;
-                            const token = await this._refreshCsrf(baseUrl, formId, el);
+                            const token = await this._refreshCsrf(baseUrl, formId, el, body._bbf_csrf);
                             if (token) { body._bbf_csrf = token; continue; }
                         }
                         break;
@@ -1453,38 +1452,7 @@
                             // Absolute: a relative "#done" would resolve against a <base href> (SPAs) and leave the page.
                             if (samePage) hashRedirect = target.href;
                             else if (protocol === 'https:' || protocol === 'http:') {
-                                // "Back" from the thank-you page restores this page from the back/forward cache, still
-                                // filled in and with the button disabled. Clear the stored answers (one click would
-                                // otherwise store them again under the new key), re-enable it and say it went through.
-                                // A target that never replaces the page (204 No Content, a download) gets the same
-                                // treatment when the page is still here after a few seconds.
-                                let finished = false;
-                                const finish = () => {
-                                    if (finished) return;
-                                    finished = true;
-                                    clearTimeout(stuck);
-                                    window.removeEventListener('pageshow', restore);
-                                    window.removeEventListener('pagehide', leaving);
-                                    el.reset();
-                                    this._resetCustomFields(el);
-                                    this._stabilizeOptionConditions(el);
-                                    this._applyConditions(el, allFlat, false);
-                                    this._clearErrors(el);
-                                    el._bbfSubmitKey = newSubmitKey();
-                                    el._bbfSubmitting = false;
-                                    btn.disabled = false;
-                                    btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
-                                    msg.className = 'bbf-message bbf-success';
-                                    msg.textContent = form.success_message || this._t('successDefault', {}, langCode);
-                                    msg.style.display = 'block';
-                                };
-                                const restore = event => { if (event.persisted) finish(); };
-                                const leaving = () => clearTimeout(stuck);
-                                const stuck = setTimeout(finish, 5000);
-                                window.addEventListener('pageshow', restore);
-                                window.addEventListener('pagehide', leaving);
-                                window.location.href = result.redirect;
-                                return;
+                                hashRedirect = result.redirect;
                             }
                         }
                         msg.className = 'bbf-message bbf-success';

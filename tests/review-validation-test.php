@@ -395,6 +395,8 @@ check('quoted local parts that would split into several recipients are refused',
 });
 check('phone rule matches the browser', function (): void {
     accepts(['type' => 'tel'], '(555) 123-4567');
+    accepts(['type' => 'tel'], "+421\u{00A0}900\u{00A0}123456");
+    accepts(['type' => 'tel'], "+421\u{2009}900\u{2009}123456");
     rejects(['type' => 'tel'], 'call me', 'invalidTel');
 });
 check('show_if chain A -> B -> C: a hidden B hides C, and its forged value counts as empty', function (): void {

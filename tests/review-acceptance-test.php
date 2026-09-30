@@ -368,6 +368,12 @@ acceptance_check(substr_count($workflow, 'actions/setup-python@') >= 2
     && substr_count($workflow, 'python -m pip install jsonschema==4.23.0') >= 2,
     'PHP 8.2 and 8.1 gates install the pinned Draft 2020-12 schema test dependency');
 
+$releaseWorkflow = acceptance_source($root, '.github/workflows/release.yml');
+acceptance_check(str_contains($releaseWorkflow, "failure() && steps.create_release.outcome == 'success'")
+    && str_contains($releaseWorkflow, '--json isDraft --jq .isDraft')
+    && str_contains($releaseWorkflow, 'gh release delete "$GITHUB_REF_NAME" --yes'),
+    'failed release verification cleans only the draft created by this run, never a published release');
+
 $schema = json_decode(acceptance_source($root, 'forms/form.schema.json'), true, 512, JSON_THROW_ON_ERROR);
 $top = $schema['properties'] ?? []; $field = $schema['$defs']['field']['properties'] ?? [];
 $payment = $schema['$defs']['on_submit']['properties']['payment']['properties'] ?? [];

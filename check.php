@@ -17,11 +17,11 @@ require_once __DIR__ . '/bbf_upgrade.php';
 require_once __DIR__ . '/bbf_auth.php';
 $configFile = __DIR__ . '/config.php';
 if (!is_file($configFile)) {
-    // The most common installation error; saying so reveals nothing sensitive.
+    // Missing configuration is still an anonymous failure, not a diagnostic report.
     bbf_auth_headers();
     http_response_code(503);
     header('Content-Type: text/plain; charset=utf-8');
-    exit("config.php not found. Copy config.example.php to config.php, set api_token, then open check.php again.\n");
+    exit("Temporarily unavailable. Ask the operator to run php maintenance.php selfcheck.\n");
 }
 $config = bbf_auth_load_config($configFile);
 if (!is_array($config)) {
@@ -104,10 +104,12 @@ if ($config) {
 
     // Only the actual peer address establishes trust; forwarding headers from other peers prove nothing.
     $trustedPeer = bbf_ip_in_list((string)($_SERVER['REMOTE_ADDR'] ?? ''), bbf_trusted_proxies($config));
-    check('Config', 'Proxy / Cloudflare client address', true,
+    $unconfiguredProxyHeaders = bbf_trusted_proxies($config) === []
+        && (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) || !empty($_SERVER['HTTP_CF_CONNECTING_IP']) || !empty($_SERVER['HTTP_X_FORWARDED_PROTO']));
+    check('Config', 'Proxy / Cloudflare client address', !$unconfiguredProxyHeaders,
         $trustedPeer ? 'The peer is a configured trusted proxy; client address resolved as ' . bbf_client_ip($config) . '.'
             : 'The peer is not a configured trusted proxy. Forwarding headers are ignored; client address is ' . bbf_client_ip($config)
-                . '. If this site is behind a proxy, configure its verified address ranges in trusted_proxies.');
+                . '. If this site is behind a proxy, configure its verified address ranges in trusted_proxies.', 'warn');
 
     check('Config', 'webhook_secret configured', !empty($config['webhook_secret']),
         empty($config['webhook_secret'])

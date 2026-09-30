@@ -74,12 +74,9 @@ function bbf_upgrade_put(string $target, string $data): void {
         usleep(200000);
     }
     @unlink($temp);
-    // Windows cannot rename over the maintenance.php that runs this upgrade (the parent process holds it open);
-    // writing into it works. Only that CLI entry point, never a library the web could load half-written.
-    if (basename($target) !== 'maintenance.php' || !is_file($target) || @file_put_contents($target, $data, LOCK_EX) !== strlen($data)
-        || hash_file('sha256', $target) !== hash('sha256', $data)) {
-        throw new RuntimeException("Cannot replace $target");
-    }
+    // Never truncate a live file, including maintenance.php: LOCK_EX does not protect PHP readers or a killed writer.
+    // On Windows run from the unpacked release's tools/upgrade.php if the installed CLI entry point is held open.
+    throw new RuntimeException("Cannot atomically replace $target. Close processes reading it; for maintenance.php on Windows, run the unpacked release's tools/upgrade.php --install=<installation>.");
 }
 
 /**
@@ -178,6 +175,18 @@ function bbf_upgrade_run(array $command, string $cwd): ?array {
     $errFile = tempnam(sys_get_temp_dir(), 'bbf');
     if ($errFile === false) return null;
     try {
+        // CLI -d overrides are not inherited by PHP children. Preserve the active security restrictions,
+        // resource limits and diagnostics only; do not replay arbitrary extension/startup configuration.
+        if (($command[0] ?? null) === PHP_BINARY) {
+            $settings = [];
+            foreach (['open_basedir', 'disable_functions', 'disable_classes', 'allow_url_fopen', 'allow_url_include', 'memory_limit', 'max_execution_time',
+                'display_errors', 'error_reporting', 'log_errors'] as $name) {
+                $value = ini_get($name);
+                // INI parsing still applies to -d values: quote semicolon-separated Windows path lists.
+                if ($value !== false) array_push($settings, '-d', $name . '="' . str_replace('"', '\\"', $value) . '"');
+            }
+            array_splice($command, 1, 0, $settings);
+        }
         $process = @proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']], $pipes, $cwd);
         if (!is_resource($process)) return null;
         fclose($pipes[0]);
@@ -246,7 +255,7 @@ function bbf_upgrade_access_state(string $stageDir, string $install): array {
     $state = json_decode($run['out'], true);
     if ($run['exit'] !== 0 || !is_array($state) || !is_array($state['warnings'] ?? null)) {
         $why = trim(strtok(trim($run['err'] . "\n" . $run['out']), "\n") ?: '');
-        return ['warnings' => ["The access tokens in config.php could not be checked (exit code {$run['exit']}" . ($why !== '' ? ": $why" : '') . '). Run php check.php after the upgrade.'], 'blocked' => false];
+        return ['warnings' => ["The access tokens in config.php could not be checked (exit code {$run['exit']}" . ($why !== '' ? ": $why" : '') . '). Run php maintenance.php selfcheck after the upgrade.'], 'blocked' => false];
     }
     return ['warnings' => array_values(array_filter($state['warnings'], 'is_string')), 'blocked' => ($state['blocked'] ?? false) === true];
 }
@@ -269,7 +278,7 @@ function bbf_upgrade_form_warnings(string $codeDir, string $install): array {
 }
 
 /** What an upgrade to the staged package would do. Nothing is changed. */
-function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = true): array {
+function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = true, bool $applying = false): array {
     $new = $stage['manifest'];
     $old = bbf_upgrade_manifest($install);
     $from = $old['version'] ?? 'unknown';
@@ -353,6 +362,8 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
     }
 
     if ($runPackageCode) array_push($notices, ...bbf_upgrade_form_warnings($stage['dir'], $install));
+    $access = bbf_upgrade_access_state($runPackageCode ? $stage['dir'] : $install, $install);
+    if ($access['blocked'] && !$applying) $problems[] = 'Administrative access would be blocked by the checked auth policy. Before upgrading, set a random api_token of at least 32 hexadecimal characters in config.php (php maintenance.php new-token), fix access_tokens errors, and repeat this dry run. An explicit --apply with this confirm digest may still update the code, but does not repair access; keep the backup for upgrade-rollback.';
     $changes = array_sum(array_map('count', [$files['add'], $files['replace'], $files['remove']]));
     $plan = [
         'ok' => $problems === [],
@@ -367,7 +378,8 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
             ? array_values(array_diff(bbf_upgrade_config_keys("{$stage['dir']}/config.example.php"), bbf_upgrade_config_keys("$install/config.example.php"))) : [],
         'breaking' => bbf_upgrade_breaking((string)@file_get_contents("{$stage['dir']}/CHANGELOG.md"), $from, $to),
         // Unverified package: the installed (trusted) code judges config.php, so token problems still show up.
-        'access_warnings' => bbf_upgrade_access_warnings($runPackageCode ? $stage['dir'] : $install, $install),
+        'access_warnings' => $access['warnings'],
+        'access_blocked' => $access['blocked'],
         'access_warnings_by' => $runPackageCode ? "new version $to" : "installed version $from (the new version may be stricter; see breaking)",
         'notices' => $notices,
         'check' => $check,
@@ -405,14 +417,14 @@ function bbf_upgrade_delegate(string $package, ?string $confirm, string $install
         ['out' => $out, 'err' => $err] = $run;
         $at = strrpos($out, BBF_UPGRADE_RESULT);
         $result = $at === false ? null : json_decode(substr($out, $at + strlen(BBF_UPGRADE_RESULT)), true);
-        if (!is_array($result)) throw new RuntimeException((trim($err . "\n" . $out) !== '' ? trim($err . "\n" . $out) : 'the upgrader of the package ' . $stage['manifest']['version'] . ' gave no result.')
+        if (!is_array($result) || !is_bool($result['ok'] ?? null)) throw new RuntimeException((trim($err . "\n" . $out) !== '' ? trim($err . "\n" . $out) : 'the upgrader of the package ' . $stage['manifest']['version'] . ' gave no result.')
             . ($run['exit'] !== 0 ? " (exit code {$run['exit']})" : ''));
         $result['upgrader'] = 'package ' . $stage['manifest']['version'];
         // PHP notices printed along the way are shown, but they do not turn a finished upgrade into a failure.
         $messages = array_values(array_filter(array_map('trim', explode("\n", trim($err . "\n" . substr($out, 0, $at)))), 'strlen'));
         // Keep the exit code outside the capped notices, including a crash during shutdown after valid JSON.
         $result['upgrader_exit_code'] = $run['exit'];
-        if ($run['exit'] !== 0) {
+        if ($run['exit'] !== ($result['ok'] ? 0 : 1)) {
             $result['ok'] = false;
             $result['error'] = ($result['error'] ?? 'The package upgrader reported a result but did not exit successfully.') . " (exit code {$run['exit']})";
             array_unshift($messages, "The package upgrader ended with exit code {$run['exit']} after reporting its result: run php smoketest.php and php maintenance.php selfcheck.");
@@ -429,7 +441,7 @@ function bbf_upgrade(array $config, string $package, ?string $confirm, string $i
     $stage = bbf_upgrade_stage($package);
     try {
         // An unverified package's code never runs in a dry run ("just looking"); --apply is the decision to run it.
-        $plan = bbf_upgrade_plan($stage, $install, $verified || $confirm !== null);
+        $plan = bbf_upgrade_plan($stage, $install, $verified || $confirm !== null, $confirm !== null);
         $files = $plan['_files'];
         unset($plan['_files']);
         if (!$plan['ok'] || $plan['up_to_date']) return $plan;
@@ -601,13 +613,51 @@ function bbf_upgrade_rollback(string $backup, ?string $confirm): array {
 
 /** Security units, not unordered lines: a container includes its ordered body and rewrite conditions stay attached. */
 function bbf_htaccess_rule_lines(string $text): array {
+    // Normalize only Apache directive names and known case-insensitive values, never regexes or paths.
+    $names = ['filesmatch' => 'FilesMatch', 'ifmodule' => 'IfModule', 'rewriteengine' => 'RewriteEngine',
+        'rewriterule' => 'RewriteRule', 'rewritecond' => 'RewriteCond', 'require' => 'Require', 'options' => 'Options'];
+    $lines = [];
+    $stack = [];
+    foreach (preg_split('/\R/', $text) ?: [] as $raw) {
+        $line = (string)preg_replace('/\s+/', ' ', trim($raw));
+        if ($line === '' || $line[0] === '#') continue;
+        $line = (string)preg_replace_callback('/^(<?\/?)([A-Za-z]+)(?=\s|>|$)/',
+            static fn($m) => $m[1] . ($names[strtolower($m[2])] ?? strtolower($m[2])), $line);
+        if (preg_match('/^RewriteEngine (on|off)$/i', $line, $m)) $line = 'RewriteEngine ' . ucfirst(strtolower($m[1]));
+        if (preg_match('/^Require all (denied|granted)$/i', $line, $m)) $line = 'Require all ' . strtolower($m[1]);
+        if (preg_match('/^<([^\/! ][^ >]*)(?: [^>]*)?>$/', $line, $m)) {
+            $stack[] = ['tag' => $m[1], 'open' => $line, 'body' => []];
+            continue;
+        }
+        $chunk = [$line];
+        if ($stack !== [] && $line === '</' . $stack[count($stack) - 1]['tag'] . '>') {
+            $frame = array_pop($stack);
+            $body = $frame['body'];
+            // These positive module guards only wrap directives supplied by that same required module.
+            // Unknown/negated guards and request-dependent scopes remain part of the security unit.
+            $safe = false;
+            if (preg_match('/^<IfModule (mod_rewrite\.c|rewrite_module)>$/', $frame['open'])) {
+                $safe = $body !== [] && array_filter($body, static fn($l) => !preg_match('/^Rewrite(?:Engine |Rule |Cond )/', $l)) === [];
+            } elseif (preg_match('/^<IfModule (mod_authz_core\.c|authz_core_module)>$/', $frame['open'])) {
+                $safe = $body !== [] && array_filter($body, static fn($l) => !preg_match('/^(?:<FilesMatch |<\/FilesMatch>$|Require all (?:denied|granted)$)/', $l)) === [];
+            }
+            $chunk = $safe ? $body : [$frame['open'], ...$body, $line];
+        }
+        if ($stack === []) array_push($lines, ...$chunk);
+        else array_push($stack[count($stack) - 1]['body'], ...$chunk);
+    }
+    // Unclosed/mismatched scopes cannot contribute unconditional protections.
+    while ($stack !== []) {
+        $frame = array_pop($stack);
+        $chunk = [$frame['open'], ...$frame['body']];
+        if ($stack === []) array_push($lines, ...$chunk);
+        else array_push($stack[count($stack) - 1]['body'], ...$chunk);
+    }
     $units = [];
     $block = [];
     $depth = 0;
     $conditions = [];
-    foreach (preg_split('/\R/', $text) ?: [] as $raw) {
-        $line = (string)preg_replace('/\s+/', ' ', trim($raw));
-        if ($line === '' || $line[0] === '#') continue;
+    foreach ($lines as $line) {
         $open = preg_match('/^<[^\/!][^>]*>$/', $line) === 1;
         $close = preg_match('/^<\/[^>]+>$/', $line) === 1;
         if ($depth > 0 || $open) {
@@ -618,8 +668,9 @@ function bbf_htaccess_rule_lines(string $text): array {
             continue;
         }
         if (preg_match('/^RewriteCond\s/i', $line)) { $conditions[] = $line; continue; }
-        $units[] = implode(' | ', [...$conditions, $line]);
-        $conditions = [];
+        $rewrite = str_starts_with($line, 'RewriteRule ');
+        $units[] = implode(' | ', [...($rewrite ? $conditions : []), $line]);
+        if ($rewrite) $conditions = [];
     }
     if ($block !== [] || $conditions !== []) $units[] = 'Incomplete security block: ' . implode(' | ', [...$block, ...$conditions]);
     return array_values(array_unique($units));

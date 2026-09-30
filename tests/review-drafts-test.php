@@ -369,9 +369,19 @@ try {
             ['method' => 'POST', 'cookie' => $cookie[1], 'headers' => ['Content-Type' => 'application/json'],
                 'raw' => json_encode($body, JSON_THROW_ON_ERROR)]);
     };
-    drafts_check($post('consultation', 'draft_save', ['name' => 'Alice'], false)['code'] === 403,
-        'draft mutation requires same-origin CSRF');
+    $sessionPath = $httpRoot . '/sessions/sess_' . substr($cookie[1], strlen('BBFSID='));
+    $oldActivity = time() - 120;
+    touch($sessionPath, $oldActivity);
+    $sessionBefore = (string)file_get_contents($sessionPath);
+    $invalidCsrf = $post('consultation', 'draft_save', ['name' => 'Alice'], false);
+    clearstatcache(true, $sessionPath);
+    drafts_check($invalidCsrf['code'] === 403 && stripos($invalidCsrf['headers'], 'Set-Cookie:') === false
+        && filemtime($sessionPath) === $oldActivity && (string)file_get_contents($sessionPath) === $sessionBefore,
+        'invalid draft CSRF preserves session mtime and payload without cookies');
     $httpSave = $post('consultation', 'draft_save', ['name' => ' Alice ', 'symptoms' => 'private', 'password' => 'secret']);
+    clearstatcache(true, $sessionPath);
+    drafts_check(filemtime($sessionPath) > $oldActivity && stripos($httpSave['headers'], 'Set-Cookie:') === false,
+        'valid draft CSRF renews existing session activity without a cookie');
     $httpHandle = $httpSave['json']['handle'] ?? '';
     drafts_check($httpSave['code'] === 201 && bbf_draft_valid_handle($httpHandle)
         && ($httpSave['json']['data'] ?? null) === ['name' => 'Alice'], 'HTTP create returns handle and server-filtered data');
@@ -383,9 +393,14 @@ try {
     drafts_check($post('other-form', 'draft_load', ['_bbf_draft_handle' => $httpHandle], true, $otherCsrf)['code'] === 404,
         'HTTP resume cannot cross form IDs even with valid form-specific CSRF');
     $offCsrf = bbf_test_http($server, $baseUrl . '?form=drafts-off&action=csrf', null, ['cookie' => $cookie[1]])['json']['csrf_token'] ?? '';
-    $disabledDraft = $post('drafts-off', 'draft_save', ['name' => 'Alice'], true, $offCsrf);
-    drafts_check($disabledDraft['code'] === 403 && ($disabledDraft['json']['reason'] ?? '') === 'disabled',
-        'HTTP draft API explicitly distinguishes disabled drafts from missing progress');
+    $rateFiles = glob($httpRoot . '/logs/ratelimit_*') ?: [];
+    $rateBefore = array_map('file_get_contents', $rateFiles);
+    $disabledDraft = $post('drafts-off', 'draft_save&lang=sk', ['name' => 'Alice'], true, $offCsrf);
+    $skMessages = require dirname(__DIR__) . '/lang/sk.php';
+    drafts_check($disabledDraft['code'] === 409 && ($disabledDraft['json']['reason'] ?? '') === 'disabled'
+        && ($disabledDraft['json']['message'] ?? '') === $skMessages['draftDisabled']
+        && array_map('file_get_contents', $rateFiles) === $rateBefore,
+        'disabled drafts return translated 409 without triggering CSRF refresh or spending submission rate budget');
     drafts_check($post('consultation', 'draft_load', ['_bbf_draft_handle' => 'short'])['code'] === 404,
         'HTTP malformed bearer fails without path access');
     $skMissing = $post('consultation', 'draft_load&lang=sk', ['_bbf_draft_handle' => 'short']);

@@ -203,6 +203,26 @@ async function browserChecks() {
     uploads[start + 3].answer(403, {});
     await tick();
     check('a retry answered 403 does not refresh a second time', () => fetches.length === refreshStart + 1 && parallelWrap.querySelectorAll('.bbf-file-error').length === 1);
+    const crossA = BBF._buildForm({ fields: [{ name: 'doc', type: 'file' }] }, 'cross-a', './', {}, 'old-a', 'en', true);
+    const crossB = BBF._buildForm({ fields: [{ name: 'doc', type: 'file' }] }, 'cross-b', './', {}, 'old-b', 'en', true);
+    document.body.append(crossA, crossB);
+    const crossStart = uploads.length, crossFetch = fetches.length;
+    for (const form of [crossA, crossB]) {
+        const transfer = new DataTransfer(); transfer.items.add(pdf('cross.pdf'));
+        const input = form.querySelector('input[type="file"]'); input.files = transfer.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    uploads[crossStart].answer(403, {}); uploads[crossStart + 1].answer(403, {});
+    await tick();
+    check('different forms cannot create two sessions concurrently', () => fetches.length === crossFetch + 1);
+    fetches[crossFetch].resolve(response(200, { csrf_token: 'token-a' }));
+    await waitFor(() => fetches.length === crossFetch + 2 && uploads.length === crossStart + 3);
+    check('second form obtains its own CSRF token after the first cookie settles', () => fetches[crossFetch + 1].url.includes('form=cross-b')
+        && uploads[crossStart + 2].headers['X-BBF-CSRF'] === 'token-a');
+    fetches[crossFetch + 1].resolve(response(200, { csrf_token: 'token-b' }));
+    await waitFor(() => uploads.length === crossStart + 4);
+    check('cross-form retry preserves the second form token', () => uploads[crossStart + 3].headers['X-BBF-CSRF'] === 'token-b');
+    for (let i = crossStart + 2; i < crossStart + 4; i++) uploads[i].answer(200, { token: 'c'.repeat(32), file: { name: 'cross.pdf' } });
     check('no script errors', () => window.__errors.length === 0);
     const output = document.createElement('pre'); output.id = 'upload-ui-result';
     output.textContent = JSON.stringify(results); document.body.appendChild(output);
@@ -232,7 +252,7 @@ test('file upload client in real Chromium', () => {
         const browserResults = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
         const failures = browserResults.filter(check => !check.ok);
         assert.equal(failures.length, 0, JSON.stringify({ passed: browserResults.length - failures.length, failures }, null, 2));
-        assert.equal(browserResults.length, 24, 'all upload browser checks executed');
+        assert.equal(browserResults.length, 27, 'all upload browser checks executed');
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }

@@ -87,7 +87,7 @@ if (!$isCli) {
 // Header-only credentials need no browser CSRF exchange. Shutdown records unfinished failures.
 bbf_access_begin($auditConfig, $principal, $action);
 if ($filterForm !== null && !is_string($filterForm)) { http_response_code(400); exit('Invalid form selector.'); }
-if ($isLive && !smokeTokenValid($smokeToken)) { http_response_code(400); if ($isCli) { fwrite(STDERR, "Live mode requires a valid smoke_token (at least 16 printable characters).\n"); exit(1); } exit('Invalid smoke credential configuration.'); }
+if ($isLive && !smokeTokenValid($smokeToken)) { http_response_code(400); if ($isCli) { fwrite(STDERR, "Live mode requires a generated smoke_token (at least 32 hexadecimal characters). Run php maintenance.php new-token.\n"); exit(1); } exit('Invalid smoke credential configuration.'); }
 
 // ─── Live mode: require smoke_email ─────────────────────────────
 $smokeEmail  = $config['smoke_email'] ?? '';

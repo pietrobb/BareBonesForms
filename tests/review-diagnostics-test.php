@@ -445,7 +445,7 @@ PHP);
             diagnostic_check(in_array($response['code'], [403, 429], true), "$mode empty/malformed configured token fails closed $i");
             bbf_test_verify_server($server);
             [$exit, $output] = diagnostic_cli($root, ['test_diag', '--live'], $streams);
-            diagnostic_check($exit !== 0 && str_contains($output, 'valid smoke_token'), "$mode CLI validates malformed token before outbound header $i");
+            diagnostic_check($exit !== 0 && str_contains($output, 'generated smoke_token') && str_contains($output, '32 hexadecimal characters'), "$mode CLI validates malformed token before outbound header $i");
             diagnostic_check(diagnostic_count($root . '/logs/mock-requests') === $before, "$mode malformed token sent no outbound request $i");
             diagnostic_audit_pair($root, 'smoke_live', 'allowed', 'failed', 'smoke-cli');
         }

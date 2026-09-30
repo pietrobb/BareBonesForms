@@ -155,6 +155,66 @@ if (isset($m[0])) {
     server_check($r['persisted'] ?? false, 'the secret was persisted for the next request');
 }
 
+// Review 2.1.9: validation commits activity only for valid CSRF, including custom handlers.
+preg_match('/function bbf_submit_csrf_valid\([^)]*\): bool \{.*?\n\}/s', $submitSource, $csrfHelper);
+server_check(isset($csrfHelper[0], $m[0]), 'respondent CSRF helper found');
+if (isset($csrfHelper[0], $m[0])) {
+    $secret = str_repeat('a', 64);
+    $sessionData = 'bbf_secret|s:64:"' . $secret . '";marker|s:4:"keep";';
+    $sid = 'existingrespondentsession123456';
+    $sessionPath = "$root/sess_$sid";
+    file_put_contents($sessionPath, $sessionData);
+    touch($sessionPath, time() - 120);
+    $worker = 'define("BBF_LOADED", true); require ' . var_export(dirname(__DIR__) . '/bbf_auth.php', true) . ';'
+        . ' ini_set("session.save_path", ' . var_export($root, true) . '); ini_set("session.cache_limiter", "");'
+        . ' $_COOKIE["BBFSID"] = ' . var_export($sid, true) . ';'
+        . $m[0] . $csrfHelper[0]
+        . ' $ok = bbf_submit_csrf_valid("contact", $argv[1] === "valid" ? hash_hmac("sha256", "contact", ' . var_export($secret, true) . ') : "bad");'
+        . ' $fp = fopen(' . var_export($sessionPath, true) . ', "r+"); $free = flock($fp, LOCK_EX | LOCK_NB); if ($free) flock($fp, LOCK_UN); fclose($fp);'
+        . ' echo json_encode(["valid" => $ok, "free" => $free, "closed" => session_status() === PHP_SESSION_NONE, "marker" => $_SESSION["marker"] ?? ""]);';
+    file_put_contents("$root/csrf-worker.php", "<?php\n" . $worker);
+    $lock = fopen($sessionPath, 'r+'); flock($lock, LOCK_EX);
+    $children = [];
+    foreach (['valid', 'invalid'] as $mode) {
+        $proc = proc_open([PHP_BINARY, "$root/csrf-worker.php", $mode], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $children[$mode] = [$proc, $pipes];
+    }
+    usleep(100000);
+    $blocked = proc_get_status($children['valid'][0])['running'] && proc_get_status($children['invalid'][0])['running'];
+    flock($lock, LOCK_UN); fclose($lock);
+    $results = [];
+    foreach ($children as $mode => [$proc, $pipes]) {
+        $results[$mode] = json_decode(stream_get_contents($pipes[1]), true) ?: [];
+        $errors = stream_get_contents($pipes[2]); fclose($pipes[1]); fclose($pipes[2]); proc_close($proc);
+        server_check($errors === '', "$mode concurrent CSRF worker has no errors");
+    }
+    clearstatcache(true, $sessionPath);
+    server_check($blocked && ($results['valid']['valid'] ?? false) && !($results['invalid']['valid'] ?? true)
+        && ($results['valid']['closed'] ?? false) && ($results['invalid']['closed'] ?? false)
+        && ($results['valid']['marker'] ?? '') === 'keep' && ($results['invalid']['marker'] ?? '') === 'keep'
+        && filemtime($sessionPath) > time() - 120 && str_contains(file_get_contents($sessionPath), 'bbf_activity'),
+        'concurrent valid/invalid CSRF serialize safely, preserve state and release sessions before processing');
+    server_check(($results['valid']['free'] ?? false) || ($results['invalid']['free'] ?? false), 'session lock is free after concurrent validation completes');
+    $custom = 'class FixtureSession implements SessionHandlerInterface {'
+        . ' public int $writes = 0; public function open(string $p,string $n):bool{return true;} public function close():bool{return true;}'
+        . ' public function read(string $id):string|false{return ' . var_export($sessionData, true) . ';}'
+        . ' public function write(string $id,string $data):bool{$this->writes++;return true;}'
+        . ' public function destroy(string $id):bool{return true;} public function gc(int $max):int|false{return 0;}}'
+        . ' $handler = new FixtureSession; session_set_save_handler($handler);'
+        . $m[0] . $csrfHelper[0]
+        . ' $ok = bbf_submit_csrf_valid("contact", $argv[1] === "valid" ? hash_hmac("sha256", "contact", ' . var_export($secret, true) . ') : "bad");'
+        . ' echo json_encode(["ok"=>$ok,"writes"=>$handler->writes,"closed"=>session_status()===PHP_SESSION_NONE]);';
+    file_put_contents("$root/custom-csrf-worker.php", "<?php define('BBF_LOADED',true); require "
+        . var_export(dirname(__DIR__) . '/bbf_auth.php', true) . '; $_COOKIE["BBFSID"]="existing";' . $custom);
+    foreach (['valid' => 1, 'invalid' => 0] as $mode => $writes) {
+        $proc = proc_open([PHP_BINARY, "$root/custom-csrf-worker.php", $mode], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $result = json_decode(stream_get_contents($pipes[1]), true) ?: [];
+        $errors = stream_get_contents($pipes[2]); fclose($pipes[1]); fclose($pipes[2]); proc_close($proc);
+        server_check($errors === '' && ($result['writes'] ?? -1) === $writes && ($result['closed'] ?? false),
+            "custom session handler writes $writes time(s) for $mode CSRF and closes immediately");
+    }
+}
+
 // ─── on_submit.redirect scheme ──────────────────────────────────
 foreach (['https://example.test/thanks?n={{name}}' => 'https://example.test/thanks?n=Ann', 'HTTP://example.test/' => 'HTTP://example.test/',
     '/thanks' => '/thanks', 'thanks.html' => 'thanks.html'] as $tpl => $want) {

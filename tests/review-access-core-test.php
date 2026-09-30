@@ -317,24 +317,25 @@ try {
     }
     core_config(['api_token' => 'YOUR_TOKEN_HERE_123'] + $baseConfig);
     $login = core_http('viewer.php');
-    core_check($login['code'] === 403 && str_contains($login['body'], 'api_token must contain only hexadecimal'),
-        'rejected admin format is explained even when scoped credentials remain usable');
+    core_check($login['code'] === 403 && !str_contains($login['body'], 'api_token')
+        && str_contains($login['body'], 'maintenance.php selfcheck'),
+        'anonymous sign-in directs the operator to CLI selfcheck without exposing admin viability');
     // Review 2.1.8: sign-in explains rejected formats and malformed registries without exposing secrets.
     foreach (['1qaz2wsx3edc4rfv', 'manchesterunited', 'correct-horse-battery-staple', 'YOUR_TOKEN_HERE_123',
         'pass1word2secret3', 'Bratislava-Petržalka'] as $password) {
         core_config(['api_token' => $password, 'access_tokens' => []] + $baseConfig);
         $login = core_http('viewer.php');
-        core_check($login['code'] === 403 && str_contains($login['body'], 'only hexadecimal')
-            && str_contains($login['body'], '32') && str_contains($login['body'], 'maintenance.php new-token')
-            && !str_contains($login['body'], $password), 'sign-in explains invalid format without revealing the human password');
+        core_check($login['code'] === 403 && !str_contains($login['body'], 'only hexadecimal')
+            && !str_contains($login['body'], 'No usable') && str_contains($login['body'], 'maintenance.php selfcheck')
+            && !str_contains($login['body'], $password), 'anonymous sign-in conceals invalid token format and viability');
     }
     core_config(['access_tokens' => [['id' => 'broken']]] + $baseConfig);
     $login = core_http('viewer.php');
-    core_check($login['code'] === 403 && str_contains($login['body'], 'malformed or duplicate record')
-        && str_contains($login['body'], 'ALL tokens'), 'sign-in explains a registry that disables otherwise valid tokens');
+    core_check($login['code'] === 403 && !str_contains($login['body'], 'malformed or duplicate record')
+        && !str_contains($login['body'], 'ALL tokens'), 'anonymous sign-in conceals malformed registry state');
     core_config(['api_token' => '', 'access_tokens' => [$staleConfig['access_tokens'][7], $staleConfig['access_tokens'][8]]] + $baseConfig);
     $login = core_http('viewer.php');
-    core_check($login['code'] === 403 && str_contains($login['body'], 'expired or revoked'), 'sign-in explains when no active credential remains');
+    core_check($login['code'] === 403 && !str_contains($login['body'], 'expired or revoked'), 'anonymous sign-in conceals whether active credentials remain');
     core_config(['api_token' => 'nonhex-human-password', 'cookie_path' => 'relative/path'] + $baseConfig);
     $diagnostics = core_http('check.php', core_header('admin'));
     // The rejected admin cannot authorize diagnostics, even though its string is nonempty.
@@ -351,6 +352,26 @@ try {
         && !str_contains($spoofed['body'], '198.51.100.44') && !str_contains($spoofed['body'], '198.51.100.45'),
         'diagnostics report invalid cookie_path and never infer a proxy from untrusted forwarding headers');
     core_config($baseConfig);
+    // Review 2.1.9: anonymous failures never expose configuration diagnostics.
+    core_config(['cookie_path' => 'relative/path', 'trusted_proxies' => ['bad-proxy'], 'access_tokens' => [$shortConfig['access_tokens'][7]]] + $baseConfig);
+    foreach (['viewer.php', 'editor.php', 'check.php', 'submissions.php?form=alpha'] as $path) {
+        $denied = core_http($path);
+        core_check($denied['code'] === 403 && !preg_match('/tiny|trusted_proxies|cookie_path|hexadecimal|No usable|expired or revoked/', $denied['body']),
+            'anonymous failure hides config details and token IDs: ' . $path);
+    }
+    core_config(['logs_dir' => "$root/missing-audit"] + $baseConfig);
+    foreach (['viewer.php', 'submissions.php?form=alpha'] as $path) {
+        $unavailable = core_http($path);
+        core_check($unavailable['code'] === 503 && str_contains($unavailable['body'], 'Access audit unavailable.')
+            && !preg_match('/logs_dir|directory|check.php|missing-audit|config.php/', $unavailable['body']),
+            'anonymous audit failure is generic in HTML/JSON: ' . $path);
+    }
+    core_config($baseConfig);
+    $warn = core_http('check.php', ['headers' => ['X-BBF-Token' => $baseConfig['api_token'],
+        'X-Forwarded-For' => '198.51.100.44', 'X-Forwarded-Proto' => 'https']]);
+    core_check($warn['code'] === 200 && preg_match('/icon warn.*?Proxy \/ Cloudflare client address/s', $warn['body']) === 1
+        && !str_contains($warn['body'], '198.51.100.44') && str_contains($warn['body'], 'Forwarding headers are ignored'),
+        'authenticated diagnostics warn on proxy headers without trusted_proxies but never trust the headers');
     // Install a request-local deterministic delivery effect through the copied
     // bbf_functions.php test hook. Native outbound functions remain disabled.
     file_put_contents("$root/tests/retry-delivery-fixture.php", <<<'PHP'

@@ -96,6 +96,13 @@ auth_check(count(bbf_auth_registry($invalidRecord)) === 2
     && str_contains(implode(' ', array_column(bbf_auth_config_problems($invalidRecord), 'message')), 'nonhex'),
     'invalid scoped token format is skipped and identified without disabling valid credentials');
 auth_check(bbf_smoke_token(['smoke_token' => str_repeat('z', 32)]) === null, 'non-hex smoke token is ignored');
+$whitespace = ['api_token' => str_repeat('a', 32) . "\n", 'smoke_token' => str_repeat('b', 32) . ' ',
+    'access_tokens' => [$token('trailing-reader', str_repeat('c', 32) . "\t")]];
+$diagnosis = implode(' ', array_column(bbf_auth_config_problems($whitespace), 'message'));
+auth_check(substr_count($diagnosis, 'contains trailing whitespace') === 3
+    && str_contains($diagnosis, 'trailing-reader') && !str_contains($diagnosis, str_repeat('a', 32))
+    && bbf_auth_registry($whitespace) === [] && bbf_smoke_token($whitespace) === null,
+    'operator diagnostics identify trailing whitespace on admin, scoped and smoke tokens without accepting or revealing values');
 $_SERVER['SCRIPT_NAME'] = '/bbf/viewer.php';
 foreach (['', '/', '/forms', '/forms/', '/forms-v2.1/'] as $path) {
     auth_check(bbf_cookie_path_valid(['cookie_path' => $path])
