@@ -302,6 +302,8 @@ try {
             else $token['revoked'] = true;
         }
         unset($token); $writeConfig();
+        // Since 2.1.7 an expired/revoked token counts as a wrong one; each state starts with a clean wrong-token budget.
+        @unlink("$root/logs/.auth_failures.json");
         foreach ([$header($id), $sessions[$id]] as $transport => $options) {
             foreach (['submissions.php?form=alpha', 'viewer.php?action=detail&form=alpha&id=bbf_alpha',
                 'viewer.php?action=export&form=alpha', 'submissions.php?format=csv&form=alpha'] as $path) {
