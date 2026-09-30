@@ -535,9 +535,9 @@ PHP);
             bbf_test_verify_server($server);
             $response = bbf_test_http($httpServer, $smokeUrl . '&live=1', [], $header);
             diagnostic_check($response['code'] === 503 && str_contains($response['body'], 'Access audit unavailable'), "$mode $failure audit preflight blocks authorized POST");
-            if ($failure === 'missing') diagnostic_check(str_contains($response['body'], 'logs directory does not exist')
+            if ($failure === 'missing') diagnostic_check(!str_contains($response['body'], 'logs directory does not exist')
                 && !str_contains($response['body'], $blocked['logs_dir']) && !str_contains($response['body'], basename($blocked['logs_dir'])),
-                "$mode missing logs directory is explained without revealing its path");
+                "$mode unavailable audit response reveals neither configuration state nor paths");
             diagnostic_check(diagnostic_count($root . '/logs/mock-requests') === $before, "$mode $failure audit preflight sent no outgoing request");
         }
         diagnostic_config($root, $config);
