@@ -3,7 +3,7 @@ BBF.registerLang('lt', {
     loading:           'Kraunama…',
     submitDefault:     'Siųsti',
     submittingDefault: 'Siunčiama…',
-    successDefault:    'Ačiū! Jūsų duomenys buvo priimti.',
+    successDefault:    'Ačiū! Jūsų užklausa gauta.',
     errorDefault:      'Kažkas nutiko ne taip.',
     networkError:      'Tinklo klaida. Bandykite dar kartą.',
     serverError:       'Serverio klaida ({status})',

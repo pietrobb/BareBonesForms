@@ -3,6 +3,11 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [Unreleased]
+
+### Changed
+- Lithuanian success message uses the production wording “Ačiū! Jūsų užklausa gauta.”, so upgrading airdomes.pro no longer overwrites it.
+
 ## [2.1.14] — 2026-10-01
 
 ### Fixed
