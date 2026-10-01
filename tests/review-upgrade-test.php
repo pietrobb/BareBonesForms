@@ -657,7 +657,7 @@ try {
         if ($saved !== null) file_put_contents("$mockDir/owned-release-id", $saved);
         $shellQuote = static fn(string $s): string => "'" . str_replace("'", "'\\''", $s) . "'";
         $script = "set -euo pipefail\n" . 'RUNNER_TEMP=' . $shellQuote($mockDir) . "\nGITHUB_REPOSITORY=fixture/repo\nGITHUB_RUN_ID=123\nGITHUB_RUN_ATTEMPT=1\n"
-            . 'jq() { ' . $shellQuote($jq) . ' "$@"; }' . "\n"
+            . 'jq() { command ' . $shellQuote($jq) . ' "$@"; }' . "\n"
             . "gh() {\n" . 'if [[ "$*" == *"--method DELETE"* ]]; then printf "%s" "${@: -1}" > "$RUNNER_TEMP/deleted";'
             . ' elif [[ "$*" == *"--paginate --slurp"* ]]; then ' . ($pages === null ? 'return 1;' : 'printf "%s" ' . $shellQuote(json_encode($pages)) . ';')
             . ' else ' . ($response === null ? 'return 1;' : 'printf "%s" ' . $shellQuote(json_encode($response)) . ';') . " fi\n}\n"
