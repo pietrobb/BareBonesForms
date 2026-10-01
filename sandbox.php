@@ -11,8 +11,12 @@
 
 // Bootstrap
 define('BBF_LOADED', true);
-if (!file_exists(__DIR__ . '/config.php')) {
-    die('Missing config.php. Copy config.example.php to config.php and edit it.');
+require_once __DIR__ . '/bbf_auth.php';
+if (!is_file(__DIR__ . '/config.php')) {
+    bbf_auth_headers();
+    http_response_code(503);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit("Temporarily unavailable.\n");
 }
 require_once __DIR__ . '/bbf_auth.php'; $config = bbf_auth_load_config(__DIR__ . '/config.php'); bbf_auth_headers();
 

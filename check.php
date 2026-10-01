@@ -104,8 +104,9 @@ if ($config) {
 
     // Only the actual peer address establishes trust; forwarding headers from other peers prove nothing.
     $trustedPeer = bbf_ip_in_list((string)($_SERVER['REMOTE_ADDR'] ?? ''), bbf_trusted_proxies($config));
-    $unconfiguredProxyHeaders = bbf_trusted_proxies($config) === []
-        && (!empty($_SERVER['HTTP_X_FORWARDED_FOR']) || !empty($_SERVER['HTTP_CF_CONNECTING_IP']) || !empty($_SERVER['HTTP_X_FORWARDED_PROTO']));
+    $unconfiguredProxyHeaders = !$trustedPeer
+        && count(array_filter(['HTTP_FORWARDED', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST'],
+            static fn(string $key): bool => isset($_SERVER[$key]) && is_string($_SERVER[$key]) && trim($_SERVER[$key]) !== '')) > 0;
     check('Config', 'Proxy / Cloudflare client address', !$unconfiguredProxyHeaders,
         $trustedPeer ? 'The peer is a configured trusted proxy; client address resolved as ' . bbf_client_ip($config) . '.'
             : 'The peer is not a configured trusted proxy. Forwarding headers are ignored; client address is ' . bbf_client_ip($config)
@@ -254,15 +255,17 @@ foreach ($probeFiles as $probeDir => $probeFile) {
         if ($realDir !== false && $realDir === realpath(__DIR__ . '/' . $probeDir) && is_writable($realDir)) {
             $name = 'bbf-check-' . bin2hex(random_bytes(16)) . '.txt';
             $content = "BareBonesForms check.php sentinel $name\n";
-            if (@file_put_contents($realDir . '/' . $name, $content) !== false) {
-                $sentinel = $realDir . '/' . $name;
+            bbf_diagnostic_stale_cleanup($realDir);
+            $fixture = bbf_diagnostic_fixture($realDir, $name, substr($name, 10, 32), 'data');
+            if ($fixture !== null) {
+                $sentinel = $fixture;
                 $probeFile = "$probeDir/$name";
-                $expected = $content;
+                $expected = $fixture['content'];
             }
         }
     }
     $probeCode = bbf_diagnostic_probe($config ?? [], $probeFile ?? "$probeDir/", $probeBody);
-    if ($sentinel !== null) @unlink($sentinel);
+    if ($sentinel !== null) bbf_diagnostic_fixture_remove($sentinel);
     // HTTP 200 with other content is a catch-all page (php -S, SPA try_files), not the file itself.
     $fallback = $probeCode === 200 && $expected !== null && $probeBody !== substr($expected, 0, 1048576);
     $dirBlocked = in_array($probeCode, [403, 404], true) || $fallback;

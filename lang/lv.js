@@ -64,4 +64,6 @@ BBF.registerLang('lv', {
     pageStatus:        '{current}. lapa no {total}',
     optionOther:       'Cits…',
     rating:            'Vērtējums',
+    redirectContinue:  'Turpināt',
+    newSubmission:     'Sākt jaunu iesniegšanu',
 });

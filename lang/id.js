@@ -66,4 +66,6 @@ BBF.registerLang('id', {
     pageStatus:        'Halaman {current} dari {total}',
     optionOther:       'Lainnya…',
     rating:            'Penilaian',
+    redirectContinue:  'Lanjutkan',
+    newSubmission:     'Mulai kiriman baru',
 });

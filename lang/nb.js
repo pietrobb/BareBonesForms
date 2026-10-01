@@ -66,4 +66,6 @@ BBF.registerLang('nb', {
     pageStatus:        'Side {current} av {total}',
     optionOther:       'Annet…',
     rating:            'Vurdering',
+    redirectContinue:  'Fortsett',
+    newSubmission:     'Start en ny innsending',
 });

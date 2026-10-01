@@ -100,8 +100,8 @@ if (in_array($command, ['version', 'upgrade', 'upgrade-rollback'], true)) {
     } catch (Throwable $error) {
         bbf_maintenance_fail(ucfirst($command) . ' failed: ' . $error->getMessage(), 1);
     }
-    if (!$options['apply'] && ($result['ok'] ?? false) && isset($result['confirm']) && !($result['up_to_date'] ?? false)) {
-        $result['next'] = "php maintenance.php $command --" . ($command === 'upgrade' ? 'package' : 'backup') . "=$path"
+    if (!$options['apply'] && isset($result['confirm']) && (($result['ok'] ?? false) || ($command === 'upgrade' && ($result['access_checked'] ?? false) && !empty($result['access_blocked']))) && !($result['up_to_date'] ?? false)) {
+        $result['next'] = "php maintenance.php $command " . escapeshellarg('--' . ($command === 'upgrade' ? 'package' : 'backup') . "=$path")
             . ($checksum !== '' ? " --checksum=$checksum" : '') . (!empty($options['trust']) ? ' --trust-package' : '') . " --apply --confirm={$result['confirm']}";
     }
     fwrite(STDOUT, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");

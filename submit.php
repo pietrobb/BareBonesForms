@@ -1100,7 +1100,7 @@ function collectData(array $fields, array $input): array {
             continue;
         }
 
-        $value = !empty($field['_bbf_system']) ? ($input[$name] ?? '') : bbfNormalizeInputValue($input[$name] ?? '');
+        $value = !empty($field['_bbf_system']) ? ($input[$name] ?? '') : bbfNormalizeInputValue($input[$name] ?? '', $type);
 
         // Resolve "other" option: if value is __other__, use the _other text field
         if (!empty($field['other']) && $value === '__other__') {

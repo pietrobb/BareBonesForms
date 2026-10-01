@@ -147,6 +147,42 @@ async function settle() {
     for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
 }
 
+test('renderer accepts renamed modules, missing script elements and explicit data-bbf-base', () => {
+    for (const [prelude, base] of [
+        ['document.getElementsByTagName=()=>[{src:"https://example.test/assets/bbf.min.js"}];', 'https://example.test/assets/'],
+        ['document.getElementsByTagName=()=>[{src:"https://example.test/assets/renamed.js"}];', 'https://example.test/assets/'],
+        ['document.getElementsByTagName=()=>[];', ''],
+        ['document.getElementsByTagName=()=>[{src:"",hasAttribute:()=>true,getAttribute:()=>"/forms/"}];', '/forms/'],
+    ]) {
+        const { BBF, document } = loadBBF({ prelude });
+        assert.equal(BBF.baseUrl, base);
+        assert.equal(document.head.children[0].href, base + 'bbf.css');
+    }
+});
+
+test('same-origin form retains a CSRF field after initial timeout and recovers its first submit', async () => {
+    let posts = 0, refreshes = 0;
+    const bodies = [];
+    const { BBF, context } = loadBBF({
+        fetch: async (url, options) => {
+            if (url.includes('action=csrf')) { refreshes++; return { ok: true, json: async () => ({ csrf_token: 'recovered' }) }; }
+            bodies.push(JSON.parse(options.body));
+            posts++;
+            return { ok: posts > 1, status: posts === 1 ? 403 : 200, headers: { get: () => 'application/json' }, json: async () => ({ status: posts === 1 ? 'error' : 'ok' }) };
+        },
+        FormData: class { constructor(form) { this.form = form; } forEach(fn) { fn(this.form.querySelector('input[name="_bbf_csrf"]').value, '_bbf_csrf'); } }
+    });
+    context.window.location = context.location;
+    const form = BBF._buildForm({ fields: [] }, 'contact', './', {}, null, null, true);
+    form.reset = () => {};
+    assert.equal(form.querySelector('input[name="_bbf_csrf"]').value, '');
+    await form.listeners.submit[0]({ preventDefault() {} });
+    assert.equal(posts, 2);
+    assert.equal(refreshes, 1);
+    assert.equal(bodies[1]._bbf_csrf, 'recovered');
+    assert.equal(form._bbfSubmitting, false);
+});
+
 test('CSRF timeout aborts stalled fetch/body, settles shared callers and releases other forms', async () => {
     for (const stalledBody of [false, true]) {
         const timers = [], requests = [];

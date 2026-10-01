@@ -101,7 +101,7 @@ diagnostic_check(function_exists('curl_init'), 'cURL available for required two-
 $root = bbf_test_installation(dirname(__DIR__));
 $server = $httpServer = null;
 try {
-    foreach (['smoketest.php', 'check.php', 'bbf_diagnostics.php', 'bbf_auth.php', 'bbf_alerts.php'] as $file) {
+    foreach (['smoketest.php', 'check.php', 'bbf_diagnostics.php', 'bbf_auth.php', 'bbf_alerts.php', 'submissions.php', 'sandbox.php'] as $file) {
         bbf_test_copy(dirname(__DIR__) . '/' . $file, $root . '/' . $file);
     }
     // Replace the fixture's real submission handler as a second safety barrier.
@@ -198,6 +198,15 @@ echo json_encode(['id' => $principal['id'] ?? null]);
 PHP);
     $server = bbf_test_start_server($root, '127.0.0.1', bbf_test_port());
     $base = 'http://127.0.0.1:' . $server['port'];
+    $hadConfig = is_file($root . '/config.php');
+    if ($hadConfig) rename($root . '/config.php', $root . '/config-missing-fixture.php');
+    try {
+        foreach (['submissions.php', 'sandbox.php'] as $endpoint) {
+            $response = bbf_test_http($server, $base . '/' . $endpoint);
+            diagnostic_check($response['code'] === 503 && str_contains($response['body'], 'Temporarily unavailable')
+                && !str_contains($response['body'], 'config.php') && str_contains($response['headers'], 'no-store'), "$endpoint missing config is generic non-cacheable 503");
+        }
+    } finally { if ($hadConfig) rename($root . '/config-missing-fixture.php', $root . '/config.php'); }
     foreach ([403, 404, 200, 302, 500] as $status) {
         file_put_contents($root . '/probe/status', (string)$status);
         bbf_test_verify_server($server);
@@ -226,6 +235,15 @@ PHP);
             'permissions' => ['read'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]],
     ];
     diagnostic_config($root, $config);
+    file_put_contents($root . '/run-proxy.php', '<?php $_SERVER["REMOTE_ADDR"] = "203.0.113.7"; $_SERVER["REQUEST_METHOD"] = "GET"; $_SERVER["HTTP_X_BBF_TOKEN"] = hash("sha256", "diagnostic-test-admin"); $_SERVER["HTTP_FORWARDED"] = "for=127.0.0.1"; ob_start(); require __DIR__ . "/check.php"; ob_end_clean(); echo json_encode(array_values(array_filter($results, fn($r) => $r["name"] === "Proxy / Cloudflare client address")));');
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-proxy.php');
+    $proxy = json_decode($output, true)[0] ?? [];
+    diagnostic_check($exit === 0 && ($proxy['level'] ?? '') === 'warn' && str_contains($proxy['detail'] ?? '', '203.0.113.7'), 'Forwarded header warns about unconfigured proxy without trusting forged loopback client: ' . $output);
+    $config['trusted_proxies'] = ['192.0.2.1']; diagnostic_config($root, $config);
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-proxy.php');
+    $proxy = json_decode($output, true)[0] ?? [];
+    diagnostic_check($exit === 0 && ($proxy['level'] ?? '') === 'warn' && str_contains($proxy['detail'] ?? '', '203.0.113.7'), 'peer absent from a nonempty trusted proxy list also warns without trusting forged headers');
+    unset($config['trusted_proxies']); diagnostic_config($root, $config);
     file_put_contents($root . '/run-selfcheck.php', <<<'PHP'
 <?php
 ini_set('error_log', __DIR__ . '/logs/selfcheck-error.log');
@@ -248,11 +266,62 @@ PHP);
             bbf_test_verify_server($server);
             [$exit, $output] = diagnostic_cli($root, [], $streams, 'run-rewrite.php');
             $rewrite = json_decode($output, true);
-            diagnostic_check($exit === 0 && ($rewrite['status'] ?? '') === $expected, 'rewrite-only fixture ' . $mode . ' classified ' . $expected . ($streams ? ' streams' : ' cURL'));
+            diagnostic_check($exit === 0 && ($rewrite['status'] ?? '') === $expected, 'rewrite-only fixture ' . $mode . ' classified ' . $expected . ($streams ? ' streams' : ' cURL') . (($rewrite['status'] ?? '') === $expected ? '' : ': ' . $output));
             diagnostic_check(glob($root . '/bbf-check-*') === [], 'rewrite fixtures cleaned after ' . $mode);
         }
     }
     diagnostic_check(!file_exists($root . '/logs/trap'), 'rewrite probe never follows redirects');
+    // Denied dot-files alone do not prove submissions/logs protection.
+    file_put_contents($root . '/probe/rewrite-mode', 'enabled');
+    file_put_contents($root . '/probe/status', '200');
+    foreach ([false, true] as $streams) {
+        [$exit, $output] = diagnostic_cli($root, [], $streams, 'run-rewrite.php');
+        $report = json_decode($output, true);
+        diagnostic_check(($report['status'] ?? '') === 'error' && ($report['checks']['submissions'] ?? '') === 'error'
+            && ($report['checks']['logs'] ?? '') === 'error', 'denied dot-file cannot mask data-directory leaks ' . ($streams ? 'streams' : 'cURL'));
+    }
+    file_put_contents($root . '/probe/status', '500');
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-rewrite.php');
+    diagnostic_check((json_decode($output, true)['status'] ?? '') === 'unverified', 'unknown data-directory responses remain unverified');
+    file_put_contents($root . '/probe/status', '403');
+    // Stale cleanup recognizes exact harmless fixtures only; no generic prefix deletion.
+    $token = bin2hex(random_bytes(16));
+    $owned = bbf_diagnostic_fixture($root . '/logs', "bbf-check-$token.txt", $token, 'data');
+    $unfamiliar = $root . '/logs/bbf-check-' . bin2hex(random_bytes(16)) . '.txt';
+    file_put_contents($unfamiliar, 'operator bytes');
+    touch($owned['path'], time() - 7200); touch($unfamiliar, time() - 7200);
+    bbf_diagnostic_stale_cleanup($root . '/logs');
+    diagnostic_check(!file_exists($owned['path']) && file_get_contents($unfamiliar) === 'operator bytes', 'stale exact fixture removed, unfamiliar prefix file preserved');
+    unlink($unfamiliar);
+    file_put_contents($root . '/shutdown-fixture.php', '<?php define("BBF_LOADED", true); require __DIR__ . "/bbf_diagnostics.php"; $t = str_repeat("a", 32); bbf_diagnostic_fixture(__DIR__ . "/logs", "bbf-check-$t.txt", $t, "data"); exit;');
+    [$exit] = diagnostic_cli($root, [], false, 'shutdown-fixture.php');
+    diagnostic_check($exit === 0 && !file_exists($root . '/logs/bbf-check-' . str_repeat('a', 32) . '.txt'), 'shutdown removes fixture on early exit');
+    // Forced termination bypasses shutdown; the next bounded sweep reclaims complete owned pairs.
+    file_put_contents($root . '/kill-fixture.php', '<?php define("BBF_LOADED", true); require __DIR__ . "/bbf_diagnostics.php"; $t = str_repeat("b", 32); $d = __DIR__ . "/bbf-check-$t"; mkdir($d, 0755); bbf_diagnostic_fixture($d, "control.txt", $t, "control"); bbf_diagnostic_fixture($d, ".rewrite.txt", $t, "rewrite"); file_put_contents(__DIR__ . "/logs/kill-ready", "ready"); sleep(60);');
+    $killed = proc_open([PHP_BINARY, $root . '/kill-fixture.php'], [0 => ['pipe', 'r'], 1 => ['file', $root . '/logs/kill-output', 'w'], 2 => ['file', $root . '/logs/kill-output', 'a']], $killPipes, $root);
+    fclose($killPipes[0]);
+    $deadline = microtime(true) + 5;
+    while (!is_file($root . '/logs/kill-ready') && microtime(true) < $deadline) usleep(10000);
+    $ready = is_file($root . '/logs/kill-ready');
+    proc_terminate($killed, 9); proc_close($killed);
+    diagnostic_check($ready, 'forced-termination child created complete harmless fixture');
+    $staleDir = $root . '/bbf-check-' . str_repeat('b', 32);
+    if (is_dir($staleDir)) {
+        file_put_contents($staleDir . '/operator.txt', 'keep'); touch($staleDir, time() - 7200);
+        bbf_diagnostic_stale_cleanup($root);
+        diagnostic_check(file_get_contents($staleDir . '/operator.txt') === 'keep' && is_file($staleDir . '/control.txt'), 'unfamiliar file prevents stale-directory deletion');
+        unlink($staleDir . '/operator.txt'); touch($staleDir, time() - 7200);
+        bbf_diagnostic_stale_cleanup($root);
+    }
+    diagnostic_check(!file_exists($staleDir), 'complete root fixture reclaimed after forced termination');
+    if (PHP_OS_FAMILY !== 'Windows') {
+        $link = $root . '/logs/bbf-check-' . str_repeat('c', 32) . '.txt';
+        $target = $root . '/logs/operator-file'; file_put_contents($target, 'unchanged');
+        symlink($target, $link); touch($target, time() - 7200);
+        bbf_diagnostic_stale_cleanup($root . '/logs');
+        diagnostic_check(is_link($link) && file_get_contents($target) === 'unchanged', 'stale sweep leaves symlink and target untouched');
+        unlink($link); unlink($target);
+    } else print "SKIP POSIX symlink fixture on Windows\n";
     $fixtureRules = file_get_contents(dirname(__DIR__) . '/.htaccess');
     file_put_contents($root . '/.htaccess', str_replace('RewriteEngine On', "<IfModule mod_rewrite.c>\nRewriteEngine On", $fixtureRules) . "\n</IfModule>\n");
     try {
@@ -285,6 +354,14 @@ PHP);
     diagnostic_config($root, $config);
     [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
     diagnostic_check($exit === 0 && (json_decode($output, true)['ok'] ?? false) && file_get_contents($auditPath) === $auditBytes, 'selfcheck leaves existing audit bytes unchanged');
+    diagnostic_check((json_decode($output, true)['audit']['status'] ?? '') === 'unverified', 'CLI audit report explicitly leaves web identity unverified');
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+        chown($auditPath, 65534); chmod($auditPath, 0600);
+        [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
+        diagnostic_check((json_decode($output, true)['audit']['status'] ?? '') === 'unverified'
+            && str_contains(json_decode($output, true)['audit']['detail'] ?? '', 'differs'), 'root cron cannot assure different audit-owner write access');
+        chown($auditPath, 0);
+    } else print "SKIP different POSIX uid requires disposable root runner\n";
     unlink($auditPath); mkdir($auditPath);
     [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
     $report = json_decode($output, true);

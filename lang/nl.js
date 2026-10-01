@@ -66,4 +66,6 @@ BBF.registerLang('nl', {
     pageStatus:        'Pagina {current} van {total}',
     optionOther:       'Anders…',
     rating:            'Beoordeling',
+    redirectContinue:  'Doorgaan',
+    newSubmission:     'Een nieuwe inzending starten',
 });

@@ -596,13 +596,13 @@ try {
     $blockedDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg"], "$tmp/blockedsite");
     $blockedPlan = $blockedDry['json'] ?? [];
     check_upgrade($blockedDry['code'] !== 0 && ($blockedPlan['ok'] ?? true) === false && ($blockedPlan['access_blocked'] ?? false)
-        && !isset($blockedPlan['next']) && isset($blockedPlan['confirm']) && str_contains(implode(' ', $blockedPlan['problems'] ?? []), '32 hexadecimal')
-        && upgrade_snapshot("$tmp/blockedsite") === $blockedBefore, 'admin-lockout dry run fails with an actionable repair, no apply command, a digest and no changes');
+        && ($blockedPlan['next'] ?? '') === 'php maintenance.php upgrade ' . escapeshellarg("--package=$tmp/blockedpkg") . ' --trust-package --apply --confirm=' . ($blockedPlan['confirm'] ?? '') && str_contains(implode(' ', $blockedPlan['problems'] ?? []), '32 hexadecimal')
+        && upgrade_snapshot("$tmp/blockedsite") === $blockedBefore, 'admin-lockout dry run fails with an actionable repair, exact apply command, a digest and no changes');
     file_put_contents("$tmp/blockedpkg/bbf_upgrade.php", "\n// force package delegation\n", FILE_APPEND);
     upgrade_remanifest("$tmp/blockedpkg", '2.2.0');
     $blockedDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg"], "$tmp/blockedsite");
     $blockedPlan = $blockedDry['json'] ?? [];
-    check_upgrade($blockedDry['code'] !== 0 && ($blockedPlan['ok'] ?? true) === false && !isset($blockedPlan['next'])
+    check_upgrade($blockedDry['code'] !== 0 && ($blockedPlan['ok'] ?? true) === false && isset($blockedPlan['next'])
         && ($blockedPlan['upgrader_exit_code'] ?? null) === 1 && !isset($blockedPlan['error']) && !isset($blockedPlan['php_messages']), 'delegated lockout plan fails normally without inventing a subprocess crash');
     $blockedApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg", '--apply', '--confirm=' . ($blockedPlan['confirm'] ?? '')], "$tmp/blockedsite");
     check_upgrade($blockedApply['code'] !== 0 && ($blockedApply['json']['ok'] ?? true) === false && ($blockedApply['json']['code_updated'] ?? false)
@@ -622,11 +622,51 @@ try {
 
     $workflow = file_get_contents("$repo/.github/workflows/release.yml");
     check_upgrade(str_contains($workflow, '--draft --title') && str_contains($workflow, 'cmp "$RUNNER_TEMP/SHA256SUMS" "$check/SHA256SUMS"')
-        && strpos($workflow, 'gh release create') < strpos($workflow, 'gh release download')
-        && strpos($workflow, 'sha256sum -c SHA256SUMS)', strpos($workflow, 'gh release download')) < strpos($workflow, 'gh release edit')
-        && str_contains($workflow, '--draft=false') && !str_contains($workflow, 'continue-on-error:'),
+        && strpos($workflow, 'gh release create') < strpos($workflow, 'releases/assets/$asset_id')
+        && strpos($workflow, 'sha256sum -c SHA256SUMS)', strpos($workflow, 'releases/assets/$asset_id')) < strpos($workflow, 'gh api --method PATCH')
+        && str_contains($workflow, '-F draft=false') && !str_contains($workflow, 'continue-on-error:'),
         'release creates a draft, downloads/checks uploaded artifacts, and only then publishes; verification failure leaves draft');
 
+    // Execute the workflow's actual ownership helpers against a fake gh API, never GitHub.
+    preg_match("/cat > .*?release-identity\\.sh.*?<<'BASH'\\n(.*?)^          BASH/ms", $workflow, $helperMatch);
+    $helper = preg_replace('/^          /m', '', $helperMatch[1] ?? '');
+    check_upgrade($helper !== '', 'release ownership helpers are extracted for executable regressions');
+    $bash = PHP_OS_FAMILY === 'Windows' ? 'C:/Program Files/Git/bin/bash.exe' : '/bin/bash';
+    $jq = str_replace('\\', '/', getenv('BBF_REVIEW_JQ') ?: 'jq');
+    $marker = '<!-- bbf-release-run:123:1 -->';
+    $own = ['id' => 901, 'draft' => true, 'body' => $marker, 'tag_name' => 'v2.2.0'];
+    $other = ['id' => 400704048, 'draft' => true, 'body' => '<!-- bbf-release-run:other:1 -->', 'tag_name' => 'v2.2.0'];
+    $public = $own; $public['draft'] = false;
+    $cases = [
+        'owned draft on second page' => [null, [[$other], [$own]], $own, '901'],
+        'cancellation before ID saved' => [null, [[$other], [$own]], $own, '901'],
+        'saved owned ID' => ['901', [[$other]], $own, '901'],
+        'saved public release' => ['901', [[$own]], $public, ''],
+        'saved foreign marker' => ['901', [[$own]], ['id' => 901] + $other, ''],
+        'saved mismatched response ID' => ['901', [[$own]], ['id' => 902] + $own, ''],
+        'saved missing ID never rediscovers' => ['901', [[$own]], null, ''],
+        'invalid saved ID' => ['not-an-id', [[$own]], $own, ''],
+        'foreign draft only' => [null, [[$other]], $other, ''],
+        'public marked release only' => [null, [[$public]], $public, ''],
+        'ambiguous marked drafts' => [null, [[$own], [['id' => 902] + $own]], $own, ''],
+        'list API failure' => [null, null, $own, ''],
+    ];
+    foreach ($cases as $label => [$saved, $pages, $response, $deleted]) {
+        $mockDir = "$tmp/release-mock"; if (!is_dir($mockDir)) mkdir($mockDir);
+        @unlink("$mockDir/owned-release-id"); @unlink("$mockDir/deleted");
+        if ($saved !== null) file_put_contents("$mockDir/owned-release-id", $saved);
+        $shellQuote = static fn(string $s): string => "'" . str_replace("'", "'\\''", $s) . "'";
+        $script = "set -euo pipefail\n" . 'RUNNER_TEMP=' . $shellQuote($mockDir) . "\nGITHUB_REPOSITORY=fixture/repo\nGITHUB_RUN_ID=123\nGITHUB_RUN_ATTEMPT=1\n"
+            . 'jq() { ' . $shellQuote($jq) . ' "$@"; }' . "\n"
+            . "gh() {\n" . 'if [[ "$*" == *"--method DELETE"* ]]; then printf "%s" "${@: -1}" > "$RUNNER_TEMP/deleted";'
+            . ' elif [[ "$*" == *"--paginate --slurp"* ]]; then ' . ($pages === null ? 'return 1;' : 'printf "%s" ' . $shellQuote(json_encode($pages)) . ';')
+            . ' else ' . ($response === null ? 'return 1;' : 'printf "%s" ' . $shellQuote(json_encode($response)) . ';') . " fi\n}\n"
+            . $helper . "\ncleanup_owned\n";
+        file_put_contents("$mockDir/test.sh", $script);
+        $mock = upgrade_run([$bash, "$mockDir/test.sh"], $tmp);
+        $actual = is_file("$mockDir/deleted") ? file_get_contents("$mockDir/deleted") : '';
+        check_upgrade($mock['code'] === 0 && trim($mock['err']) === '' && $actual === ($deleted === '' ? '' : "repos/fixture/repo/releases/$deleted"), "owned ID cleanup: $label " . trim($mock['err']));
+    }
     // ─── Release history covers every published release (CI gate) ───
     $tagList = trim((string)shell_exec('git -C ' . escapeshellarg($repo) . ' tag --list "v2.*"'));
     if ($tagList !== '') {
@@ -682,10 +722,36 @@ try {
         file_put_contents("$tmp/no-access/config.php", '<?php return ' . var_export($noAccessConfig, true) . ';');
         $noAccessBefore = upgrade_snapshot("$tmp/no-access");
         $noAccess = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/no-access");
-        check_upgrade($noAccess['code'] === 4 && ($noAccess['json']['access_checked'] ?? false) && ($noAccess['json']['access_blocked'] ?? false)
-            && !isset($noAccess['json']['next']) && upgrade_snapshot("$tmp/no-access") === $noAccessBefore, 'empty or all-invalid access credentials refuse preflight without changes');
+        check_upgrade($noAccess['code'] === ($records === [] ? 0 : 4) && ($noAccess['json']['access_checked'] ?? false)
+            && ($noAccess['json']['access_blocked'] ?? null) === ($records !== []) && isset($noAccess['json']['next'])
+            && upgrade_snapshot("$tmp/no-access") === $noAccessBefore, 'intentional no-access upgrades are valid; all-invalid credentials remain blocked with exact apply command');
         upgrade_rmtree("$tmp/no-access");
     }
+    // Both launchers accept empty/absent legacy credentials, with scoped records or no management at all.
+    foreach (['empty', 'absent'] as $legacyPolicy) {
+        foreach ([[], [['id' => 'reader', 'token' => str_repeat('c', 32), 'forms' => ['kontakt'], 'permissions' => ['read'], 'revoked' => false, 'expires_at' => '2099-01-01T00:00:00Z']]] as $scoped) {
+            $policySite = "$tmp/policy $legacyPolicy " . count($scoped);
+            upgrade_copy("$tmp/site", $policySite);
+            $policyConfig = require "$policySite/config.php";
+            $policyConfig['api_token'] = ''; $policyConfig['access_tokens'] = $scoped;
+            if ($legacyPolicy === 'absent') unset($policyConfig['api_token']);
+            file_put_contents("$policySite/config.php", '<?php return ' . var_export($policyConfig, true) . ';');
+            $policyBefore = upgrade_snapshot($policySite);
+            foreach ([['maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], ["$tmp/new/tools/upgrade.php", "--install=$policySite"]] as $entryArgs) {
+                $policyDry = upgrade_run([PHP_BINARY, ...$entryArgs], $policySite);
+                check_upgrade($policyDry['code'] === 0 && ($policyDry['json']['access_checked'] ?? false)
+                    && !($policyDry['json']['access_blocked'] ?? true) && isset($policyDry['json']['next'])
+                    && upgrade_snapshot($policySite) === $policyBefore, "$legacyPolicy legacy policy with " . count($scoped) . ' scoped records permits verified dry run without changes');
+            }
+            $policyPlan = $policyDry['json'];
+            check_upgrade(($policyPlan['next'] ?? '') === 'php ' . escapeshellarg("$tmp/new/tools/upgrade.php") . ' ' . escapeshellarg('--install=' . realpath($policySite)) . ' --apply --confirm=' . $policyPlan['confirm'], 'external apply command quotes the canonical spaced installation path exactly: ' . ($policyPlan['next'] ?? ''));
+            $policyApply = upgrade_run([PHP_BINARY, "$tmp/new/tools/upgrade.php", "--install=$policySite", '--apply', '--confirm=' . $policyPlan['confirm']], $tmp);
+            check_upgrade($policyApply['code'] === 0 && ($policyApply['json']['code_updated'] ?? false) && !($policyApply['json']['access_blocked'] ?? true), 'intentional empty/absent admin policy also passes post-apply verification');
+            upgrade_rmtree($policySite);
+        }
+    }
+    $blockedExternal = upgrade_run([PHP_BINARY, "$tmp/blockedpkg/tools/upgrade.php", "--install=$tmp/no-external-access"], $tmp); // invalid installation stays a usage error
+    check_upgrade($blockedExternal['code'] === 2, 'external launcher does not invent an apply command for an invalid installation');
     $defaultReporting = upgrade_run([PHP_BINARY, '-n', $iniProbe, $tmp], $tmp);
     $defaultChild = json_decode($defaultReporting['json']['out'] ?? '', true);
     $defaultMask = upgrade_run([PHP_BINARY, '-n', '-r', 'echo json_encode(error_reporting());'], $tmp)['json'];

@@ -127,13 +127,21 @@ $broken = $good; $broken['access_tokens'][] = ['id' => 'x'];
 $b = bbf_auth_config_problems($broken);
 auth_check(($b[0]['level'] ?? '') === 'error' && str_contains($b[0]['message'], 'ALL tokens') && bbf_auth_registry($broken) === [], 'a malformed record is reported as disabling all access');
 auth_check(str_contains(implode(' ', array_column(bbf_auth_config_problems(['api_token' => '']), 'message')), 'No usable access token'), 'no token at all is reported');
-foreach ([['api_token' => ''], ['api_token' => '', 'access_tokens' => [$token('invalid', 'short')]],
+foreach ([['api_token' => null], ['api_token' => false], ['api_token' => 0], ['api_token' => '0'], ['api_token' => '', 'access_tokens' => [$token('invalid', 'short')]],
     ['api_token' => '', 'access_tokens' => [['id' => 'broken']]]] as $blocked) {
     auth_check(bbf_auth_access_blocked($blocked) && in_array('error', array_column(bbf_auth_config_problems($blocked), 'level'), true),
         'empty or all-invalid credentials are blocked and diagnosed as an error');
 }
 auth_check(!bbf_auth_access_blocked($good) && !bbf_auth_access_blocked(['api_token' => ''] + $good),
     'admin and intentional scoped-only policies remain supported');
+foreach ([[], ['api_token' => ''], ['access_tokens' => []], ['api_token' => '', 'access_tokens' => []]] as $intentional) {
+    auth_check(!bbf_auth_access_blocked($intentional) && bbf_auth_registry($intentional) === [],
+        'intentional credential-free policy permits upgrades but grants no access');
+}
+foreach ([['api_token' => null], ['api_token' => false], ['api_token' => 0], ['api_token' => []]] as $malformed) {
+    auth_check(bbf_auth_registry($malformed + $good) === [] && bbf_auth_access_blocked($malformed + $good),
+        'malformed legacy credential type fails closed even with valid scoped records');
+}
 auth_check(bbf_auth_token_usable(str_repeat('deadbeef', 4)), 'hex syntax is accepted without an entropy heuristic');
 $inactive = ['api_token' => '', 'access_tokens' => [$token('revoked', str_repeat('d', 32))]];
 $inactive['access_tokens'][0]['revoked'] = true;

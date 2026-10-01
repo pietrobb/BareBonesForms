@@ -262,7 +262,10 @@ function bbf_upgrade_access_state(string $stageDir, string $install): array {
         . ' $warnings = array_column(bbf_auth_config_problems($c), "message");'
         . ' $admin = false; $active = false; foreach (bbf_auth_registry($c) as $r)'
         . ' if (empty($r["revoked"]) && ($r["expires"] ?? 0) > time()) { $active = true; if (!empty($r["admin"])) $admin = true; }'
-        . ' echo json_encode(["warnings" => $warnings, "blocked" => !$active || (!empty($c["api_token"]) && !$admin)]);';
+        . ' $legacy = array_key_exists("api_token", $c) ? $c["api_token"] : "";'
+        . ' $records = array_key_exists("access_tokens", $c) ? $c["access_tokens"] : [];'
+        . ' $blocked = function_exists("bbf_auth_access_blocked") ? bbf_auth_access_blocked($c) : (($legacy !== "" || $records !== []) && (!$active || ($legacy !== "" && !$admin)));'
+        . ' echo json_encode(["warnings" => $warnings, "blocked" => $blocked]);';
     $run = bbf_upgrade_run([PHP_BINARY, '-r', $script, "$stageDir/bbf_auth.php", "$install/config.php"], $install);
     if ($run === null) return $unknown;
     $state = json_decode($run['out'], true);

@@ -66,4 +66,6 @@ BBF.registerLang('ja', {
     pageStatus:        '{total} ページ中 {current} ページ',
     optionOther:       'その他…',
     rating:            '評価',
+    redirectContinue:  '続行',
+    newSubmission:     '新しい送信を開始',
 });

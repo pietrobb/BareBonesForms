@@ -66,4 +66,6 @@ BBF.registerLang('sv', {
     pageStatus:        'Sida {current} av {total}',
     optionOther:       'Annat…',
     rating:            'Betyg',
+    redirectContinue:  'Fortsätt',
+    newSubmission:     'Påbörja en ny inskickning',
 });

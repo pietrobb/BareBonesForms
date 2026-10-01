@@ -262,7 +262,7 @@ $review6129Inventory = [
         'failure' => [['tests/review-payment-test.php', '6129-F02 paid payload persistence failure preserves the exact pending plan before any effect'], ['tests/review-payment-test.php', '6129-F02 tampered pending payload cannot be legitimized during paid finalization']],
     ],
     '6129-F03 normalized conditional validation and collection' => [
-        'fixes' => [['bbf_functions.php', 'function bbfNormalizeInputValue'], ['submit.php', "bbfNormalizeInputValue(\$input[\$name] ?? '')"], ['bbf_functions.php', 'bbfRepeatableRowInput($childFields, $input, $row)']],
+        'fixes' => [['bbf_functions.php', 'function bbfNormalizeInputValue'], ['submit.php', "bbfNormalizeInputValue(\$input[\$name] ?? '', \$type)"], ['bbf_functions.php', 'bbfRepeatableRowInput($childFields, $input, $row)']],
         'positive' => [['tests/review-validation-test.php', '6129-F03 collection and conditions share normalized scalar input']],
         'failure' => [['tests/review-conditions-test.php', '6129-F03 normalized scalar condition enforces a required field'], ['tests/review-conditions-test.php', '6129-F03 repeatable conditions use normalized row-local values']],
     ],
@@ -370,8 +370,12 @@ acceptance_check(substr_count($workflow, 'actions/setup-python@') >= 2
 
 $releaseWorkflow = acceptance_source($root, '.github/workflows/release.yml');
 acceptance_check(str_contains($releaseWorkflow, 'always() && (failure() || cancelled())')
-    && str_contains($releaseWorkflow, '--json databaseId,isDraft,body')
-    && str_contains($releaseWorkflow, 'select(.isDraft == true and (.body | contains($marker))) | .databaseId')
+    && str_contains($releaseWorkflow, 'gh api --paginate --slurp')
+    && str_contains($releaseWorkflow, 'owned_release "$id" >/dev/null')
+    && str_contains($releaseWorkflow, 'cancel-in-progress: false')
+    && !str_contains($releaseWorkflow, 'gh release view')
+    && !str_contains($releaseWorkflow, 'gh release download')
+    && !str_contains($releaseWorkflow, 'gh release edit')
     && str_contains($releaseWorkflow, 'repos/$GITHUB_REPOSITORY/releases/$id')
     && !str_contains($releaseWorkflow, 'gh release delete "$GITHUB_REF_NAME"'),
     'failed or cancelled release verification cleans only this run-marked draft by immutable ID, never another draft or a published release');
@@ -577,7 +581,7 @@ acceptance_check(count($releaseJobs) === 3 && $writerJobs === 1 && $thirdPartyIn
     && preg_match('/package:.*?permissions:\s*\n\s*contents: read\s*\n\s*steps:.*?setup-php.*?upload-artifact/s', $releaseYml) === 1,
     'release.yml: setup-php runs only in the read-only build job; the write-token job uses only actions/* ('
         . implode(',', $thirdPartyInWriter) . ')');
-acceptance_check(preg_match('/gh release create.*?gh release download "\$GITHUB_REF_NAME".*?cmp "\$RUNNER_TEMP\/SHA256SUMS".*?sha256sum -c SHA256SUMS/s', $releaseYml) === 1,
+acceptance_check(preg_match('/gh release create.*?releases\/assets\/\$asset_id.*?cmp "\$RUNNER_TEMP\/SHA256SUMS".*?sha256sum -c SHA256SUMS/s', $releaseYml) === 1,
     'review 2.1.6: release.yml downloads the published release and checks it against the built SHA256SUMS');
 acceptance_check(str_contains($releaseYml, '$p !== "CHANGELOG.md"'), 'the upgrade ZIP keeps CHANGELOG.md, so the dry run still lists Breaking notes');
 acceptance_check(str_contains($workflow, 'run: php tools/release-history.php --check') && str_contains($workflow, 'fetch-depth: 0'),

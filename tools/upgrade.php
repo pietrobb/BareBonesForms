@@ -29,8 +29,8 @@ try {
     fwrite(STDERR, 'Upgrade failed: ' . $error->getMessage() . "\n");
     exit(1);
 }
-if (!isset($options['apply']) && ($result['ok'] ?? false) && !($result['up_to_date'] ?? false)) {
-    $result['next'] = 'php ' . $argv[0] . ' --install=' . $install . ' --apply --confirm=' . $result['confirm'];
+if (!isset($options['apply']) && isset($result['confirm']) && (($result['ok'] ?? false) || (($result['access_checked'] ?? false) && !empty($result['access_blocked']))) && !($result['up_to_date'] ?? false)) {
+    $result['next'] = 'php ' . escapeshellarg($argv[0]) . ' ' . escapeshellarg('--install=' . $install) . ' --apply --confirm=' . $result['confirm'];
 }
 fwrite(STDOUT, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
 exit(bbf_upgrade_exit_code($result));

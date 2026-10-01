@@ -71,4 +71,6 @@ BBF.registerLang('de', {
     pageStatus:        'Seite {current} von {total}',
     optionOther:       'Sonstiges…',
     rating:            'Bewertung',
+    redirectContinue:  'Weiter',
+    newSubmission:     'Neue Übermittlung starten',
 });

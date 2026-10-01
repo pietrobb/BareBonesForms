@@ -66,4 +66,6 @@ BBF.registerLang('fi', {
     pageStatus:        'Sivu {current}/{total}',
     optionOther:       'Muu…',
     rating:            'Arvio',
+    redirectContinue:  'Jatka',
+    newSubmission:     'Aloita uusi lähetys',
 });

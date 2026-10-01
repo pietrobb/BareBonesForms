@@ -66,4 +66,6 @@ BBF.registerLang('fr', {
     pageStatus:        'Page {current} sur {total}',
     optionOther:       'Autre…',
     rating:            'Évaluation',
+    redirectContinue:  'Continuer',
+    newSubmission:     'Commencer un nouvel envoi',
 });

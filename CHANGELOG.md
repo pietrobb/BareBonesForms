@@ -3,6 +3,17 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.11] — 2026-10-01
+
+### Fixed
+- Redirects that download a file, return HTTP 204 or are cancelled no longer leave the UI on “Sending…”. The success message offers a continuation link and an explicit new-submission action; pending navigation still blocks accidental duplicate POSTs. Empty same-page fragments remain usable. Recovery labels are translated in all 34 client packs.
+- Renamed module scripts and dynamic imports no longer crash when `document.currentScript` or a matching script is absent. `data-bbf-base` selects the renderer/CSS directory explicitly. Initial CSRF timeouts retain the hidden token field so the next submit can refresh and retry.
+- HTTP selfcheck tests fresh harmless ordinary fixtures in `submissions/` and `logs/` as well as dot-file protection. Leaks fail the check; unreachable, fallback or incomplete results remain unverified. Fixtures have finally/shutdown cleanup and bounded exact-format stale cleanup on subsequent runs after forced termination; unfamiliar, incomplete and differently owned files are preserved.
+- Audit diagnostics distinguish the current CLI identity from the web worker; a different cron UID is unverified, not a false daily unwritable-file incident. Missing-config responses in submissions and sandbox are generic HTTP 503. Authenticated proxy diagnostics warn about forwarding hints without trusting them.
+- Phone Unicode boundary whitespace is normalized before storage, exports and delivery, including repeatable rows. Email body and subject placeholders support numeric and hyphenated names in one substitution pass; respondent text is never reinterpreted as template syntax.
+- Verified upgrades support scoped-only and deliberately credential-free installations while rejecting malformed credentials and uncheckable access. Checked access-blocked dry runs include an exact quoted apply command. Documentation directs users of old launchers with disabled `proc_open` to the verified new external launcher.
+- Release runs serialize per tag, skip already-published tags, locate their own marked draft across paginated API results, and verify/download/publish/clean by immutable release and asset IDs, not tag lookups. Other drafts and published releases remain untouched.
+
 ## [2.1.10] — 2026-10-01
 
 ### Fixed

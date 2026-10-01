@@ -244,7 +244,7 @@ function bbf_auth_registry(array $config): array {
     $records = array_key_exists('access_tokens', $config) ? $config['access_tokens'] : [];
     if (!is_array($records) || !array_is_list($records)) return [];
     $registry = []; $secrets = [];
-    $legacy = $config['api_token'] ?? '';
+    $legacy = array_key_exists('api_token', $config) ? $config['api_token'] : '';
     if (!is_string($legacy)) return [];
     // Tokens outside the hex credential format are ignored individually.
     if (bbf_auth_token_usable($legacy)) {
@@ -279,10 +279,13 @@ function bbf_auth_registry(array $config): array {
     foreach ($registry as $r) if (isset($secrets[hash('sha256', $r['id'])])) return []; return $registry;
 }
 
-/** Deliberately scoped-only installations are supported; a missing active credential is blocked. */
+/** Scoped-only or explicitly credential-free installations are valid; configured unusable access is blocked. */
 function bbf_auth_access_blocked(array $config): bool {
+    $legacy = array_key_exists('api_token', $config) ? $config['api_token'] : '';
+    $records = array_key_exists('access_tokens', $config) ? $config['access_tokens'] : [];
+    if ($legacy === '' && $records === []) return false; // management stays denied, but this is not upgrade lockout
     $active = array_filter(bbf_auth_registry($config), static fn(array $r): bool => !$r['revoked'] && $r['expires'] > time());
-    return $active === [] || (!empty($config['api_token']) && !isset($active['legacy-admin']));
+    return $active === [] || ($legacy !== '' && !isset($active['legacy-admin']));
 }
 
 /** access_tokens records with invalid credential format (skipped by bbf_auth_registry). */
@@ -299,7 +302,7 @@ function bbf_auth_short_records(array $config): array {
  */
 function bbf_auth_config_problems(array $config): array {
     $out = [];
-    $legacy = $config['api_token'] ?? '';
+    $legacy = array_key_exists('api_token', $config) ? $config['api_token'] : '';
     $records = array_key_exists('access_tokens', $config) ? $config['access_tokens'] : [];
     if (!is_string($legacy)) $out[] = ['level' => 'error', 'message' => 'api_token must be a string; all access is disabled.'];
     elseif ($legacy !== '' && !bbf_auth_token_usable($legacy))

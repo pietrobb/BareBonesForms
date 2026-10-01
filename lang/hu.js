@@ -66,4 +66,6 @@ BBF.registerLang('hu', {
     pageStatus:        '{current}. oldal / {total}',
     optionOther:       'Egyéb…',
     rating:            'Értékelés',
+    redirectContinue:  'Folytatás',
+    newSubmission:     'Új beküldés indítása',
 });

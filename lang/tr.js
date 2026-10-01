@@ -66,4 +66,6 @@ BBF.registerLang('tr', {
     pageStatus:        'Sayfa {current} / {total}',
     optionOther:       'Diğer…',
     rating:            'Değerlendirme',
+    redirectContinue:  'Devam et',
+    newSubmission:     'Yeni bir gönderim başlat',
 });

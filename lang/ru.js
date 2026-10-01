@@ -66,4 +66,6 @@ BBF.registerLang('ru', {
     pageStatus:        'Страница {current} из {total}',
     optionOther:       'Другое…',
     rating:            'Оценка',
+    redirectContinue:  'Продолжить',
+    newSubmission:     'Начать новую отправку',
 });

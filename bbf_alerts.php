@@ -291,9 +291,9 @@ function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null, ?callab
         if ($problem['level'] === 'error') $problems[] = ['-', 'Access configuration problem', 'Self-check: ' . $problem['message']];
     }
 
-    if (($auditProblem = bbf_audit_problem($config)) !== null)
-        $problems[] = ['-', 'Access audit unavailable', 'Self-check: ' . $auditProblem];
     require_once __DIR__ . '/bbf_diagnostics.php';
+    $audit = bbf_diagnostic_audit($config);
+    if ($audit['status'] === 'error') $problems[] = ['-', 'Access audit unavailable', 'Self-check: ' . $audit['detail']];
     $rewrite = bbf_diagnostic_rewrite($config);
     if ($rewrite['status'] === 'error') $problems[] = ['-', 'Rewrite protection unavailable', 'Self-check: ' . $rewrite['detail']];
 
@@ -339,6 +339,7 @@ function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null, ?callab
         'access_blocked' => bbf_auth_access_blocked($config),
         'access_problems' => $accessProblems,
         'rewrite_http' => $rewrite, // unverified is not a claim that web-server security works
+        'audit' => $audit, // CLI identity never assures a different web worker's permissions
         'problems' => array_map(static fn(array $p) => ['form' => $p[0], 'type' => $p[1], 'detail' => $p[2]], $problems),
         'update' => bbf_update_check($config, $fetchLatest),
         'notify' => trim((string)($config['error_notify'] ?? '')) === '' ? 'error_notify is empty: problems are only logged, no email is sent' : 'enabled',

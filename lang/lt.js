@@ -64,4 +64,6 @@ BBF.registerLang('lt', {
     pageStatus:        '{current} puslapis iš {total}',
     optionOther:       'Kita…',
     rating:            'Įvertinimas',
+    redirectContinue:  'Tęsti',
+    newSubmission:     'Pradėti naują pateikimą',
 });

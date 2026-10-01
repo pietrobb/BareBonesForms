@@ -133,6 +133,11 @@ $editorSource = file_get_contents(dirname(__DIR__) . '/editor.php');
 server_check(str_contains($editorSource, 'bbf_create_file_exclusive($file, $template)') && !str_contains($editorSource, 'file_put_contents($file, $template)'),
     'editor create uses the atomic exclusive writer');
 
+file_put_contents($root . '/single-pass-template.html', '{{first-name}}|{{missing-name}}|{{5}}|{{name}}|{{_summary}}|{{#first-name}}yes{{/first-name}}');
+server_check(renderTemplate($root . '/single-pass-template.html', ['first-name' => '<Ann>', 'name' => '{{_summary}}', '_summary' => '<table>summary</table>'])
+    === '&lt;Ann&gt;|||{{_summary}}|<table>summary</table>|yes', 'hyphen/numeric tags are removed in one pass; respondent tags stay literal and summary stays trusted');
+server_check(interpolate('{{5}} {{first-name}} {{name}} {{missing-name}}', ['first-name' => 'Ann', 'name' => '{{first-name}}']) === ' Ann {{first-name}} ',
+    'subjects interpolate once, remove missing numeric/hyphen tags and preserve inserted syntax');
 file_put_contents($root . '/numeric-template.html', '{{5}}|{{2024}}|{{name}}');
 server_check(renderTemplate($root . '/numeric-template.html', []) === '||', 'missing or hidden numeric email placeholders are removed');
 server_check(renderTemplate($root . '/numeric-template.html', [5 => '', 2024 => '0', 'name' => '<b>']) === '|0|&lt;b&gt;', 'empty numeric email fields are removed; zero and escaping are preserved');

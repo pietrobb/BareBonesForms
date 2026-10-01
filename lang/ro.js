@@ -66,4 +66,6 @@ BBF.registerLang('ro', {
     pageStatus:        'Pagina {current} din {total}',
     optionOther:       'Altceva…',
     rating:            'Evaluare',
+    redirectContinue:  'Continuă',
+    newSubmission:     'Începe o nouă trimitere',
 });

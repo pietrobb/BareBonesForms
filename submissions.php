@@ -1,10 +1,12 @@
 <?php
 /** BareBonesForms — authenticated submissions list, detail and CSV export. */
 define('BBF_LOADED', true);
-if (!file_exists(__DIR__ . '/config.php')) {
-    http_response_code(500);
+require_once __DIR__ . '/bbf_auth.php';
+if (!is_file(__DIR__ . '/config.php')) {
+    bbf_auth_headers();
+    http_response_code(503);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => 'Missing config.php. Copy config.example.php to config.php and edit it.']);
+    echo json_encode(['error' => 'Temporarily unavailable.']);
     exit;
 }
 require_once __DIR__ . '/bbf_auth.php';

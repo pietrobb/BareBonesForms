@@ -66,4 +66,6 @@ BBF.registerLang('el', {
     pageStatus:        'Σελίδα {current} από {total}',
     optionOther:       'Άλλο…',
     rating:            'Βαθμολογία',
+    redirectContinue:  'Συνέχεια',
+    newSubmission:     'Έναρξη νέας υποβολής',
 });

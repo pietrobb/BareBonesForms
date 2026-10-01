@@ -66,4 +66,6 @@ BBF.registerLang('hi', {
     pageStatus:        'पृष्ठ {current} / {total}',
     optionOther:       'अन्य…',
     rating:            'रेटिंग',
+    redirectContinue:  'जारी रखें',
+    newSubmission:     'नई प्रविष्टि शुरू करें',
 });

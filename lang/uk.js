@@ -66,4 +66,6 @@ BBF.registerLang('uk', {
     pageStatus:        'Сторінка {current} з {total}',
     optionOther:       'Інше…',
     rating:            'Оцінка',
+    redirectContinue:  'Продовжити',
+    newSubmission:     'Почати нове надсилання',
 });

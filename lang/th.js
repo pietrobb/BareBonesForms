@@ -66,4 +66,6 @@ BBF.registerLang('th', {
     pageStatus:        'หน้า {current} จาก {total}',
     optionOther:       'อื่น ๆ…',
     rating:            'คะแนน',
+    redirectContinue:  'ดำเนินการต่อ',
+    newSubmission:     'เริ่มการส่งใหม่',
 });

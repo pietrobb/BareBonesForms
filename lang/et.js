@@ -66,4 +66,6 @@ BBF.registerLang('et', {
     pageStatus:        'Leht {current}/{total}',
     optionOther:       'Muu…',
     rating:            'Hinnang',
+    redirectContinue:  'Jätka',
+    newSubmission:     'Alusta uut saatmist',
 });

@@ -66,4 +66,6 @@ BBF.registerLang('ar', {
     pageStatus:        'الصفحة {current} من {total}',
     optionOther:       'أخرى…',
     rating:            'التقييم',
+    redirectContinue:  'متابعة',
+    newSubmission:     'بدء إرسال جديد',
 });

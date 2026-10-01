@@ -73,4 +73,6 @@ BBF.registerLang('en', {
     pageStatus:        'Page {current} of {total}',
     optionOther:       'Other…',
     rating:            'Rating',
+    redirectContinue:  'Continue',
+    newSubmission:     'Start a new submission',
 });

@@ -66,4 +66,6 @@ BBF.registerLang('ko', {
     pageStatus:        '{total}페이지 중 {current}페이지',
     optionOther:       '기타…',
     rating:            '평점',
+    redirectContinue:  '계속',
+    newSubmission:     '새 제출 시작',
 });

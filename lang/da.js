@@ -66,4 +66,6 @@ BBF.registerLang('da', {
     pageStatus:        'Side {current} af {total}',
     optionOther:       'Andet…',
     rating:            'Bedømmelse',
+    redirectContinue:  'Fortsæt',
+    newSubmission:     'Start en ny indsendelse',
 });

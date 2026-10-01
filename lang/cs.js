@@ -66,4 +66,6 @@ BBF.registerLang('cs', {
     pageStatus:        'Stránka {current} z {total}',
     optionOther:       'Jiné…',
     rating:            'Hodnocení',
+    redirectContinue:  'Pokračovat',
+    newSubmission:     'Začít vyplňovat nový formulář',
 });

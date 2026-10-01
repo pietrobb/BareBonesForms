@@ -250,6 +250,14 @@ same(true, strpos($submitSource, 'validateCrossFields(') < strpos($submitSource,
 same(2, substr_count($submitSource, '$data = $normalizedData;'));
 same(1, preg_match('/^function collectData\(.*?^\}/ms', $submitSource, $collectionMatch));
 eval($collectionMatch[0]);
+check('phone collection normalizes Unicode edges before every downstream consumer, including repeatable rows', function () {
+    $phone = "\u{FEFF}\u{00A0}\u{2028}+421 123456\u{2028}\u{00A0}\u{FEFF}";
+    $field = ['name' => 'phone', 'type' => 'tel'];
+    same([], validate([$field], ['phone' => $phone]));
+    same(['phone' => '+421 123456'], collectData([$field], ['phone' => $phone]));
+    $group = ['name' => 'people', 'type' => 'group', 'repeatable' => true, 'fields' => [$field]];
+    same(['people' => [['phone' => '+421 123456']]], collectData([$group], ['people' => [['phone' => $phone]]]));
+});
 check('6129-F03 collection and conditions share normalized scalar input', function () {
     $fields = [
         ['name' => 'kind', 'type' => 'select', 'options' => ['personal', 'business']],

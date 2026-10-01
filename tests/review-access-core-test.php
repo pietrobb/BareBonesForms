@@ -295,6 +295,19 @@ try {
     core_check(core_http('submissions.php?form=alpha', $guessHeader('fa267f6a634226df5cecac4f9b55fc5d47ae2fae28da8a573ad76ab949bb33f2'))['code'] === 429
         && core_http('submissions.php?form=alpha', $guessHeader('9806d4b292ce8435a27e53f1957d5d5ec84113aba751cb41dbd2fa05f7781b6c'))['code'] === 429,
         'review 2.1.6: an expired or revoked token gets 429 like any wrong token while blocked, not a 403 that reveals it');
+    foreach (['empty', 'absent'] as $policy) {
+        $intentional = $baseConfig; $intentional['api_token'] = '';
+        if ($policy === 'absent') unset($intentional['api_token']);
+        core_config($intentional);
+        core_check(core_http('submissions.php?form=alpha', core_header('reader'))['code'] === 200
+            && core_http('editor.php', core_header('reader'))['code'] === 403
+            && core_http('editor.php', core_header('admin'))['code'] === 403,
+            "$policy api_token preserves scoped access without granting admin");
+        $intentional['access_tokens'] = []; core_config($intentional);
+        core_check(core_http('viewer.php', core_header('admin'))['code'] === 403
+            && core_http('submissions.php?form=alpha', core_header('reader'))['code'] === 403,
+            "$policy credential-free policy still denies actual authentication");
+    }
     $weakConfig = $baseConfig; $weakConfig['api_token'] = 'abcdefghijklmnopqrstuvwxyz';
     core_config($weakConfig);
     core_check(core_http('viewer.php', $guessHeader('abcdefghijklmnopqrstuvwxyz'))['code'] !== 200, 'a non-hex api_token is never accepted');

@@ -93,6 +93,25 @@ test('redirect resets stored answers before navigation, so Back cannot resubmit 
     assert.equal((context.window.listeners.pageshow || []).length, 1, 'only the standard idempotency-key listener remains');
 });
 
+test('download, 204 and cancelled navigation allow an explicit new submission without timer duplicates', async () => {
+    for (const redirect of ['/download.pdf', '/no-content', '/cancelled']) {
+        const { form, events } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect });
+        const btn = form.querySelector('.bbf-submit');
+        assert.equal(btn.textContent, 'Submit');
+        assert.equal(form.querySelector('a').href, redirect);
+        assert.equal(form.querySelector('a').textContent, 'Continue');
+        await form.listeners.submit[0]({ preventDefault() {} });
+        assert.equal(events.length, 1, 'implicit duplicate is still blocked');
+        form.querySelector('.bbf-new-submission').listeners.click[0]();
+        assert.equal(btn.disabled, false);
+        assert.equal(form._bbfSubmitting, false);
+        await form.listeners.submit[0]({ preventDefault() {} });
+        assert.equal(events.length, 2, 'explicit new fill can be submitted');
+    }
+    const { form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '#' });
+    assert.equal(form.querySelector('.bbf-submit').disabled, false, 'empty hash never locks navigation');
+});
+
 test('same-page anchor stays usable; cross-page navigation waits for pageshow without a timer', async () => {
     let pageUrl = '';
     const hash = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '#done' }, true, {}, runtime => { pageUrl = String(runtime.context.location.href).split('#')[0]; });

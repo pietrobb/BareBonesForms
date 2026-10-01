@@ -7,6 +7,11 @@ on:
 # No workflow-wide token rights: each job gets only what it needs.
 permissions: {}
 
+# Serialize duplicate tag pushes without cancelling a run while it owns a draft.
+concurrency:
+  group: release-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   ci-gate:
     name: Require a green CI run for the tagged commit
@@ -104,6 +109,40 @@ jobs:
           subject-path: |
             ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}.zip
             ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}-upgrade.zip
+      - name: Prepare immutable release ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Available before creation so cancellation before recording the ID can still recover ownership.
+          cat > "$RUNNER_TEMP/release-identity.sh" <<'BASH'
+          marker="<!-- bbf-release-run:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT} -->"
+          release_list() {
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100"
+          }
+          owned_id() {
+            local ids
+            ids=$(release_list | jq -r --arg marker "$marker" '[.[][] | select(.draft == true and (.body // "" | contains($marker))) | .id] | if length == 1 then .[0] else empty end') || return 1
+            [[ "$ids" =~ ^[0-9]+$ ]] || return 1
+            printf '%s' "$ids"
+          }
+          owned_release() {
+            local release
+            [[ "$1" =~ ^[0-9]+$ ]] || return 1
+            release=$(gh api "repos/$GITHUB_REPOSITORY/releases/$1") || return 1
+            printf '%s' "$release" | jq -e --arg marker "$marker" --arg id "$1" 'select((.id | tostring) == $id and .draft == true and (.body // "" | contains($marker)))'
+          }
+          cleanup_owned() {
+            local id
+            # Once saved, never rediscover a different ID, even if the saved release disappeared.
+            if [ -f "$RUNNER_TEMP/owned-release-id" ]; then
+              id=$(<"$RUNNER_TEMP/owned-release-id")
+            else
+              id=$(owned_id) || return 0
+            fi
+            owned_release "$id" >/dev/null || return 0
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          }
+          BASH
       - name: Create draft GitHub release
         id: create_release
         env:
@@ -111,6 +150,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source "$RUNNER_TEMP/release-identity.sh"
+          # Queued duplicate runs become no-ops after the first run publishes this tag.
+          releases=$(release_list)
+          published=$(printf '%s' "$releases" | jq -r --arg tag "$GITHUB_REF_NAME" 'any(.[][]; .tag_name == $tag and .draft == false)')
+          if [ "$published" = true ]; then
+            echo 'skipped=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           notes="$RUNNER_TEMP/notes.md"
           awk -v head="## [${GITHUB_REF_NAME#v}]" '
             index($0, head) == 1 {on=1; next}
@@ -119,29 +166,45 @@ jobs:
           ' CHANGELOG.md > "$notes"
           [ -s "$notes" ] || echo "See CHANGELOG.md." > "$notes"
           cp "$notes" "$RUNNER_TEMP/draft-notes.md"
-          printf '\n<!-- bbf-release-run:%s:%s -->\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$RUNNER_TEMP/draft-notes.md"
+          printf '\n%s\n' "$marker" >> "$RUNNER_TEMP/draft-notes.md"
           gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}.zip" \
             "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" "$RUNNER_TEMP/SHA256SUMS" \
             --draft --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/draft-notes.md"
+          id=$(owned_id)
+          owned_release "$id" >/dev/null
+          printf '%s' "$id" > "$RUNNER_TEMP/owned-release-id"
       - name: Verify uploaded draft files
+        if: ${{ steps.create_release.outputs.skipped != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           # What users download must be what was built and attested, not only what crossed between the jobs.
           set -euo pipefail
+          source "$RUNNER_TEMP/release-identity.sh"
+          id=$(<"$RUNNER_TEMP/owned-release-id")
+          release=$(owned_release "$id")
           check="$RUNNER_TEMP/published"
           mkdir "$check"
-          gh release download "$GITHUB_REF_NAME" --dir "$check"
+          for name in "barebonesforms-${GITHUB_REF_NAME}.zip" "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" SHA256SUMS; do
+            asset_id=$(printf '%s' "$release" | jq -er --arg name "$name" '[.assets[] | select(.name == $name) | .id] | if length == 1 then .[0] else error("missing or duplicate asset") end')
+            [[ "$asset_id" =~ ^[0-9]+$ ]]
+            gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$check/$name"
+          done
           cmp "$RUNNER_TEMP/SHA256SUMS" "$check/SHA256SUMS"
           (cd "$check" && sha256sum -c SHA256SUMS)
+          owned_release "$id" >/dev/null
       - name: Publish verified draft
+        if: ${{ steps.create_release.outputs.skipped != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release edit "$GITHUB_REF_NAME" --draft=false --notes-file "$RUNNER_TEMP/notes.md"
+          source "$RUNNER_TEMP/release-identity.sh"
+          id=$(<"$RUNNER_TEMP/owned-release-id")
+          owned_release "$id" >/dev/null
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F draft=false -F body=@"$RUNNER_TEMP/notes.md"
       - name: Remove this run's unverified draft
         if: ${{ always() && (failure() || cancelled()) }}
         env:
@@ -149,11 +212,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The server-side run marker also covers cancellation during draft creation.
-          marker="<!-- bbf-release-run:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT} -->"
-          release=$(gh release view "$GITHUB_REF_NAME" --json databaseId,isDraft,body) || exit 0
-          id=$(printf '%s' "$release" | jq -r --arg marker "$marker" 'select(.isDraft == true and (.body | contains($marker))) | .databaseId')
-          # Delete by immutable identity, not by a tag that another actor could reuse.
-          if [[ "$id" =~ ^[0-9]+$ ]]; then
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
-          fi
+          # No helper means cancellation happened before draft creation could start.
+          [ -f "$RUNNER_TEMP/release-identity.sh" ] || exit 0
+          source "$RUNNER_TEMP/release-identity.sh"
+          cleanup_owned

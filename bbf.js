@@ -21,19 +21,19 @@
 (function() {
     'use strict';
 
-    const rendererScript = document.currentScript || Array.from(document.getElementsByTagName('script')).reverse()
-        .find(script => /\/bbf\.js(?:[?#]|$)/.test(script.src));
+    const scripts = Array.from(document.getElementsByTagName('script')).reverse();
+    const rendererScript = document.currentScript || scripts.find(script => script.hasAttribute?.('data-bbf-base'))
+        || scripts.find(script => /\/bbf(?:\.min)?\.js(?:[?#]|$)/.test(script.src)) || scripts[0];
+    const rendererSrc = rendererScript?.src || '';
+    const rendererBase = rendererScript?.getAttribute?.('data-bbf-base')
+        ?? rendererSrc.substring(0, rendererSrc.lastIndexOf('/') + 1);
 
     const BBF = {
-        baseUrl: (function() {
-            const src = rendererScript.src;
-            return src.substring(0, src.lastIndexOf('/') + 1);
-        })(),
+        baseUrl: rendererBase,
 
         // ─── Auto-load bbf.css if not already present ───────
         _cssInjected: (function() {
-            const src = rendererScript.src;
-            const base = src.substring(0, src.lastIndexOf('/') + 1);
+            const base = rendererBase;
             const cssUrl = base + 'bbf.css';
             // Check if already loaded
             const links = document.querySelectorAll('link[rel="stylesheet"]');
@@ -56,6 +56,8 @@
             submitDefault:    'Submit',
             submittingDefault:'Sending…',
             successDefault:   'Thank you! Your submission has been received.',
+            redirectContinue: 'Continue',
+            newSubmission:    'Start a new submission',
             errorDefault:     'Something went wrong.',
             networkError:     'Network error. Please try again.',
             serverError:      'Server error ({status})',
@@ -1258,11 +1260,11 @@
             });
 
             // CSRF token
-            if (csrfToken) {
+            if (csrfToken || isSameOrigin) {
                 const csrfInput = document.createElement('input');
                 csrfInput.type = 'hidden';
                 csrfInput.name = '_bbf_csrf';
-                csrfInput.value = csrfToken;
+                csrfInput.value = csrfToken || '';
                 el.appendChild(csrfInput);
             }
 
@@ -1467,7 +1469,7 @@
                             let protocol = '', target = null;
                             try { protocol = new URL(result.redirect, 'https://relative.invalid/').protocol; target = new URL(result.redirect, location.href); } catch (e) { /* invalid URL: show success instead */ }
                             // "#done" on this very page never unloads it: show the success state, then jump there.
-                            const samePage = target && target.hash !== '' && target.href.split('#')[0] === String(location.href).split('#')[0];
+                            const samePage = target && target.href.includes('#') && target.href.split('#')[0] === String(location.href).split('#')[0];
                             // Absolute: a relative "#done" would resolve against a <base href> (SPAs) and leave the page.
                             if (samePage) hashRedirect = target.href;
                             else if (protocol === 'https:' || protocol === 'http:') {
@@ -1492,6 +1494,32 @@
                         }
                         if (hashRedirect) {
                             el._bbfRedirecting = leavingPage;
+                            if (leavingPage) {
+                                btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
+                                const link = document.createElement('a');
+                                link.href = hashRedirect;
+                                link.textContent = this._t('redirectContinue', {}, langCode);
+                                const restart = document.createElement('button');
+                                restart.type = 'button';
+                                restart.className = 'bbf-new-submission';
+                                restart.textContent = this._t('newSubmission', {}, langCode);
+                                restart.addEventListener('click', () => {
+                                    el._bbfRedirecting = false;
+                                    el._bbfSubmitting = false;
+                                    el._bbfHideOnSuccess = false;
+                                    Array.from(el.querySelectorAll('.bbf-field, .bbf-submit-wrap, .bbf-page-nav')).forEach(f => f.style.display = '');
+                                    if (hasPages) { currentPage.value = 0; this._showPage(el, 0, pages.length, langCode, true); }
+                                    this._stabilizeOptionConditions(el);
+                                    this._applyConditions(el, allFlat, false);
+                                    btn.disabled = this._fileFieldsState(el) === 'pending';
+                                    msg.style.display = 'none';
+                                    msg.textContent = '';
+                                });
+                                link.style.marginInlineStart = '0.5em';
+                                restart.style.marginInlineStart = '0.5em';
+                                msg.appendChild(link);
+                                msg.appendChild(restart);
+                            }
                             window.location.href = hashRedirect;
                             if (leavingPage) return;
                         }

@@ -68,4 +68,6 @@ BBF.registerLang('tlh', {
     pageStatus:        'nav {current} ({total} nav)',
     optionOther:       'latlh…',
     rating:            'patlh',
+    redirectContinue:  'yItaH',
+    newSubmission:     'nab chu\' yItagh',
 });

@@ -283,7 +283,7 @@ test('module renderer and pending redirect resist duplicate submit in real Chrom
     let server;
     try {
         const page = '<!doctype html><meta charset="utf-8"><body><pre id="redirect-result"></pre>'
-            + '<script type="module" src="/renderer/bbf.js?v=review"></script><script src="/later.js"></script>'
+            + '<script type="module" src="/renderer/bbf.min.js?v=review"></script><script src="/later.js"></script>'
             + '<script type="module">'
             + '(async()=>{try{const errors=[];const check=(ok,name)=>{if(!ok)errors.push(name)};'
             + 'check(BBF.baseUrl===location.origin+"/renderer/","module base URL");'
@@ -295,7 +295,10 @@ test('module renderer and pending redirect resist duplicate submit in real Chrom
             + 'check(btn.disabled&&form._bbfSubmitting,"locked during slow navigation");btn.click();form.requestSubmit();'
             + 'await new Promise(r=>setTimeout(r,1800));'
             + 'check(await (await fetch("/count")).text()==="1","only one stored POST while redirect pending");'
-            + 'check(btn.disabled,"no timer unlock after a 204 target");'
+            + 'check(btn.disabled&&btn.textContent==="Submit","no timer duplicates or Sending label after a 204 target");'
+            + 'check(form.querySelector(".bbf-message a").href.endsWith("/slow-thanks"),"visible continue link");'
+            + 'form.querySelector(".bbf-new-submission").click();check(!btn.disabled&&!form._bbfSubmitting,"explicit recovery after 204");'
+            + 'form.requestSubmit();await new Promise(r=>setTimeout(r,1800));check(await (await fetch("/count")).text()==="2","new fill submits after recovery");'
             + 'window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}));'
             + 'check(!btn.disabled&&!form._bbfSubmitting,"pageshow restores form");'
             + 'document.getElementById("redirect-result").textContent=JSON.stringify({errors});'
@@ -307,14 +310,23 @@ test('module renderer and pending redirect resist duplicate submit in real Chrom
             const root=process.argv[1],repo=process.argv[2];
             http.createServer((req,res)=>{
                 const url=new URL(req.url,'http://localhost');
-                if(url.pathname==='/renderer/bbf.js'){res.setHeader('Content-Type','application/javascript');res.end(fs.readFileSync(path.join(repo,'bbf.js')));}
+                if(['/renderer/bbf.js','/renderer/bbf.min.js'].includes(url.pathname)){res.setHeader('Content-Type','application/javascript');res.end(fs.readFileSync(path.join(repo,'bbf.js')));}
                 else if(url.pathname==='/renderer/bbf.css'){res.setHeader('Content-Type','text/css');res.end('');}
                 else if(url.pathname==='/later.js'){res.setHeader('Content-Type','application/javascript');res.end('');}
                 else if(url.pathname==='/renderer/submit.php'&&req.method==='POST'){
                     req.resume();req.on('end',()=>{count++;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:'ok',submission_id:'owned_'+count,redirect:'/slow-thanks'}));});
                 }else if(url.pathname==='/slow-thanks'){setTimeout(()=>{res.writeHead(204);res.end();},1500);}
                 else if(url.pathname==='/count'){res.end(String(count));}
-                else if(url.pathname==='/page.html'){res.setHeader('Content-Type','text/html');res.end(fs.readFileSync(path.join(root,'page.html')));}
+                else if(url.pathname==='/page.html'){
+                    count=0;let page=fs.readFileSync(path.join(root,'page.html'),'utf8');
+                    if(url.searchParams.get('mode')==='import'){
+                        page=page.replace('<script type="module" src="/renderer/bbf.min.js?v=review"></script>','')
+                            .replace('<script type="module">','<script type="module" data-bbf-base="http://127.0.0.1:'+req.socket.localPort+'/renderer/">')
+                            .replace('(async()=>{try{','(async()=>{try{await import("/renderer/bbf.js");')
+                            .replace('"redirect",BBF.baseUrl','"import",BBF.baseUrl');
+                    }
+                    res.setHeader('Content-Type','text/html');res.end(page);
+                }
                 else{res.writeHead(404);res.end();}
             }).listen(0,'127.0.0.1',function(){fs.writeFileSync(path.join(root,'port.txt'),String(this.address().port));});
         `;
@@ -322,17 +334,19 @@ test('module renderer and pending redirect resist duplicate submit in real Chrom
         const deadline = Date.now() + 5000;
         while (!fs.existsSync(portFile) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
         assert.ok(fs.existsSync(portFile), 'Owned module/redirect fixture server started');
+        for (const mode of ['module', 'import']) {
         const args = ['--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
             '--disable-background-networking', '--disable-extensions', '--virtual-time-budget=10000',
-            '--user-data-dir=' + path.join(temporary, 'profile'), '--dump-dom',
-            'http://127.0.0.1:' + fs.readFileSync(portFile, 'utf8').trim() + '/page.html'];
+            '--user-data-dir=' + path.join(temporary, 'profile-' + mode), '--dump-dom',
+            'http://127.0.0.1:' + fs.readFileSync(portFile, 'utf8').trim() + '/page.html?mode=' + mode];
         if (process.platform !== 'win32' && process.getuid?.() === 0) args.unshift('--no-sandbox');
         const result = spawnSync(browserExecutable(), args, { encoding: 'utf8', timeout: 45000, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
         assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
         const encoded = result.stdout.match(/<pre id="redirect-result">([\s\S]*?)<\/pre>/)?.[1];
         assert.ok(encoded, 'Browser completed module/redirect checks: ' + result.stdout.slice(-3000));
         const check = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
-        assert.deepEqual(check.errors, []);
+        assert.deepEqual(check.errors, [], mode);
+        }
     } finally {
         if (server && server.exitCode === null) server.kill();
         fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });

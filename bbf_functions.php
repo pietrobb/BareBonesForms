@@ -101,8 +101,11 @@ function flattenFields(array $fields, ?array $parentShowIf = null): array {
     return $result;
 }
 
-function bbfNormalizeInputValue($value) {
-    return is_array($value) ? $value : trim((string)$value);
+function bbfNormalizeInputValue($value, string $type = '') {
+    if (is_array($value)) return $value;
+    $value = trim((string)$value);
+    if ($type === 'tel') $value = preg_replace('/\A[\x{0009}-\x{000D}\x{0020}\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]+|[\x{0009}-\x{000D}\x{0020}\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]+\z/u', '', $value) ?? $value;
+    return $value;
 }
 
 // Evaluate a show_if condition against submitted data.
@@ -392,28 +395,23 @@ function renderTemplate(string $templateFile, array $vars): string {
     $template = file_get_contents($templateFile);
 
     // Conditional sections: {{#var}}...{{/var}} — shown only if var is truthy/non-empty
-    $template = preg_replace_callback('/\{\{#(\w+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
+    $template = preg_replace_callback('/\{\{#([\w-]+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
         $val = $vars[$m[1]] ?? '';
         return ($val !== '' && $val !== '0' && $val !== null) ? $m[2] : '';
     }, $template);
 
     // Inverted sections: {{^var}}...{{/var}} — shown only if var is falsy/empty
-    $template = preg_replace_callback('/\{\{\^(\w+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
+    $template = preg_replace_callback('/\{\{\^([\w-]+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
         $val = $vars[$m[1]] ?? '';
         return ($val === '' || $val === '0' || $val === null) ? $m[2] : '';
     }, $template);
 
-    // Variable substitution
-    foreach ($vars as $key => $value) {
-        if (is_string($value) || is_numeric($value)) {
-            // Only fixed internal variables may contain trusted HTML.
-            $safe = isset($trustedHtmlVars[$key]) ? (string)$value : htmlspecialchars((string)$value);
-            $template = str_replace('{{' . $key . '}}', $safe, $template);
-        }
-    }
-
-    // Clean up any remaining unreplaced tags
-    $template = preg_replace('/\{\{\w+\}\}/', '', $template);
+    // Substitute original tags once; respondent text must never become template syntax.
+    $template = preg_replace_callback('/\{\{([\w-]+)\}\}/', static function ($m) use ($vars, $trustedHtmlVars) {
+        $value = $vars[$m[1]] ?? '';
+        if (!is_string($value) && !is_numeric($value)) return '';
+        return isset($trustedHtmlVars[$m[1]]) ? (string)$value : htmlspecialchars((string)$value);
+    }, $template);
 
     return $template;
 }
@@ -438,12 +436,10 @@ function bbf_redirect_url(string $template, array $data, array $system = []): ?s
 }
 
 function interpolate(string $text, array $data): string {
-    foreach ($data as $key => $value) {
-        if (is_string($value) || is_numeric($value)) {
-            $text = str_replace('{{' . $key . '}}', (string)$value, $text);
-        }
-    }
-    return $text;
+    return preg_replace_callback('/\{\{([\w-]+)\}\}/', static function ($m) use ($data) {
+        $value = $data[$m[1]] ?? '';
+        return is_string($value) || is_numeric($value) ? (string)$value : '';
+    }, $text);
 }
 
 function buildSummary(array $fields, array $data): string {
@@ -2062,8 +2058,7 @@ function validate(array $fields, array $input): array {
         }
 
         $raw   = $input[$name] ?? '';
-        $value = bbfNormalizeInputValue($raw);
-        if ($type === 'tel' && is_string($value)) $value = preg_replace('/\A[\s\x{FEFF}]+|[\s\x{FEFF}]+\z/u', '', $value) ?? $value;
+        $value = bbfNormalizeInputValue($raw, $type);
         $label = $field['label'] ?? $name;
 
         // Required

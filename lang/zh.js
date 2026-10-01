@@ -66,4 +66,6 @@ BBF.registerLang('zh', {
     pageStatus:        '第 {current} 页，共 {total} 页',
     optionOther:       '其他…',
     rating:            '评分',
+    redirectContinue:  '继续',
+    newSubmission:     '开始新的提交',
 });

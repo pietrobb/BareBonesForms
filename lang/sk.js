@@ -71,4 +71,6 @@ BBF.registerLang('sk', {
     pageStatus:        'Strana {current} z {total}',
     optionOther:       'Iné…',
     rating:            'Hodnotenie',
+    redirectContinue:  'Pokračovať',
+    newSubmission:     'Začať vypĺňať nový formulár',
 });

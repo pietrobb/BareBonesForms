@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 define('BBF_LOADED', true);
-require_once dirname(__DIR__) . '/bbf_functions.php';
+require_once __DIR__ . '/test-isolation-helper.php';
+$installation = bbf_test_installation(dirname(__DIR__));
+require_once $installation . '/bbf_functions.php';
 
 $passed = 0;
 $failed = 0;
@@ -163,6 +165,8 @@ check_alert($types === ['-|Access configuration problem', '-|SMTP check failed',
     'self-check finds unavailable access, the broken form, the SMTP failure and the stuck delivery: ' . implode(', ', $types));
 check_alert(count(alert_incidents($logs)) === $before + 4, 'every self-check problem, including unavailable access, is recorded as an incident');
 check_alert(str_contains($report['notify'], 'only logged'), 'self-check warns when error_notify is empty');
+check_alert(($report['audit']['status'] ?? '') === 'unverified' && str_contains($report['audit']['detail'], 'CLI identity'),
+    'CLI audit success does not claim web-worker write access');
 touch($outbox, time() - 8 * 86400);
 touch($outbox2, time() - 8 * 86400);
 $quiet = bbf_alert_selfcheck($recordConfig);
