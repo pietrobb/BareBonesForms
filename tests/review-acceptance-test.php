@@ -581,7 +581,7 @@ acceptance_check(count($releaseJobs) === 3 && $writerJobs === 1 && $thirdPartyIn
     && preg_match('/package:.*?permissions:\s*\n\s*contents: read\s*\n\s*steps:.*?setup-php.*?upload-artifact/s', $releaseYml) === 1,
     'release.yml: setup-php runs only in the read-only build job; the write-token job uses only actions/* ('
         . implode(',', $thirdPartyInWriter) . ')');
-acceptance_check(preg_match('/gh release create.*?releases\/assets\/\$asset_id.*?cmp "\$RUNNER_TEMP\/SHA256SUMS".*?sha256sum -c SHA256SUMS/s', $releaseYml) === 1,
+acceptance_check(preg_match('/gh api --method POST.*?releases\/assets\/\$asset_id.*?cmp "\$RUNNER_TEMP\/SHA256SUMS".*?sha256sum -c SHA256SUMS/s', $releaseYml) === 1,
     'review 2.1.6: release.yml downloads the published release and checks it against the built SHA256SUMS');
 acceptance_check(str_contains($releaseYml, '$p !== "CHANGELOG.md"'), 'the upgrade ZIP keeps CHANGELOG.md, so the dry run still lists Breaking notes');
 acceptance_check(str_contains($workflow, 'run: php tools/release-history.php --check') && str_contains($workflow, 'fetch-depth: 0'),

@@ -621,8 +621,8 @@ try {
         && isset($repairedPlan['json']['next']), 'repairing the configured admin makes the new-code dry run actionable again');
 
     $workflow = file_get_contents("$repo/.github/workflows/release.yml");
-    check_upgrade(str_contains($workflow, '--draft --title') && str_contains($workflow, 'cmp "$RUNNER_TEMP/SHA256SUMS" "$check/SHA256SUMS"')
-        && strpos($workflow, 'gh release create') < strpos($workflow, 'releases/assets/$asset_id')
+    check_upgrade(str_contains($workflow, '-F draft=true') && str_contains($workflow, 'cmp "$RUNNER_TEMP/SHA256SUMS" "$check/SHA256SUMS"')
+        && strpos($workflow, 'gh api --method POST') < strpos($workflow, 'releases/assets/$asset_id')
         && strpos($workflow, 'sha256sum -c SHA256SUMS)', strpos($workflow, 'releases/assets/$asset_id')) < strpos($workflow, 'gh api --method PATCH')
         && str_contains($workflow, '-F draft=false') && !str_contains($workflow, 'continue-on-error:'),
         'release creates a draft, downloads/checks uploaded artifacts, and only then publishes; verification failure leaves draft');
@@ -666,6 +666,28 @@ try {
         $mock = upgrade_run([$bash, "$mockDir/test.sh"], $tmp);
         $actual = is_file("$mockDir/deleted") ? file_get_contents("$mockDir/deleted") : '';
         check_upgrade($mock['code'] === 0 && trim($mock['err']) === '' && $actual === ($deleted === '' ? '' : "repos/fixture/repo/releases/$deleted"), "owned ID cleanup: $label " . trim($mock['err']));
+    }
+    // Execute the actual creation step with a stale list API; identity must come from POST.
+    preg_match('/^      - name: Create draft GitHub release.*?^        run: \|\R(.*?)^      - name: Verify uploaded draft files/ms', $workflow, $createMatch);
+    $createScript = preg_replace('/^          /m', '', $createMatch[1] ?? '');
+    check_upgrade($createScript !== '', 'actual direct-ID creation step is extracted');
+    foreach (['stale-list' => [$own, [[]], true], 'foreign-response' => [$other, [[]], false], 'already-published' => [$own, [[$public]], false]] as $label => [$created, $pages, $uploads]) {
+        foreach (['owned-release-id', 'uploaded', 'output', 'created-release.json'] as $name) @unlink("$mockDir/$name");
+        file_put_contents("$mockDir/release-identity.sh", $helper);
+        file_put_contents("$mockDir/CHANGELOG.md", "## [v2.2.0]\nRelease fixture\n");
+        $script = "set -euo pipefail\n" . 'RUNNER_TEMP=' . $shellQuote($mockDir) . "\nGITHUB_REPOSITORY=fixture/repo\nGITHUB_RUN_ID=123\nGITHUB_RUN_ATTEMPT=1\nGITHUB_REF_NAME=v2.2.0\nGH_TOKEN=fixture\n"
+            . 'GITHUB_OUTPUT="$RUNNER_TEMP/output"' . "\n" . 'jq() { command ' . $shellQuote($jq) . ' "$@"; }' . "\n"
+            . 'gh() { if [[ "$*" == *"--paginate --slurp"* ]]; then printf "%s" ' . $shellQuote(json_encode($pages)) . '; elif [[ "$*" == *"--method POST"* ]]; then printf "%s" ' . $shellQuote(json_encode($created)) . '; else printf "%s" ' . $shellQuote(json_encode($own)) . '; fi; }' . "\n"
+            . 'curl() { printf "%s\\n" "${@: -1}" >> "$RUNNER_TEMP/uploaded"; }' . "\n" . $createScript;
+        file_put_contents("$mockDir/create.sh", $script);
+        $mock = upgrade_run([$bash, "$mockDir/create.sh"], $mockDir);
+        $id = is_file("$mockDir/owned-release-id") ? file_get_contents("$mockDir/owned-release-id") : '';
+        $urls = is_file("$mockDir/uploaded") ? file("$mockDir/uploaded", FILE_IGNORE_NEW_LINES) : [];
+        check_upgrade($label === 'foreign-response' ? ($mock['code'] !== 0 && $id === '' && $urls === [])
+            : ($mock['code'] === 0 && trim($mock['err']) === '' && ($uploads ? ($id === '901' && count($urls) === 3
+                && count(array_filter($urls, static fn($url) => str_contains($url, '/releases/901/assets?name='))) === 3)
+                : ($id === '' && $urls === [] && str_contains(file_get_contents("$mockDir/output"), 'skipped=true')))),
+            "direct-ID creation: $label " . trim($mock['err']));
     }
     // ─── Release history covers every published release (CI gate) ───
     $tagList = trim((string)shell_exec('git -C ' . escapeshellarg($repo) . ' tag --list "v2.*"'));

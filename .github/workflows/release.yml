@@ -167,12 +167,20 @@ jobs:
           [ -s "$notes" ] || echo "See CHANGELOG.md." > "$notes"
           cp "$notes" "$RUNNER_TEMP/draft-notes.md"
           printf '\n%s\n' "$marker" >> "$RUNNER_TEMP/draft-notes.md"
-          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}.zip" \
-            "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" "$RUNNER_TEMP/SHA256SUMS" \
-            --draft --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/draft-notes.md"
-          id=$(owned_id)
-          owned_release "$id" >/dev/null
+          # The list API can lag creation; pin identity directly from the POST response.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$GITHUB_REF_NAME" -f name="$GITHUB_REF_NAME" -F draft=true \
+            -F body=@"$RUNNER_TEMP/draft-notes.md" > "$RUNNER_TEMP/created-release.json"
+          id=$(jq -er --arg marker "$marker" 'select(.draft == true and (.body // "" | contains($marker))) | .id' "$RUNNER_TEMP/created-release.json")
+          [[ "$id" =~ ^[0-9]+$ ]]
           printf '%s' "$id" > "$RUNNER_TEMP/owned-release-id"
+          for name in "barebonesforms-${GITHUB_REF_NAME}.zip" "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" SHA256SUMS; do
+            owned_release "$id" >/dev/null
+            curl --fail-with-body --silent --show-error -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" -H 'Content-Type: application/octet-stream' \
+              --data-binary "@$RUNNER_TEMP/$name" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets?name=$name" > "$RUNNER_TEMP/asset-$name.json"
+          done
       - name: Verify uploaded draft files
         if: ${{ steps.create_release.outputs.skipped != 'true' }}
         env:
@@ -183,11 +191,11 @@ jobs:
           set -euo pipefail
           source "$RUNNER_TEMP/release-identity.sh"
           id=$(<"$RUNNER_TEMP/owned-release-id")
-          release=$(owned_release "$id")
+          owned_release "$id" >/dev/null
           check="$RUNNER_TEMP/published"
           mkdir "$check"
           for name in "barebonesforms-${GITHUB_REF_NAME}.zip" "barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" SHA256SUMS; do
-            asset_id=$(printf '%s' "$release" | jq -er --arg name "$name" '[.assets[] | select(.name == $name) | .id] | if length == 1 then .[0] else error("missing or duplicate asset") end')
+            asset_id=$(jq -er --arg name "$name" 'select(.name == $name) | .id' "$RUNNER_TEMP/asset-$name.json")
             [[ "$asset_id" =~ ^[0-9]+$ ]]
             gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$check/$name"
           done

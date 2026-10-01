@@ -3,7 +3,9 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
-## [2.1.11] — 2026-10-01
+## [2.1.12] — 2026-10-01
+
+Includes all review fixes below. Tag `v2.1.11` was not published: its draft was removed after ownership discovery failed. Draft creation now pins the immutable ID directly from the API response, avoiding a stale list-API result; assets are uploaded and verified by ID.
 
 ### Fixed
 - Redirects that download a file, return HTTP 204 or are cancelled no longer leave the UI on “Sending…”. The success message offers a continuation link and an explicit new-submission action; pending navigation still blocks accidental duplicate POSTs. Empty same-page fragments remain usable. Recovery labels are translated in all 34 client packs.
