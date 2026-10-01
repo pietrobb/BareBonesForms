@@ -138,19 +138,24 @@ try {
 
     $shellPackage = $tmp . '/package %BBF_SHELL_PROBE% ${BBF_SHELL_PROBE}';
     upgrade_copy("$tmp/new", $shellPackage);
-    upgrade_copy("$tmp/site", "$tmp/shellsite");
-    $shellBefore = upgrade_snapshot("$tmp/shellsite");
+    $shellSite = $tmp . '/shell $site %BBF_SHELL_PROBE%';
+    upgrade_copy("$tmp/site", $shellSite);
+    $shellBefore = upgrade_snapshot($shellSite);
     $shellEnv = ['BBF_SHELL_PROBE' => 'EXPANDED_WRONG'];
-    $shellDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$shellPackage"], "$tmp/shellsite", $shellEnv);
+    $shellDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$shellPackage"], $shellSite, $shellEnv);
     $shellLaunch = static fn(string $command): array|string => PHP_OS_FAMILY === 'Windows' ? 'cmd.exe /d /v:on /s /c "' . $command . '"' : ['/bin/sh', '-c', $command];
-    $shellApply = upgrade_run($shellLaunch($shellDry['json']['next']), "$tmp/shellsite", $shellEnv);
+    $shellApply = upgrade_run($shellLaunch($shellDry['json']['next']), $shellSite, $shellEnv);
     check_upgrade($shellApply['code'] === 0 && ($shellApply['json']['code_updated'] ?? false), 'maintenance suggested apply executes literal percent and dollar package path: ' . $shellApply['out'] . $shellApply['err']);
     $shellBackup = $shellApply['json']['backup'] ?? '';
+    // Review 2.1.13: the printed undo command quotes a backup path with spaces and $ like "next".
+    $shellUndoHint = upgrade_run($shellLaunch($shellApply['json']['undo'] ?? 'exit 9'), $shellSite, $shellEnv);
+    check_upgrade($shellUndoHint['code'] === 0 && ($shellUndoHint['json']['ok'] ?? false) && is_string($shellUndoHint['json']['confirm'] ?? null)
+        && upgrade_snapshot($shellSite) !== $shellBefore, 'printed undo command runs the rollback dry run for a backup under a spaced $ path: ' . $shellUndoHint['out'] . $shellUndoHint['err']);
     $literalBackup = dirname($shellBackup) . '/backup %BBF_SHELL_PROBE% ${BBF_SHELL_PROBE}';
     rename($shellBackup, $literalBackup);
-    $shellUndo = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$literalBackup"], "$tmp/shellsite", $shellEnv);
-    $shellUndoApply = upgrade_run($shellLaunch($shellUndo['json']['next']), "$tmp/shellsite", $shellEnv);
-    check_upgrade($shellUndoApply['code'] === 0 && upgrade_snapshot("$tmp/shellsite") === $shellBefore, 'maintenance suggested rollback executes literal percent and dollar backup path');
+    $shellUndo = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$literalBackup"], $shellSite, $shellEnv);
+    $shellUndoApply = upgrade_run($shellLaunch($shellUndo['json']['next']), $shellSite, $shellEnv);
+    check_upgrade($shellUndoApply['code'] === 0 && upgrade_snapshot($shellSite) === $shellBefore, 'maintenance suggested rollback executes literal percent and dollar backup path');
     $wrong = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new", '--apply', '--confirm=' . str_repeat('0', 64)], "$tmp/site");
     check_upgrade($wrong['code'] !== 0 && upgrade_snapshot("$tmp/site") === $before, 'a wrong digest is refused without changes');
 
@@ -838,6 +843,15 @@ try {
     check_upgrade($shellPlan['code'] === 0 && ($shellPlan['json']['child']['exit'] ?? null) === 0
         && json_decode($shellPlan['json']['child']['out'] ?? '', true) === [$literalTemp, $literalArgs], 'array PHP child preserves literal ${} and percent INI values and arguments');
     check_upgrade($shellResult['code'] === 0 && $shellResult['json'] === [$literalTemp, $literalArgs], 'suggested shell command preserves literal INI and all metacharacter arguments: ' . $shellResult['err']);
+    // Review 2.1.13: long open_basedir/paths must keep the Windows launcher within cmd.exe's 8191 characters.
+    $longArgs = [str_repeat("é‘’ab ", 100), str_repeat("O'Neil \u{201B} ", 67), str_repeat('x', 700)];
+    $longPlan = upgrade_run([PHP_BINARY, '-d', 'sys_temp_dir="' . str_replace('$', '\\$', $literalTemp) . '"', $shellProbe, ...$longArgs], $tmp, $probeEnv);
+    $longNext = (string)($longPlan['json']['next'] ?? '');
+    $longResult = upgrade_run($shellLaunch($longNext), $tmp, $probeEnv);
+    $longScript = PHP_OS_FAMILY === 'Windows' ? (string)preg_replace('/\x00/', '', (string)base64_decode(substr($longNext, strrpos($longNext, ' ') + 1))) : '';
+    check_upgrade($longResult['code'] === 0 && $longResult['json'] === [$literalTemp, $longArgs]
+        && (PHP_OS_FAMILY !== 'Windows' || (strlen($longNext) <= 8191 && !str_contains($longScript, 'FromBase64String'))),
+        'long arguments with apostrophes and Unicode single quotes stay within cmd.exe limits and arrive exactly (' . strlen($longNext) . ' chars): ' . $longResult['err']);
     $uncProbe = "$tmp/unc-probe.php";
     file_put_contents($uncProbe, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true)
         . '; ini_set("open_basedir", $argv[2]); echo json_encode(bbf_upgrade_run([PHP_BINARY, "-r", \'echo json_encode(ini_get("open_basedir"));\'], $argv[1]));');

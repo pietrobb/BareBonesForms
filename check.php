@@ -407,6 +407,16 @@ foreach ($formFiles as $formFile) {
         check('Forms', "$fname.json: notify email template", file_exists($tpl),
             basename($tpl), 'warn');
     }
+    foreach (['confirm_email' => 'confirm.html', 'notify' => 'notify.html'] as $emailType => $defaultTpl) {
+        if (!is_array($onSubmit[$emailType] ?? null) || $onSubmit[$emailType] === []) continue;
+        $tplName = basename((string)($onSubmit[$emailType]['template'] ?? $defaultTpl));
+        $tplSource = is_file($dirs['templates'] . '/' . $tplName) ? @file_get_contents($dirs['templates'] . '/' . $tplName) : false;
+        if (!is_string($tplSource)) continue;
+        require_once __DIR__ . '/bbf_functions.php';
+        $tplWarnings = bbf_template_warnings($tplSource);
+        check('Forms', "$fname.json: $emailType template syntax", $tplWarnings === [],
+            $tplWarnings === [] ? $tplName : "$tplName: " . implode(' ', array_slice($tplWarnings, 0, 3)), 'warn');
+    }
 
     // Check custom actions exist
     if (!empty($onSubmit['actions'])) {

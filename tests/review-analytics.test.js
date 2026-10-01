@@ -148,6 +148,54 @@ test('restart preserves hidden wrappers and focuses the first visible field', as
     assert.equal(form.querySelector('[name="tracking"]').focused, undefined);
 });
 
+test('review 2.1.13: Back from bfcache with hideOnSuccess shows recovery at once and restarts without window.stop', async () => {
+    const timers = [];
+    let stopped = 0;
+    const { form, context } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/thanks' }, true,
+        { hideOnSuccess: true }, runtime => { runtime.context.window.stop = () => { stopped++; }; }, timers);
+    assert.ok(form.querySelectorAll('.bbf-field, .bbf-submit-wrap').every(field => field.style.display === 'none'));
+    for (const listener of context.window.listeners.pageshow) listener({ persisted: true });
+    assert.equal(timers.length, 0, 'the delayed timer is no longer needed');
+    assert.ok(form.querySelector('.bbf-new-submission'), 'restart is offered immediately after Back');
+    assert.equal(form.querySelector('a').href, '/thanks');
+    for (const listener of context.window.listeners.pageshow) listener({ persisted: true });
+    assert.equal(form.querySelectorAll('.bbf-new-submission').length, 1, 'a second pageshow never duplicates the actions');
+    form.querySelector('.bbf-new-submission').listeners.click[0]();
+    assert.equal(stopped, 0, 'nothing is loading after bfcache restore, so no window.stop');
+    assert.notEqual(form.querySelector('[data-field="answer"]').style.display, 'none', 'fields are shown again');
+    assert.equal(form.querySelector('[name="answer"]').focused, true);
+    assert.equal(form.querySelector('.bbf-submit').disabled, false);
+});
+
+test('review 2.1.13: restart waits for another busy form instead of aborting its request', async () => {
+    const timers = [];
+    const stops = [];
+    const other = { _bbfSubmitting: true, _bbfRedirecting: false, querySelectorAll: () => [] };
+    const { form, context } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/download' }, true, {}, runtime => {
+        runtime.context.window.stop = () => { stops.push(other._bbfSubmitting); };
+        runtime.document.querySelectorAll = selector => selector === '.bbf-form' ? [form, other] : [];
+    }, timers);
+    timers.pop()();
+    const waits = [];
+    context.setTimeout = (fn, ms) => { waits.push(ms); setImmediate(fn); };
+    const restart = form.querySelector('.bbf-new-submission');
+    restart.listeners.click[0]();
+    assert.deepEqual(stops, [], 'form B never stops the page while form A is submitting');
+    assert.equal(restart.disabled, true);
+    assert.equal(form._bbfSubmitting, true, 'form B stays locked while waiting');
+    await new Promise(resolve => setImmediate(resolve));
+    other._bbfSubmitting = false; other._bbfDraftBusy = true;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(stops, [], 'a draft request in form A is protected too');
+    other._bbfDraftBusy = false;
+    await new Promise(resolve => setImmediate(resolve));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(stops, [false], 'the redirect stops only after form A is idle');
+    assert.ok(waits.every(ms => ms === 250));
+    assert.equal(form._bbfSubmitting, false);
+    assert.equal(restart.disabled, false);
+});
+
 test('same-page anchor stays usable; page transitions cancel delayed recovery without unlocking early', async () => {
     let pageUrl = '';
     const hash = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '#done' }, true, {}, runtime => { pageUrl = String(runtime.context.location.href).split('#')[0]; });

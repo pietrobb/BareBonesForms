@@ -108,10 +108,11 @@ function bbf_diagnostic_rewrite(array $config, string $root = __DIR__): array {
         }
         if ($leaks !== []) return ['status' => 'error', 'checks' => $checks, 'cleanup' => $cleanup, 'detail' => 'Fresh harmless fixture publicly readable in: ' . implode(', ', $leaks) . '. mod_rewrite / AllowOverride or equivalent server rules are missing or incomplete.' . $cleanupDetail];
         if ($verified && !in_array('unverified', $checks, true)) return ['status' => 'verified', 'checks' => $checks, 'cleanup' => $cleanup, 'detail' => 'Fresh dot-file, submissions and logs fixtures denied while the control was served. Only these paths at diagnostic_base_url are verified, not every server rule.' . $cleanupDetail];
-        $reason = $controlCode === null ? 'Control request failed or the fixture could not be created.'
+        $reason = $verified ? 'The control fixture was served correctly.'
+            : ($controlCode === null ? 'Control request failed or the fixture could not be created.'
             : ($controlCode >= 300 && $controlCode < 400 ? "Control returned HTTP $controlCode redirect (not followed). Set diagnostic_base_url to the final installation URL, including HTTPS and its subpath."
             : ($controlCode === 200 && !$verified ? 'Control returned HTTP 200 with an invalid fixture marker (SPA/fallback or wrong installation URL). Set diagnostic_base_url to the actual installation and exclude diagnostic paths from catch-all routing.'
-            : "Control returned HTTP $controlCode; it must serve the fresh marker with HTTP 200."));
+            : "Control returned HTTP $controlCode; it must serve the fresh marker with HTTP 200.")));
         foreach ($checks as $label => $status) if ($status === 'unverified') {
             $code = $responses[$label];
             $responseDetail = $code === 200 ? 'HTTP 200 invalid fixture marker (SPA/fallback)'
@@ -143,13 +144,14 @@ function bbf_diagnostic_signal_cleanup(callable $cleanup): callable {
         pcntl_async_signals($async);
     };
     foreach ([SIGTERM, SIGINT] as $signal) {
+        // An inherited ignored signal (e.g. SIGINT for "cmd &" in a script) stays ignored; the stale sweep still recovers.
+        if (pcntl_signal_get_handler($signal) === SIG_IGN) continue;
         $previous[$signal] = pcntl_signal_get_handler($signal);
         $handlers[$signal] = static function (int $received) use ($cleanup, $restore, &$previous): void {
             $cleanup();
             $handler = $previous[$received];
             $restore();
             if (is_callable($handler)) { $handler($received); return; }
-            if ($handler === SIG_IGN) return;
             // Exit invokes shutdown cleanup too; SIGKILL necessarily relies on the later stale sweep.
             exit(128 + $received);
         };
@@ -198,8 +200,10 @@ function bbf_diagnostic_stale_cleanup(string $dir): array {
     if (!bbf_diagnostic_safe_dir($dir)) return $report;
     $matched = 0;
     try {
-        foreach (new GlobIterator($dir . '/bbf-check-*', FilesystemIterator::SKIP_DOTS) as $entry) {
+        // Not GlobIterator: an install path such as /var/www/site[1] would be read as a glob pattern.
+        foreach (new FilesystemIterator($dir, FilesystemIterator::SKIP_DOTS) as $entry) {
             $name = $entry->getFilename();
+            if (!str_starts_with($name, 'bbf-check-')) continue;
             if (!preg_match('/\Abbf-check-([0-9a-f]{32})(\.txt)?\z/D', $name, $m)) continue;
             if (++$matched > 256 || $report['removed'] >= 16) { $report['limited'] = true; break; }
             $path = $dir . '/' . $name;
@@ -239,6 +243,15 @@ function bbf_diagnostic_stale_cleanup(string $dir): array {
     return $report;
 }
 
+/** "path (owner N)" for every stale fixture the rewrite probe could not reclaim. */
+function bbf_diagnostic_unreclaimed(array $rewrite): array {
+    $paths = [];
+    foreach ((array)($rewrite['cleanup'] ?? []) as $result)
+        foreach ((array)($result['unreclaimed'] ?? []) as $item)
+            $paths[] = $item['path'] . ' (owner ' . (is_int($item['owner'] ?? null) ? $item['owner'] : '?') . ')';
+    return $paths;
+}
+
 /** Cron cannot infer web-worker write access from its own effective uid or root privileges. */
 function bbf_diagnostic_audit(array $config): array {
     $dir = rtrim((string)($config['logs_dir'] ?? __DIR__ . '/logs'), '/\\');
@@ -258,6 +271,11 @@ function bbf_diagnostic_audit(array $config): array {
         return $identity + ['status' => 'error', 'detail' => 'The audit target is missing, non-regular or a symlink.'];
     if (PHP_OS_FAMILY !== 'Windows' && ((int)@fileperms($dir) & 0222) === 0)
         return $identity + ['status' => 'error', 'detail' => 'The logs directory has no write permission bits.'];
+    // The web worker never runs as root: root ownership without group/other write blocks creation and rotation.
+    $rootOnly = static fn(string $path): bool => PHP_OS_FAMILY !== 'Windows' && @fileowner($path) === 0
+        && ((int)@fileperms($path) & 0022) === 0;
+    if ($rootOnly($dir))
+        return $identity + ['status' => 'error', 'detail' => 'The logs directory is root-owned without group/other write permission; the web worker cannot create or rotate the audit log. chown it to the web-worker user. No operator file was changed.'];
     if (is_file($file)) {
         if (PHP_OS_FAMILY !== 'Windows' && ((int)@fileperms($file) & 0222) === 0)
             return $identity + ['status' => 'error', 'detail' => 'The existing access-audit.php is not a writable regular file.'];
@@ -265,6 +283,8 @@ function bbf_diagnostic_audit(array $config): array {
         $prefix = @file_get_contents($file, false, null, 0, strlen($guard));
         if ($prefix !== false && $prefix !== '' && $prefix !== $guard)
             return $identity + ['status' => 'error', 'detail' => 'The existing access-audit.php has an invalid PHP guard.'];
+        if ($rootOnly($file))
+            return $identity + ['status' => 'error', 'detail' => 'The existing access-audit.php is root-owned without group/other write permission; the web worker cannot append, so management returns 503. chown it to the web-worker user. No operator file was changed.'];
         if ($prefix === false)
             return $identity + ['status' => 'unverified', 'detail' => 'The audit PHP guard cannot be read under the current uid; verify ownership, permissions and guard under the web worker. No operator file was changed.'];
     }

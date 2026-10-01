@@ -236,6 +236,8 @@ PHP);
             'permissions' => ['read'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]],
     ];
     diagnostic_config($root, $config);
+    // A root test runner models a web worker in the group; a root-only logs directory is itself a selfcheck error.
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0) chmod($root . '/logs', 0775);
     file_put_contents($root . '/run-proxy.php', '<?php $_SERVER["REMOTE_ADDR"] = "203.0.113.7"; $_SERVER["REQUEST_METHOD"] = "GET"; $_SERVER["HTTP_X_BBF_TOKEN"] = hash("sha256", "diagnostic-test-admin"); $_SERVER["HTTP_FORWARDED"] = "for=127.0.0.1"; ob_start(); require __DIR__ . "/check.php"; ob_end_clean(); echo json_encode(array_values(array_filter($results, fn($r) => $r["name"] === "Proxy / Cloudflare client address")));');
     [$exit, $output] = diagnostic_cli($root, [], false, 'run-proxy.php');
     $proxy = json_decode($output, true)[0] ?? [];
@@ -286,6 +288,17 @@ PHP);
     file_put_contents($root . '/probe/status', '500');
     [$exit, $output] = diagnostic_cli($root, [], false, 'run-rewrite.php');
     diagnostic_check((json_decode($output, true)['status'] ?? '') === 'unverified', 'unknown data-directory responses remain unverified');
+    // Review 2.1.13: a served control with an SPA fallback for data paths must not blame the control.
+    file_put_contents($root . '/probe/status', '200'); file_put_contents($root . '/probe/fallback', '1');
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-rewrite.php');
+    $spa = json_decode($output, true);
+    diagnostic_check(($spa['status'] ?? '') === 'unverified' && str_contains($spa['detail'] ?? '', 'control fixture was served correctly')
+        && !str_contains($spa['detail'] ?? '', 'Control returned') && str_contains($spa['detail'] ?? '', 'logs protection was not verified: HTTP 200 invalid fixture marker'),
+        'SPA fallback on data paths reports the data paths, not the passing control: ' . ($spa['detail'] ?? $output));
+    unlink($root . '/probe/fallback');
+    diagnostic_check(bbf_diagnostic_unreclaimed(['cleanup' => ['logs' => ['unreclaimed' => [['path' => '/srv/bbf/logs/bbf-check-a', 'owner' => 0]], 'limited' => false],
+        'submissions' => ['unreclaimed' => [], 'limited' => false]]]) === ['/srv/bbf/logs/bbf-check-a (owner 0)'] && bbf_diagnostic_unreclaimed(['status' => 'unverified']) === []
+        && str_contains(file_get_contents(dirname(__DIR__) . '/bbf_alerts.php'), "'Stale diagnostic fixtures'"), 'unreclaimable root-owned fixtures become a selfcheck problem, not only JSON');
     file_put_contents($root . '/probe/status', '403');
     // Stale cleanup recognizes exact harmless fixtures only; no generic prefix deletion.
     $token = bin2hex(random_bytes(16));
@@ -307,6 +320,15 @@ PHP);
     touch($f['path'], time() - 7200);
     $sweep = bbf_diagnostic_stale_cleanup($crowded);
     diagnostic_check($sweep['removed'] === 1 && !file_exists($f['path']) && is_dir($crowded . '/form-299'), 'targeted stale scan reaches fixture after 300 unrelated form directories');
+    // Review 2.1.13: glob metacharacters in the installation path must not disable the sweep.
+    $bracketed = $root . '/site[1]'; mkdir($bracketed);
+    $t = str_repeat('e', 32);
+    $f = bbf_diagnostic_fixture($bracketed, "bbf-check-$t.txt", $t, 'data');
+    file_put_contents($bracketed . '/bbf-check-' . str_repeat('f', 32) . '.txt', 'operator bytes');
+    touch($f['path'], time() - 7200); touch($bracketed . '/bbf-check-' . str_repeat('f', 32) . '.txt', time() - 7200);
+    $sweep = bbf_diagnostic_stale_cleanup($bracketed);
+    diagnostic_check($sweep['removed'] === 1 && !$sweep['limited'] && !file_exists($f['path'])
+        && file_get_contents($bracketed . '/bbf-check-' . str_repeat('f', 32) . '.txt') === 'operator bytes', 'stale sweep works in an installation path containing [');
     if (function_exists('pcntl_signal_get_handler') && function_exists('posix_kill')) {
         $oldHandler = pcntl_signal_get_handler(SIGTERM); $oldAsync = pcntl_async_signals();
         $called = 0; $cleaned = 0;
@@ -319,6 +341,14 @@ PHP);
         $restore(); pcntl_signal(SIGTERM, $oldHandler);
         $restore = bbf_diagnostic_signal_cleanup(static function (): void {}); $restore();
         diagnostic_check(pcntl_signal_get_handler(SIGTERM) === $oldHandler && pcntl_async_signals() === $oldAsync, 'normal completion restores prior signal state');
+        // Review 2.1.13: "cmd &" in a script inherits an ignored SIGINT; selfcheck must keep it ignored.
+        $oldInt = pcntl_signal_get_handler(SIGINT); pcntl_signal(SIGINT, SIG_IGN); $ignoredCleanups = 0;
+        $restore = bbf_diagnostic_signal_cleanup(static function () use (&$ignoredCleanups): void { $ignoredCleanups++; });
+        $stillIgnored = pcntl_signal_get_handler(SIGINT) === SIG_IGN;
+        posix_kill(getmypid(), SIGINT); usleep(10000); $restore();
+        diagnostic_check($stillIgnored && $ignoredCleanups === 0 && pcntl_signal_get_handler(SIGINT) === SIG_IGN,
+            'inherited ignored SIGINT stays ignored during and after selfcheck');
+        pcntl_signal(SIGINT, $oldInt);
         file_put_contents($root . '/term-fixture.php', <<<'PHP'
 <?php
 // Execute the actual rewrite function with a blocking probe so the parent can send SIGTERM.
@@ -404,6 +434,7 @@ PHP);
     $auditPath = $root . '/logs/access-audit.php';
     $auditBytes = "<?php http_response_code(404); exit; ?>\n{\"fixture\":true}\n";
     file_put_contents($auditPath, $auditBytes);
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0) chmod($auditPath, 0660);
     diagnostic_config($root, $config);
     [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
     diagnostic_check($exit === 0 && (json_decode($output, true)['ok'] ?? false) && file_get_contents($auditPath) === $auditBytes, 'selfcheck leaves existing audit bytes unchanged');
@@ -427,8 +458,8 @@ PHP);
     eval('namespace BBFDiagnosticRootRegression;
         const PHP_OS_FAMILY = "Linux";
         function function_exists($name) { return $name === "posix_geteuid" || \\function_exists($name); }
-        function posix_geteuid() { return 0; }
-        function fileowner($path) { return $GLOBALS["diagnostic_mock_owner"]; }
+        function posix_geteuid() { return $GLOBALS["diagnostic_mock_euid"]; }
+        function fileowner($path) { return \\is_dir($path) ? $GLOBALS["diagnostic_mock_dir_owner"] : $GLOBALS["diagnostic_mock_owner"]; }
         function fileperms($path) { return \\is_dir($path) ? $GLOBALS["diagnostic_mock_dir_mode"] : $GLOBALS["diagnostic_mock_file_mode"]; }
         function bbf_diagnostic_safe_dir($dir) { return \\bbf_diagnostic_safe_dir($dir); }
         function bbf_audit_problem($config) { $GLOBALS["diagnostic_mock_write_checks"]++; return null; }
@@ -440,8 +471,18 @@ PHP);
         [33, 0600, 0500, $auditBytes, 'error', 'write permission bits'],
         [0, 0444, 0700, $auditBytes, 'error', 'not a writable regular file'],
         [0, 0600, 0700, 'damaged audit guard', 'error', 'invalid PHP guard'],
-        [0, 0600, 0700, $auditBytes, 'unverified', 'root-owned'],
-    ] as [$owner, $fileMode, $dirMode, $bytes, $status, $detail]) {
+        [0, 0600, 0700, $auditBytes, 'error', 'root-owned without group/other write'],
+        [0, 0640, 0700, $auditBytes, 'error', 'web worker cannot append'],
+        [0, 0660, 0700, $auditBytes, 'unverified', 'root-owned. Root write access'],
+        [0, 0600, 0700, $auditBytes, 'error', 'web worker cannot append', 33],
+        [33, 0600, 0755, $auditBytes, 'error', 'logs directory is root-owned', 0, 0],
+        [33, 0600, 0755, $auditBytes, 'error', 'cannot create or rotate', 33, 0],
+        [33, 0600, 0775, $auditBytes, 'unverified', 'differs', 0, 0],
+        [33, 0600, 0700, $auditBytes, 'unverified', 'Audit preflight passed', 33, 33],
+    ] as $case) {
+        [$owner, $fileMode, $dirMode, $bytes, $status, $detail] = $case;
+        $GLOBALS['diagnostic_mock_euid'] = $case[6] ?? 0;
+        $GLOBALS['diagnostic_mock_dir_owner'] = $case[7] ?? 33;
         $GLOBALS['diagnostic_mock_owner'] = $owner;
         $GLOBALS['diagnostic_mock_file_mode'] = $fileMode;
         $GLOBALS['diagnostic_mock_dir_mode'] = $dirMode;
@@ -449,8 +490,8 @@ PHP);
         file_put_contents($auditPath, $bytes);
         $audit = BBFDiagnosticRootRegression\bbf_diagnostic_audit($config);
         diagnostic_check($audit['status'] === $status && str_contains($audit['detail'], $detail)
-            && $GLOBALS['diagnostic_mock_write_checks'] === 0 && file_get_contents($auditPath) === $bytes,
-            "portable root audit owner=$owner file=$fileMode dir=$dirMode: $detail; preserved bytes, no write preflight");
+            && $GLOBALS['diagnostic_mock_write_checks'] === ($detail === 'Audit preflight passed' ? 1 : 0) && file_get_contents($auditPath) === $bytes,
+            "portable root audit owner=$owner file=" . decoct($fileMode) . ' dir=' . decoct($dirMode) . " euid={$GLOBALS['diagnostic_mock_euid']} dirOwner={$GLOBALS['diagnostic_mock_dir_owner']}: $detail; preserved bytes");
     }
     file_put_contents($auditPath, $auditBytes);
     if (function_exists('posix_geteuid') && posix_geteuid() === 0) {

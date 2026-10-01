@@ -1104,7 +1104,7 @@
             const storageKey = this._draftStorageKey(baseUrl, formId);
             try { code.value = localStorage.getItem(storageKey) || ''; } catch (error) { /* storage may be unavailable */ }
             const update = () => { const hasCode = code.value.trim() !== ''; resume.disabled = !hasCode; remove.disabled = !hasCode; };
-            const busy = value => { save.disabled = value; resume.disabled = value || code.value.trim() === ''; remove.disabled = value || code.value.trim() === ''; };
+            const busy = value => { formEl._bbfDraftBusy = value; save.disabled = value; resume.disabled = value || code.value.trim() === ''; remove.disabled = value || code.value.trim() === ''; };
             const announce = (message, failed = false) => { status.textContent = message; status.classList.toggle('bbf-error', failed); };
             code.addEventListener('input', () => { request++; busy(false); announce(''); update(); }); update();
             save.addEventListener('click', async () => {
@@ -1265,6 +1265,8 @@
                     const btn = el.querySelector('.bbf-submit');
                     btn.disabled = this._fileFieldsState(el) === 'pending';
                     btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
+                    // Back from the target (bfcache): hideOnSuccess left no fields, so offer the recovery actions at once.
+                    if (el._bbfShowRecovery) el._bbfShowRecovery();
                 }
                 if (event.persisted && el._bbfSubmitted) { el._bbfSubmitKey = newSubmitKey(); el._bbfSubmitted = false; }
             });
@@ -1513,8 +1515,18 @@
                                 restart.type = 'button';
                                 restart.className = 'bbf-new-submission';
                                 restart.textContent = this._t('newSubmission', {}, langCode);
-                                restart.addEventListener('click', () => {
-                                    window.stop();
+                                // window.stop() aborts every request of the page: wait until other forms finish
+                                // their submit, uploads and drafts, and skip it once the page is back from bfcache.
+                                const otherFormsBusy = () => (typeof document.querySelectorAll === 'function'
+                                    ? Array.from(document.querySelectorAll('.bbf-form')) : []).some(other => other !== el
+                                    && ((other._bbfSubmitting && !other._bbfRedirecting) || other._bbfDraftBusy || this._fileFieldsState(other) === 'pending'));
+                                const recover = () => {
+                                    if (el._bbfRedirecting) {
+                                        if (otherFormsBusy()) { restart.disabled = true; setTimeout(recover, 250); return; }
+                                        window.stop();
+                                    }
+                                    restart.disabled = false;
+                                    el._bbfShowRecovery = null;
                                     el._bbfRedirecting = false;
                                     el._bbfSubmitting = false;
                                     el._bbfHideOnSuccess = false;
@@ -1529,14 +1541,20 @@
                                     const first = Array.from(focusRoot.querySelectorAll('input, select, textarea, button'))
                                         .find(node => node.type !== 'hidden' && !node.disabled && !this._isHidden(node) && !node.closest('[aria-hidden="true"]'));
                                     if (first) first.focus();
-                                });
+                                };
+                                restart.addEventListener('click', recover);
                                 link.style.marginInlineStart = '0.5em';
                                 restart.style.marginInlineStart = '0.5em';
-                                redirectRecoveryTimer = setTimeout(() => {
-                                    redirectRecoveryTimer = null;
-                                    if (!el._bbfRedirecting) return;
+                                let recoveryShown = false;
+                                el._bbfShowRecovery = () => {
+                                    if (recoveryShown) return;
+                                    recoveryShown = true;
                                     msg.appendChild(link);
                                     msg.appendChild(restart);
+                                };
+                                redirectRecoveryTimer = setTimeout(() => {
+                                    redirectRecoveryTimer = null;
+                                    if (el._bbfRedirecting) el._bbfShowRecovery();
                                 }, 4000);
                             }
                             window.location.href = hashRedirect;

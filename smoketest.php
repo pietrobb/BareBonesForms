@@ -544,6 +544,12 @@ foreach ($formFiles as $file) {
                     $allPassed = false;
                 }
             }
+            if (is_array($onSubmit[$emailType] ?? null) && $onSubmit[$emailType] !== []) {
+                $name = basename((string)($onSubmit[$emailType]['template'] ?? ($emailType === 'notify' ? 'notify.html' : 'confirm.html')));
+                $source = is_file("$templatesDir/$name") ? @file_get_contents("$templatesDir/$name") : false;
+                foreach (is_string($source) ? bbf_template_warnings($source) : [] as $warning)
+                    $result['warnings'][] = "$emailType template $name: $warning";
+            }
         }
     }
 

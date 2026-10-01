@@ -217,6 +217,17 @@ try {
             && !str_contains($r['json']['on_submit_preview'][$kind]['body_preview'] ?? '', '{{5}}'),
             "numeric empty/escaped field survives sandbox $kind preview");
     }
+    // Review 2.1.13: subject and body previews know option labels exactly like real delivery.
+    $labelled = $delivery;
+    $labelled['fields'][] = ['name' => 'plan', 'type' => 'select', 'options' => [['value' => 'pro', 'label' => 'Pro <plan>']]];
+    foreach (['confirm_email', 'notify'] as $kind) $labelled['on_submit'][$kind]['subject'] = 'Plan {{plan_label}}';
+    file_put_contents("$root/forms/delivery.json", json_encode($labelled));
+    file_put_contents("$root/templates/fixture.html", '<p>{{plan_label}}</p>');
+    $r = sb_http('submit.php?form=delivery&sandbox=1', sb_post($s, true, ['answer' => 'fixture answer', 'plan' => 'pro']));
+    foreach (['confirm_email', 'notify'] as $kind) sb_check($r['code'] === 200
+        && ($r['json']['on_submit_preview'][$kind]['subject'] ?? '') === 'Plan Pro <plan>'
+        && str_contains($r['json']['on_submit_preview'][$kind]['body_preview'] ?? '', '<p>Pro &lt;plan&gt;</p>'),
+        "sandbox $kind subject and body preview resolve {{plan_label}}");
     file_put_contents("$root/forms/delivery.json", json_encode($delivery));
     $paymentPreview = $previews['payment']['on_submit_preview']['payment'] ?? [];
     sb_check(($paymentPreview['amount_minor'] ?? null) === 1200 && ($paymentPreview['currency'] ?? null) === 'EUR'

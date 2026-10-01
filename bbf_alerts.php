@@ -296,6 +296,10 @@ function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null, ?callab
     if ($audit['status'] === 'error') $problems[] = ['-', 'Access audit unavailable', 'Self-check: ' . $audit['detail']];
     $rewrite = bbf_diagnostic_rewrite($config);
     if ($rewrite['status'] === 'error') $problems[] = ['-', 'Rewrite protection unavailable', 'Self-check: ' . $rewrite['detail']];
+    $unreclaimed = bbf_diagnostic_unreclaimed($rewrite);
+    if ($unreclaimed !== []) $problems[] = ['-', 'Stale diagnostic fixtures', 'Self-check: ' . count($unreclaimed)
+        . ' leftover diagnostic fixture(s) cannot be removed under this user: ' . implode(', ', array_slice($unreclaimed, 0, 5))
+        . (count($unreclaimed) > 5 ? ', …' : '') . '. Remove them as their owner (often root after a diagnostic run as root) or correct the ownership.'];
 
     // Security rules and docs: an upgrade by an older upgrader (or FTP) can leave the release's new rules out.
     require_once __DIR__ . '/bbf_upgrade.php';

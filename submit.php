@@ -411,7 +411,9 @@ if ($isSandbox) {
     ];
 
     // Preview what would happen on_submit
-    $subjectVars = array_replace($data, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId, '_time' => $timestamp]);
+    // Same variables as real delivery, including option labels such as {{plan_label}}.
+    $templateData = bbf_delivery_template_data($form, ['data' => $data]);
+    $subjectVars = array_replace($templateData, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId, '_time' => $timestamp]);
     $preview = [];
     $previewConfig = bbf_effective_storage_config($config, $formId, $form);
     $effectiveStorage = $previewConfig['storage'];
@@ -429,7 +431,7 @@ if ($isSandbox) {
             'template' => $ce['template'] ?? 'confirm.html',
             'body_preview' => renderTemplate(
                 $config['templates_dir'] . '/' . basename($ce['template'] ?? 'confirm.html'),
-                array_replace($data, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId])
+                array_replace($templateData, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId])
             ),
         ];
     }
@@ -445,7 +447,7 @@ if ($isSandbox) {
             'template' => $n['template'] ?? 'notify.html',
             'body_preview' => renderTemplate(
                 $config['templates_dir'] . '/' . basename($n['template'] ?? 'notify.html'),
-                array_replace($data, [
+                array_replace($templateData, [
                     '_form'    => $form['name'] ?? $formId,
                     '_id'      => $submissionId,
                     '_time'    => $timestamp,

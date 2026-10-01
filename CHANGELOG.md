@@ -3,6 +3,17 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.14] — 2026-10-01
+
+### Fixed
+- Email templates with an unclosed, crossed or misspelled section tag no longer truncate the message silently: unmatched tags stay as visible text, and `check.php` and smoketest warn about them.
+- `selfcheck` reports a root-owned `logs/` directory or `access-audit.php` without group/other write permission as an error instead of passing, because the web worker cannot append and management returns 503.
+- Returning with “Back” to a form using `hideOnSuccess` shows the recovery actions immediately after a bfcache restore.
+- Starting a new fill cancels only that form's pending redirect instead of calling `window.stop()`, so other forms' requests on the page continue.
+- Diagnostics keep an inherited ignored SIGINT ignored; stale fixture cleanup works for installation paths containing `[`; leftover root-owned fixtures appear as a selfcheck warning; the SPA fallback message no longer blames a control fixture that was served correctly.
+- The printed `undo` command quotes the backup path. The Windows upgrade launcher stays within the 8191-character `cmd.exe` limit.
+- The sandbox subject preview resolves `{{field_label}}` variables such as `{{plan_label}}`.
+
 ## [2.1.13] — 2026-10-01
 
 ### Fixed

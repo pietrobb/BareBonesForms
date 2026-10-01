@@ -193,12 +193,29 @@ function bbf_upgrade_apply_command(array $arguments): string {
     $command = bbf_upgrade_php_command([PHP_BINARY, ...$arguments]);
     if (PHP_OS_FAMILY !== 'Windows') return implode(' ', array_map(static fn(string $s): string => "'" . str_replace("'", "'\\''", $s) . "'", $command));
     // ProcessStartInfo bypasses both cmd %/! expansion and PowerShell's legacy native argument conversion.
-    $quote = static fn(string $s): string => "([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" . base64_encode($s) . "')))";
     $native = static fn(string $s): string => '"' . preg_replace('/(\\\\*)"/', '$1$1\\\\"', preg_replace('/(\\\\+)$/', '$1$1', $s)) . '"';
-    $script = '$p = New-Object System.Diagnostics.ProcessStartInfo; $p.UseShellExecute = $false; $p.FileName = ' . $quote(array_shift($command))
-        . '; $p.Arguments = ' . $quote(implode(' ', array_map($native, $command)))
-        . '; $c = [System.Diagnostics.Process]::Start($p); $c.WaitForExit(); exit $c.ExitCode';
-    return 'powershell.exe -NoProfile -NonInteractive -EncodedCommand ' . base64_encode(implode("\0", str_split($script)) . "\0");
+    $file = array_shift($command);
+    $arguments = implode(' ', array_map($native, $command));
+    $launcher = static function (callable $quote) use ($file, $arguments): ?string {
+        $script = '$p = New-Object System.Diagnostics.ProcessStartInfo; $p.UseShellExecute = $false; $p.FileName = ' . $quote($file)
+            . '; $p.Arguments = ' . $quote($arguments) . '; $c = [System.Diagnostics.Process]::Start($p); $c.WaitForExit(); exit $c.ExitCode';
+        $chars = preg_split('//u', $script, -1, PREG_SPLIT_NO_EMPTY);
+        if ($chars === false) return null;
+        $utf16 = '';
+        foreach ($chars as $char) { // UTF-16LE without requiring mbstring or iconv
+            $b = array_values(unpack('C*', $char));
+            $cp = match (count($b)) { 1 => $b[0], 2 => ($b[0] & 0x1F) << 6 | $b[1] & 0x3F,
+                3 => ($b[0] & 0x0F) << 12 | ($b[1] & 0x3F) << 6 | $b[2] & 0x3F,
+                default => ($b[0] & 0x07) << 18 | ($b[1] & 0x3F) << 12 | ($b[2] & 0x3F) << 6 | $b[3] & 0x3F };
+            $utf16 .= $cp < 0x10000 ? pack('v', $cp) : pack('v2', 0xD800 | ($cp - 0x10000) >> 10, 0xDC00 | ($cp - 0x10000) & 0x3FF);
+        }
+        return 'powershell.exe -NoProfile -NonInteractive -EncodedCommand ' . base64_encode($utf16);
+    };
+    $encoded = $launcher(static fn(string $s): string => "([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" . base64_encode($s) . "')))");
+    if (strlen($encoded) <= 8191 || !preg_match('//u', $file . $arguments)) return $encoded;
+    // cmd.exe stops at 8191 characters (long open_basedir and paths): a single-quoted literal is a quarter shorter.
+    // Every PowerShell single-quote character (' and U+2018..U+201B) is escaped by doubling it.
+    return $launcher(static fn(string $s): string => "'" . preg_replace("/(['\u{2018}\u{2019}\u{201A}\u{201B}])/u", '$1$1', $s) . "'");
 }
 
 /**
@@ -547,7 +564,8 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
         'notices' => $plan['notices'],
         'check' => $after === null ? 'skipped: run php smoketest.php' : $after['summary'],
         'backup' => $backup,
-        'undo' => "php maintenance.php upgrade-rollback --backup=$backup",
+        // Quoted like "next": a backup path with spaces or $ must reach PHP unchanged.
+        'undo' => bbf_upgrade_apply_command(['maintenance.php', 'upgrade-rollback', "--backup=$backup"]),
     ];
 }
 

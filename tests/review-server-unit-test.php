@@ -161,6 +161,22 @@ $subjectJobs = bbf_delivery_prepare_jobs($subjectForm, ['id' => 'bbf_fixture', '
 server_check(count($subjectJobs) === 2 && $subjectJobs[0]['payload']['subject'] === 'Contact bbf_fixture {{_id}}'
     && $subjectJobs[1]['payload']['subject'] === 'Contact bbf_fixture {{_id}}', 'confirm and notify subjects use authoritative system variables in one pass');
 
+// Review 2.1.13: an unclosed or crossed section never truncates the rest of the e-mail.
+file_put_contents($root . '/typo-template.html', '<p>Hi {{name}}</p>{{#vip}}<p>VIP{{/vip }}</p>{{_summary}}<p>Bye</p>');
+server_check(renderTemplate($root . '/typo-template.html', ['name' => 'Ann', 'vip' => '', '_summary' => '<table>S</table>'])
+    === '<p>Hi Ann</p>{{#vip}}<p>VIP{{/vip }}</p><table>S</table><p>Bye</p>', 'unclosed section stays literal and the summary and rest of the e-mail render');
+file_put_contents($root . '/crossed-template.html', '{{#a}}A{{#b}}B{{/a}}C{{/b}}D{{/x}}E');
+server_check(renderTemplate($root . '/crossed-template.html', ['a' => 'yes', 'b' => '']) === 'A{{#b}}BC{{/b}}D{{/x}}E'
+    && renderTemplate($root . '/crossed-template.html', ['a' => '', 'b' => 'yes']) === 'C{{/b}}D{{/x}}E',
+    'crossed sections pair only the properly nested tag; the rest stays literal and nothing after it is lost');
+file_put_contents($root . '/inner-unclosed.html', '{{#outer}}X{{#inner}}Y{{/outer}}Z');
+server_check(renderTemplate($root . '/inner-unclosed.html', ['outer' => 'yes', 'inner' => '']) === 'X{{#inner}}YZ'
+    && renderTemplate($root . '/inner-unclosed.html', ['outer' => '', 'inner' => 'yes']) === 'Z', 'an unclosed inner section does not swallow its parent close tag');
+$templateWarnings = bbf_template_warnings('{{#vip}}VIP{{/vip }}{{#a}}{{#b}}{{/a}}{{/b}}{{/x}}{{#ok}}{{/ok}}');
+server_check(count($templateWarnings) === 5 && str_contains($templateWarnings[0], 'Unclosed section tag {{#vip}}')
+    && str_contains(implode(' ', $templateWarnings), 'Malformed tag {{/vip }}') && str_contains(implode(' ', $templateWarnings), 'Unmatched closing tag {{/x}}')
+    && bbf_template_warnings('{{#ok}}{{^no}}{{name}}{{/no}}{{/ok}}') === [], 'template validation warns about unclosed, crossed, unmatched and malformed tags only');
+
 // ─── Submit releases the session lock right after reading the secret ─
 $submitSource = file_get_contents(dirname(__DIR__) . '/submit.php');
 preg_match('/function ensureSession\([^)]*\): void \{.*?\n\}/s', $submitSource, $m);

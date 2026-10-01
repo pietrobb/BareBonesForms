@@ -396,26 +396,57 @@ function renderTemplate(string $templateFile, array $vars): string {
 
     // Parse only original template tokens; nested sections never reprocess respondent text.
     $parts = preg_split('/(\{\{[#^\/]?[\w-]+\}\})/', $template, -1, PREG_SPLIT_DELIM_CAPTURE);
+    // Only properly nested open/close pairs are sections; an unclosed or crossed tag stays literal text,
+    // so a typo never hides the rest of the e-mail.
+    $paired = bbf_template_section_pairs($parts);
     $out = ''; $stack = []; $visible = true;
-    foreach ($parts as $part) {
-        if (!preg_match('/\A\{\{([#^\/]?)([\w-]+)\}\}\z/', $part, $m)) {
+    foreach ($parts as $i => $part) {
+        if (!preg_match('/\A\{\{([#^\/]?)([\w-]+)\}\}\z/', $part, $m) || ($m[1] !== '' && !isset($paired[$i]))) {
             if ($visible) $out .= $part;
             continue;
         }
         $value = $vars[$m[2]] ?? '';
         if ($m[1] === '#' || $m[1] === '^') {
-            $stack[] = [$m[2], $visible];
+            $stack[] = $visible;
             $truthy = $value !== '' && $value !== '0' && $value !== null;
             $visible = $visible && ($m[1] === '#' ? $truthy : !$truthy);
         } elseif ($m[1] === '/') {
-            if ($stack !== [] && $stack[count($stack) - 1][0] === $m[2]) {
-                [, $visible] = array_pop($stack);
-            } elseif ($visible) $out .= $part;
+            $visible = array_pop($stack);
         } elseif ($visible && (is_string($value) || is_numeric($value))) {
             $out .= isset($trustedHtmlVars[$m[2]]) ? (string)$value : htmlspecialchars((string)$value);
         }
     }
     return $out;
+}
+
+/** Indexes of section tags in preg_split parts that form properly nested open/close pairs. */
+function bbf_template_section_pairs(array $parts): array {
+    $paired = []; $stack = [];
+    foreach ($parts as $i => $part) {
+        if (!preg_match('/\A\{\{([#^\/])([\w-]+)\}\}\z/', $part, $m)) continue;
+        if ($m[1] !== '/') { $stack[] = [$i, $m[2]]; continue; }
+        // A close tag matches the innermost open tag of the same name; open tags it skips are unclosed.
+        for ($j = count($stack) - 1; $j >= 0 && $stack[$j][1] !== $m[2]; $j--);
+        if ($j < 0) continue;
+        $paired[$stack[$j][0]] = true; $paired[$i] = true;
+        array_splice($stack, $j);
+    }
+    return $paired;
+}
+
+/** Template problems that render as literal text: unclosed, unmatched or crossed section tags and malformed tags. */
+function bbf_template_warnings(string $template): array {
+    $parts = preg_split('/(\{\{[#^\/]?[\w-]+\}\})/', $template, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $paired = bbf_template_section_pairs($parts);
+    $warnings = [];
+    foreach ($parts as $i => $part) {
+        if (preg_match('/\A\{\{([#^\/]?)([\w-]+)\}\}\z/', $part, $m)) {
+            if ($m[1] !== '' && !isset($paired[$i])) $warnings[] = ($m[1] === '/' ? 'Unmatched closing tag ' : 'Unclosed section tag ') . $part . '; it is shown as text.';
+        } elseif (preg_match_all('/\{\{\s*[#^\/]?\s*[\w-]+\s*\}\}/', $part, $loose)) {
+            foreach ($loose[0] as $tag) $warnings[] = "Malformed tag $tag (spaces are not allowed); it is shown as text.";
+        }
+    }
+    return $warnings;
 }
 
 /** on_submit.redirect after interpolation: only http(s) or a relative URL, never javascript:/data: or control characters.
