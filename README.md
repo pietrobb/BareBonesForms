@@ -180,7 +180,7 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Download the release ZIP and `SHA256SUMS` from the [GitHub release page](https://github.com/pietrobb/BareBonesForms/releases), upload the ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.12.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
+php maintenance.php upgrade --package=../barebonesforms-v2.1.13.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
 ```
 
 This is a dry run — nothing changes. `--checksum` proves the ZIP is the published release (a wrong ZIP is refused); `gh attestation verify barebonesforms-vX.Y.Z.zip -R pietrobb/BareBonesForms` proves the same with the signed build provenance. **Only a verified package's code runs in the dry run.** Then the upgrader inside the new package plans and applies the upgrade (from 2.1.3 on; the result says `"upgrader": "package X.Y.Z"`), so fixes to the upgrade itself already apply to it, and the new version's smoke test runs against **your** forms and templates. Without `--checksum` (since 2.1.5) the dry run only checks the files against the package's own manifest and their PHP syntax, runs none of the new code (`"check": {"status": "skipped"}`) and says how to verify; `--apply` then uses the installed upgrader. For a package you built yourself, `--trust-package` has the effect of `--checksum`. PHP notices printed along the way (e.g. `display_errors=On` on XAMPP) are listed under `php_messages` and do not fail the upgrade. The dry run checks the new PHP files for syntax errors and prints:
@@ -205,7 +205,7 @@ To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing   # or compare the ZIP's SHA-256 by hand
-unzip barebonesforms-v2.1.12.zip            # creates ./barebonesforms
+unzip barebonesforms-v2.1.13.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 
@@ -510,9 +510,9 @@ There is no bulk ZIP download, public/signed file link, email attachment, chunke
 </script>
 ```
 
-After a successful redirect to another page, Enter/programmatic submissions remain blocked while navigation is pending, without a timer that could duplicate a slow submission. The submit button returns to its normal label, and the success message offers **Continue** and **Start a new submission**. If a download, HTTP 204 or cancelled navigation leaves the page open, explicitly starting a new submission restores the empty form (including `hideOnSuccess` and paged forms); `pageshow` also restores it on return. Same-page anchors, including an empty `#`, never hold the form. Labels can be overridden via `BBF.registerLang()` (`redirectContinue`, `newSubmission`).
+After a successful redirect to another page, Enter/programmatic submissions remain blocked while navigation is pending, without a timer that could duplicate a slow submission. The submit button returns to its normal label; if the page remains open for four seconds, the success message offers **Continue** and **Start a new submission**. Restart first stops the pending navigation, preserves hidden-field layout and focuses the first visible control. If a download, HTTP 204 or cancelled navigation leaves the page open, explicitly starting a new submission restores the empty form (including `hideOnSuccess` and paged forms); `pageshow` also restores it on return. Same-page anchors, including an empty `#`, never hold the form. Labels can be overridden via `BBF.registerLang()` (`redirectContinue`, `newSubmission`).
 
-Classic scripts, renamed module scripts and dynamic `import()` can all load the renderer. For imports or bundled/renamed modules where the script URL is not discoverable, set `data-bbf-base="/path/to/bbf/"` on the loading script (include the trailing slash), or pass `baseUrl` to `BBF.render()`. `data-bbf-base` also selects the auto-loaded CSS directory; without a discoverable script the default is the document's relative directory.
+Classic scripts, renamed module scripts and dynamic `import()` can all load the renderer. For imports or bundled/renamed modules where the script URL is not discoverable, set `data-bbf-base="/path/to/bbf/"` on the loading script (a missing trailing slash is added), or pass `baseUrl` to `BBF.render()`. `data-bbf-base` also selects the auto-loaded CSS directory; without a discoverable script the default is the document's relative directory.
 
 ### Cross-domain
 
@@ -896,7 +896,7 @@ Directory listing:    OFF globally (Options -Indexes)
 
 No forms are blocked. No users are affected. The warnings appear in your server's PHP error log — check it periodically, or set up log monitoring.
 
-CLI `php maintenance.php selfcheck` reports all access diagnostics in `access_problems` (including trailing token whitespace). Malformed/inactive configured credentials block access; scoped-only and deliberately credential-free installs are valid upgrade policies, but no credentials still means no management login. Audit checks preserve existing file bytes and report CLI/web identity explicitly: different ownership or a CLI-only success is `audit.status: unverified`, not assurance about the web worker. With `diagnostic_base_url`, harmless fresh control/dot-file and ordinary `submissions/`/`logs/` fixtures test HTTP protection; exact content leaks fail selfcheck. Redirects, fallback pages or incomplete probes remain `rewrite_http: unverified`, **not** proof of safety. These probes do not replace the full directory/file checks below or prove custom aliases/data locations safe. Fixtures use exclusive creation, finally/shutdown cleanup and bounded exact-format stale cleanup on a later run after forced termination (at least one hour old; same owner; unknown, partial, legacy or symlink paths are preserved). SIGKILL cannot run cleanup immediately; run diagnostics again under the creating user or have the operator inspect remnants.
+CLI `php maintenance.php selfcheck` reports all access diagnostics in `access_problems` (including trailing token whitespace). Malformed/inactive configured credentials block access; scoped-only and deliberately credential-free installs are valid upgrade policies, but no credentials still means no management login. Audit checks preserve existing file bytes and report CLI/web identity explicitly: different ownership or a CLI-only success is `audit.status: unverified`, not assurance about the web worker. With `diagnostic_base_url`, harmless fresh control/dot-file and ordinary `submissions/`/`logs/` fixtures test HTTP protection; exact content leaks fail selfcheck. Redirects, fallback pages or incomplete probes remain `rewrite_http: unverified`, **not** proof of safety. These probes do not replace the full directory/file checks below or prove custom aliases/data locations safe. Fixtures use exclusive creation, finally/shutdown cleanup and bounded exact-format stale cleanup on a later run after forced termination (at least one hour old; unknown, partial, legacy or symlink paths are preserved). The scan limits matching diagnostic names rather than unrelated form directories. SIGTERM/SIGINT run immediate cleanup when CLI `pcntl` is available; previous handlers are restored. SIGKILL or PHP without `pcntl` may leave remnants; later diagnostics reclaim exact fixtures where permissions allow and report paths/owners that need operator cleanup.
 
 ### `check.php` — installation diagnostics
 
@@ -1347,7 +1347,7 @@ Show or hide parts of a template based on whether a field has a value:
 | `{{#var}}...{{/var}}` | Show block if `var` is truthy (non-empty) |
 | `{{^var}}...{{/var}}` | Show block if `var` is falsy (empty) |
 
-Unreplaced `{{tags}}` are automatically removed from the output.
+Sections may be nested, including repeated section names. Only original template tokens are evaluated; inserted respondent text stays literal. `{{_id}}`, `{{_form}}` and `{{_time}}` also work in confirmation and notification subjects. Unreplaced `{{tags}}` are automatically removed from the output.
 
 Option labels are available as `{{fieldname_label}}` — resolves to the display label instead of the raw value:
 

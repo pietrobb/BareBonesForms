@@ -142,6 +142,25 @@ file_put_contents($root . '/numeric-template.html', '{{5}}|{{2024}}|{{name}}');
 server_check(renderTemplate($root . '/numeric-template.html', []) === '||', 'missing or hidden numeric email placeholders are removed');
 server_check(renderTemplate($root . '/numeric-template.html', [5 => '', 2024 => '0', 'name' => '<b>']) === '|0|&lt;b&gt;', 'empty numeric email fields are removed; zero and escaping are preserved');
 
+// Review 2.1.12: nested sections and system subject variables.
+file_put_contents($root . '/nested-template.html', '{{#outer}}A{{#inner}}{{name}}{{/inner}}{{^missing}}B{{/missing}}{{/outer}}C');
+server_check(renderTemplate($root . '/nested-template.html', ['outer' => 'yes', 'inner' => 'yes', 'name' => '{{#missing}}<b>{{_id}}{{/missing}}'])
+    === 'A{{#missing}}&lt;b&gt;{{_id}}{{/missing}}BC', 'nested sections render without evaluating respondent syntax');
+server_check(renderTemplate($root . '/nested-template.html', ['outer' => '', 'inner' => 'yes', 'name' => 'hidden']) === 'C',
+    'a hidden outer section suppresses nested positive and inverted sections');
+file_put_contents($root . '/nested-template.html', '{{#outer}}A{{#outer}}B{{/outer}}C{{/outer}}D');
+server_check(renderTemplate($root . '/nested-template.html', ['outer' => 'yes']) === 'ABCD'
+    && renderTemplate($root . '/nested-template.html', ['outer' => '0']) === 'D', 'nested same-name sections close in stack order');
+$subjectForm = ['name' => 'Contact', 'fields' => [], 'on_submit' => [
+    'confirm_email' => ['to' => 'fixture@example.test', 'subject' => '{{_form}} {{_id}} {{name}}'],
+    'notify' => ['to' => 'owner@example.test', 'subject' => '{{_form}} {{_id}} {{name}}'],
+]];
+$subjectJobs = bbf_delivery_prepare_jobs($subjectForm, ['id' => 'bbf_fixture', 'form' => 'contact', 'data' => [
+    'name' => '{{_id}}', '_id' => 'spoofed', '_form' => 'spoofed',
+]], ['templates_dir' => $root]);
+server_check(count($subjectJobs) === 2 && $subjectJobs[0]['payload']['subject'] === 'Contact bbf_fixture {{_id}}'
+    && $subjectJobs[1]['payload']['subject'] === 'Contact bbf_fixture {{_id}}', 'confirm and notify subjects use authoritative system variables in one pass');
+
 // ─── Submit releases the session lock right after reading the secret ─
 $submitSource = file_get_contents(dirname(__DIR__) . '/submit.php');
 preg_match('/function ensureSession\([^)]*\): void \{.*?\n\}/s', $submitSource, $m);

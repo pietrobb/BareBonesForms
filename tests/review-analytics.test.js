@@ -38,7 +38,7 @@ test('missing, throwing and rejected trackers cannot break submission events', a
 async function submit(result, httpOk = true, options = {}, setup = () => {}, timers = []) {
     const events = [];
     const runtime = loadBBF({ fetch: async () => ({ ok: httpOk, headers: { get: () => 'application/json' }, json: async () => result }),
-        setTimeout: fn => { timers.push(fn); return fn; }, clearTimeout: fn => { const i = timers.indexOf(fn); if (i >= 0) timers.splice(i, 1); } });
+        setTimeout: (fn, ms) => { assert.equal(ms, 4000); timers.push(fn); return fn; }, clearTimeout: fn => { const i = timers.indexOf(fn); if (i >= 0) timers.splice(i, 1); } });
     const { BBF, document, context } = runtime;
     context.window.location = context.location;
     context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
@@ -93,16 +93,32 @@ test('redirect resets stored answers before navigation, so Back cannot resubmit 
     assert.equal((context.window.listeners.pageshow || []).length, 1, 'only the standard idempotency-key listener remains');
 });
 
-test('download, 204 and cancelled navigation allow an explicit new submission without timer duplicates', async () => {
+test('download, 204 and cancelled navigation delay recovery and stop navigation before unlocking', async () => {
     for (const redirect of ['/download.pdf', '/no-content', '/cancelled']) {
-        const { form, events } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect });
+        const timers = [];
+        let stopped = false;
+        const { form, events } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect }, true, {}, runtime => {
+            runtime.context.window.stop = () => {
+                assert.equal(form._bbfSubmitting, true, 'navigation stops while submission is still locked');
+                stopped = true;
+            };
+        }, timers);
         const btn = form.querySelector('.bbf-submit');
         assert.equal(btn.textContent, 'Submit');
+        assert.equal(form.querySelector('a'), null, 'no recovery link during the initial delay');
+        assert.equal(form.querySelector('.bbf-new-submission'), null, 'no immediate restart button');
+        await form.listeners.submit[0]({ preventDefault() {} });
+        assert.equal(events.length, 1, 'submit is locked before recovery appears');
+        assert.equal(timers.length, 1);
+        timers.pop()();
+        assert.equal(btn.disabled, true, 'timer shows recovery without unlocking or sending a POST');
+        assert.equal(events.length, 1);
         assert.equal(form.querySelector('a').href, redirect);
         assert.equal(form.querySelector('a').textContent, 'Continue');
         await form.listeners.submit[0]({ preventDefault() {} });
         assert.equal(events.length, 1, 'implicit duplicate is still blocked');
         form.querySelector('.bbf-new-submission').listeners.click[0]();
+        assert.equal(stopped, true);
         assert.equal(btn.disabled, false);
         assert.equal(form._bbfSubmitting, false);
         await form.listeners.submit[0]({ preventDefault() {} });
@@ -112,7 +128,27 @@ test('download, 204 and cancelled navigation allow an explicit new submission wi
     assert.equal(form.querySelector('.bbf-submit').disabled, false, 'empty hash never locks navigation');
 });
 
-test('same-page anchor stays usable; cross-page navigation waits for pageshow without a timer', async () => {
+test('restart preserves hidden wrappers and focuses the first visible field', async () => {
+    const timers = [];
+    const { form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/download' }, true,
+        { hideOnSuccess: true }, runtime => {
+            runtime.context.window.stop = () => {};
+            const build = runtime.BBF._buildForm.bind(runtime.BBF);
+            runtime.BBF._buildForm = (definition, ...args) => build({ ...definition, fields: [
+                { name: 'tracking', type: 'hidden' },
+                { name: 'conditional', type: 'text', show_if: { field: 'answer', value: 'yes' } },
+                { name: 'answer', type: 'text' },
+            ] }, ...args);
+        }, timers);
+    timers.pop()();
+    form.querySelector('.bbf-new-submission').listeners.click[0]();
+    assert.equal(form.querySelector('[data-field="tracking"]').style.display, 'none');
+    assert.equal(form.querySelector('[data-field="conditional"]').style.display, 'none');
+    assert.equal(form.querySelector('[name="answer"]').focused, true);
+    assert.equal(form.querySelector('[name="tracking"]').focused, undefined);
+});
+
+test('same-page anchor stays usable; page transitions cancel delayed recovery without unlocking early', async () => {
     let pageUrl = '';
     const hash = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '#done' }, true, {}, runtime => { pageUrl = String(runtime.context.location.href).split('#')[0]; });
     assert.equal(hash.context.window.location.href, pageUrl + '#done',
@@ -131,7 +167,7 @@ test('same-page anchor stays usable; cross-page navigation waits for pageshow wi
     for (const listener of context.window.listeners.pageshow) listener({ persisted: true });
     assert.equal(btn.disabled, false, 'returning through pageshow restores the button');
     assert.equal(form._bbfSubmitting, false);
-    assert.equal(timers.length, 0, 'no five-second guess about redirect completion');
+    assert.equal(timers.length, 0, 'pageshow cancels pending recovery');
     assert.match(form.querySelector('.bbf-message').className, /bbf-success/);
 
     const leave = [];
@@ -152,7 +188,7 @@ test('hideOnSuccess applies before every redirect, including slow targets and do
         assert.equal(form._bbfHideOnSuccess, true);
         assert.ok(form.querySelectorAll('.bbf-field, .bbf-submit-wrap').every(field => field.style.display === 'none'));
         assert.equal(form.querySelector('.bbf-message').style.display, 'block');
-        assert.equal(timers.length, 0);
+        assert.equal(timers.length, redirect === '/thanks' ? 1 : 0, 'only leaving-page redirects schedule recovery');
     }
 });
 

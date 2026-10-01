@@ -394,26 +394,28 @@ function renderTemplate(string $templateFile, array $vars): string {
     }
     $template = file_get_contents($templateFile);
 
-    // Conditional sections: {{#var}}...{{/var}} — shown only if var is truthy/non-empty
-    $template = preg_replace_callback('/\{\{#([\w-]+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
-        $val = $vars[$m[1]] ?? '';
-        return ($val !== '' && $val !== '0' && $val !== null) ? $m[2] : '';
-    }, $template);
-
-    // Inverted sections: {{^var}}...{{/var}} — shown only if var is falsy/empty
-    $template = preg_replace_callback('/\{\{\^([\w-]+)\}\}(.*?)\{\{\/\1\}\}/s', function($m) use ($vars) {
-        $val = $vars[$m[1]] ?? '';
-        return ($val === '' || $val === '0' || $val === null) ? $m[2] : '';
-    }, $template);
-
-    // Substitute original tags once; respondent text must never become template syntax.
-    $template = preg_replace_callback('/\{\{([\w-]+)\}\}/', static function ($m) use ($vars, $trustedHtmlVars) {
-        $value = $vars[$m[1]] ?? '';
-        if (!is_string($value) && !is_numeric($value)) return '';
-        return isset($trustedHtmlVars[$m[1]]) ? (string)$value : htmlspecialchars((string)$value);
-    }, $template);
-
-    return $template;
+    // Parse only original template tokens; nested sections never reprocess respondent text.
+    $parts = preg_split('/(\{\{[#^\/]?[\w-]+\}\})/', $template, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $out = ''; $stack = []; $visible = true;
+    foreach ($parts as $part) {
+        if (!preg_match('/\A\{\{([#^\/]?)([\w-]+)\}\}\z/', $part, $m)) {
+            if ($visible) $out .= $part;
+            continue;
+        }
+        $value = $vars[$m[2]] ?? '';
+        if ($m[1] === '#' || $m[1] === '^') {
+            $stack[] = [$m[2], $visible];
+            $truthy = $value !== '' && $value !== '0' && $value !== null;
+            $visible = $visible && ($m[1] === '#' ? $truthy : !$truthy);
+        } elseif ($m[1] === '/') {
+            if ($stack !== [] && $stack[count($stack) - 1][0] === $m[2]) {
+                [, $visible] = array_pop($stack);
+            } elseif ($visible) $out .= $part;
+        } elseif ($visible && (is_string($value) || is_numeric($value))) {
+            $out .= isset($trustedHtmlVars[$m[2]]) ? (string)$value : htmlspecialchars((string)$value);
+        }
+    }
+    return $out;
 }
 
 /** on_submit.redirect after interpolation: only http(s) or a relative URL, never javascript:/data: or control characters.
@@ -745,7 +747,7 @@ function bbf_delivery_prepare_jobs(array $form, array $submission, array $config
         $email = $onSubmit['confirm_email'];
         $payload = [
             'to' => interpolate((string)($email['to'] ?? ''), $data),
-            'subject' => interpolate((string)($email['subject'] ?? 'Thank you'), $data),
+            'subject' => interpolate((string)($email['subject'] ?? 'Thank you'), $templateVars),
             'body' => renderTemplate($templatesDir . '/' . basename((string)($email['template'] ?? 'confirm.html')), $templateVars),
             'reply_to' => isset($email['reply_to']) ? interpolate((string)$email['reply_to'], $data) : '',
         ];
@@ -763,7 +765,7 @@ function bbf_delivery_prepare_jobs(array $form, array $submission, array $config
         }
         $payload = [
             'to' => $recipients,
-            'subject' => interpolate((string)($email['subject'] ?? "New submission: $formId"), $data),
+            'subject' => interpolate((string)($email['subject'] ?? "New submission: $formId"), $templateVars),
             'body' => renderTemplate($templatesDir . '/' . basename((string)($email['template'] ?? 'notify.html')), $templateVars),
             'reply_to' => isset($email['reply_to']) ? interpolate((string)$email['reply_to'], $data) : '',
         ];

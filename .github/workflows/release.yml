@@ -103,13 +103,25 @@ jobs:
       - name: Verify checksums of the built files
         shell: bash
         run: cd "$RUNNER_TEMP" && sha256sum -c SHA256SUMS
+      - name: Check whether tag is already published
+        id: published_tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          releases=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100")
+          published=$(printf '%s' "$releases" | jq -r --arg tag "$GITHUB_REF_NAME" 'any(.[][]; .tag_name == $tag and .draft == false)')
+          echo "skipped=$published" >> "$GITHUB_OUTPUT"
       - name: Sign build provenance
+        if: ${{ steps.published_tag.outputs.skipped != 'true' }}
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: |
             ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}.zip
             ${{ runner.temp }}/barebonesforms-${{ github.ref_name }}-upgrade.zip
       - name: Prepare immutable release ownership
+        if: ${{ steps.published_tag.outputs.skipped != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -145,6 +157,7 @@ jobs:
           BASH
       - name: Create draft GitHub release
         id: create_release
+        if: ${{ steps.published_tag.outputs.skipped != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -182,7 +195,7 @@ jobs:
               "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$id/assets?name=$name" > "$RUNNER_TEMP/asset-$name.json"
           done
       - name: Verify uploaded draft files
-        if: ${{ steps.create_release.outputs.skipped != 'true' }}
+        if: ${{ steps.published_tag.outputs.skipped != 'true' && steps.create_release.outputs.skipped != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -203,7 +216,7 @@ jobs:
           (cd "$check" && sha256sum -c SHA256SUMS)
           owned_release "$id" >/dev/null
       - name: Publish verified draft
-        if: ${{ steps.create_release.outputs.skipped != 'true' }}
+        if: ${{ steps.published_tag.outputs.skipped != 'true' && steps.create_release.outputs.skipped != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash

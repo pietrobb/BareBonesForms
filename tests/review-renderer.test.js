@@ -150,14 +150,42 @@ async function settle() {
 test('renderer accepts renamed modules, missing script elements and explicit data-bbf-base', () => {
     for (const [prelude, base] of [
         ['document.getElementsByTagName=()=>[{src:"https://example.test/assets/bbf.min.js"}];', 'https://example.test/assets/'],
-        ['document.getElementsByTagName=()=>[{src:"https://example.test/assets/renamed.js"}];', 'https://example.test/assets/'],
-        ['document.getElementsByTagName=()=>[];', ''],
+        ['document.getElementsByTagName=()=>[{src:"https://example.test/assets/renamed.js"}];', 'https://example.test/'],
+        ['document.getElementsByTagName=()=>[];', 'https://example.test/'],
         ['document.getElementsByTagName=()=>[{src:"",hasAttribute:()=>true,getAttribute:()=>"/forms/"}];', '/forms/'],
+        ['document.getElementsByTagName=()=>[{src:"",hasAttribute:()=>true,getAttribute:()=>"/bbf"}];', '/bbf/'],
     ]) {
         const { BBF, document } = loadBBF({ prelude });
         assert.equal(BBF.baseUrl, base);
         assert.equal(document.head.children[0].href, base + 'bbf.css');
     }
+});
+
+test('unidentified hash module never borrows a later analytics script directory', async () => {
+    const urls = [];
+    const { BBF, document, context } = loadBBF({
+        prelude: `
+            location.href = 'https://forms.test/contact/index.html';
+            document.baseURI = 'https://analytics.test/';
+            window.warnings = [];
+            console = { ...console, warn: message => window.warnings.push(message) };
+            document.getElementsByTagName = () => [
+                { src: 'https://cdn.test/bbf-3f9c.js' },
+                { src: 'https://analytics.test/tracker.js' }
+            ];
+        `,
+        fetch: async url => { urls.push(String(url)); return { ok: false, status: 404 }; }
+    });
+    assert.equal(BBF.baseUrl, 'https://forms.test/contact/');
+    assert.equal(document.head.children[0].href, 'https://forms.test/contact/bbf.css');
+    assert.equal(context.window.warnings.length, 1);
+    assert.match(context.window.warnings[0], /data-bbf-base/);
+    const rendering = BBF.render('contact', new MiniElement(), { lang: 'de' });
+    const languageScript = document.head.children.find(child => child.tagName === 'SCRIPT');
+    assert.equal(languageScript.src, 'https://forms.test/contact/lang/de.js');
+    languageScript.onload();
+    await rendering;
+    assert.ok(urls.length > 0 && urls.every(url => url.startsWith('https://forms.test/contact/')), urls.join(' '));
 });
 
 test('same-origin form retains a CSRF field after initial timeout and recovers its first submit', async () => {
@@ -332,6 +360,21 @@ test('sandbox payment preview consumes amount_minor and currency exponent contra
     assert.match(BBF._renderSandboxPreview(base), /1000 JPY/);
     base.on_submit_preview.payment = { provider: 'stripe', amount_minor: 1250, minor_units: 3, currency: 'KWD', product_name: 'Order' };
     assert.match(BBF._renderSandboxPreview(base), /1\.250 KWD/);
+});
+
+test('phone validation rejects interior BOM but trims it at the edges like PHP', () => {
+    const { BBF } = loadBBF();
+    const form = BBF._buildForm({ fields: [{ name: 'phone', type: 'tel' }] }, 'phone', '/', {});
+    const input = form.querySelector('[name="phone"]');
+    const fields = [{ name: 'phone', type: 'tel' }];
+    for (const value of ['+421\uFEFF123456', '123\uFEFF456']) {
+        input.value = value;
+        assert.ok(BBF._validate(fields, form).phone, 'interior BOM is not accepted');
+    }
+    for (const value of ['\uFEFF+421123456\uFEFF', '+421\u00a0123456', '+421\u202f123456']) {
+        input.value = value;
+        assert.deepEqual(Object.keys(BBF._validate(fields, form)), [], 'supported Unicode whitespace stays valid');
+    }
 });
 
 test('option-only show_if binds and cleared choices immediately hide dependents', () => {

@@ -139,7 +139,7 @@ async function browserChecks() {
                                 && document.getElementById('notify-content').textContent.includes('Rendered preview only')));
             }
         }
-        check('no browser errors/connections; CSP blocks only actual BBF auto-CSS: ' + JSON.stringify({ errors: fixture.errors, violations: fixture.violations }), fixture.errors.length === 0 && fixture.violations.length === 1 && fixture.violations[0].directive === 'style-src-elem' && (fixture.violations[0].uri === 'file' || fixture.violations[0].uri.startsWith('file:')) && document.querySelectorAll('link[rel="stylesheet"]').length === 1 && document.querySelector('link[rel="stylesheet"]').getAttribute('href') === 'bbf.css');
+        check('no browser errors/connections; CSP blocks only actual BBF auto-CSS: ' + JSON.stringify({ errors: fixture.errors, violations: fixture.violations }), fixture.errors.length === 0 && fixture.violations.length === 1 && fixture.violations[0].directive === 'style-src-elem' && (fixture.violations[0].uri === 'file' || fixture.violations[0].uri.startsWith('file:')) && document.querySelectorAll('link[rel="stylesheet"]').length === 1 && document.querySelector('link[rel="stylesheet"]').href === new URL('bbf.css', location.href).href);
     } catch (error) { results.push({ name: error.stack || error.message, ok: false }); }
     const output = document.createElement('pre');
     output.id = 'sandbox-result'; output.textContent = JSON.stringify(results); document.body.appendChild(output);

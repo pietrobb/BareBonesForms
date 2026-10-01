@@ -175,6 +175,32 @@ function bbf_upgrade_breaking(string $changelog, string $from, string $to): arra
     return $notes;
 }
 
+/** Encode active INI values, including literal dollars (PHP's INI parser expands ${...}). */
+function bbf_upgrade_php_command(array $command): array {
+    $settings = [];
+    foreach (['open_basedir', 'sys_temp_dir', 'disable_functions', 'disable_classes', 'allow_url_fopen', 'allow_url_include', 'memory_limit', 'max_execution_time',
+        'display_errors', 'error_reporting', 'log_errors'] as $name) {
+        $value = ini_get($name);
+        if ($name === 'error_reporting' && ($value === false || $value === '')) $value = (string)error_reporting();
+        if ($value !== false) array_push($settings, '-d', $name . '="' . str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $value) . '"');
+    }
+    array_splice($command, 1, 0, $settings);
+    return $command;
+}
+
+/** POSIX sh command, or a cmd-safe encoded PowerShell launcher that bypasses cmd for PHP. */
+function bbf_upgrade_apply_command(array $arguments): string {
+    $command = bbf_upgrade_php_command([PHP_BINARY, ...$arguments]);
+    if (PHP_OS_FAMILY !== 'Windows') return implode(' ', array_map(static fn(string $s): string => "'" . str_replace("'", "'\\''", $s) . "'", $command));
+    // ProcessStartInfo bypasses both cmd %/! expansion and PowerShell's legacy native argument conversion.
+    $quote = static fn(string $s): string => "([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" . base64_encode($s) . "')))";
+    $native = static fn(string $s): string => '"' . preg_replace('/(\\\\*)"/', '$1$1\\\\"', preg_replace('/(\\\\+)$/', '$1$1', $s)) . '"';
+    $script = '$p = New-Object System.Diagnostics.ProcessStartInfo; $p.UseShellExecute = $false; $p.FileName = ' . $quote(array_shift($command))
+        . '; $p.Arguments = ' . $quote(implode(' ', array_map($native, $command)))
+        . '; $c = [System.Diagnostics.Process]::Start($p); $c.WaitForExit(); exit $c.ExitCode';
+    return 'powershell.exe -NoProfile -NonInteractive -EncodedCommand ' . base64_encode(implode("\0", str_split($script)) . "\0");
+}
+
 /**
  * Runs a PHP child and returns its exit code, stdout and stderr; null when it cannot start. stderr goes to a temporary
  * file, not a second pipe: reading one pipe to the end while the child fills the other (> ~64 KB of notices) would
@@ -189,15 +215,7 @@ function bbf_upgrade_run(array $command, string $cwd): ?array {
         // CLI -d overrides are not inherited by PHP children. Preserve the active security restrictions,
         // resource limits and diagnostics only; do not replay arbitrary extension/startup configuration.
         if (($command[0] ?? null) === PHP_BINARY) {
-            $settings = [];
-            foreach (['open_basedir', 'sys_temp_dir', 'disable_functions', 'disable_classes', 'allow_url_fopen', 'allow_url_include', 'memory_limit', 'max_execution_time',
-                'display_errors', 'error_reporting', 'log_errors'] as $name) {
-                $value = ini_get($name);
-                if ($name === 'error_reporting' && ($value === false || $value === '')) $value = (string)error_reporting();
-                // INI parsing still applies to -d values; escape backslashes too, preserving UNC prefixes.
-                if ($value !== false) array_push($settings, '-d', $name . '="' . str_replace(['\\', '"'], ['\\\\', '\\"'], $value) . '"');
-            }
-            array_splice($command, 1, 0, $settings);
+            $command = bbf_upgrade_php_command($command);
         }
         $process = @proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']], $pipes, $cwd);
         if (!is_resource($process)) return null;

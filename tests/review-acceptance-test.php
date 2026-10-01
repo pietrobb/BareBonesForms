@@ -369,6 +369,9 @@ acceptance_check(substr_count($workflow, 'actions/setup-python@') >= 2
     'PHP 8.2 and 8.1 gates install the pinned Draft 2020-12 schema test dependency');
 
 $releaseWorkflow = acceptance_source($root, '.github/workflows/release.yml');
+acceptance_check(strpos($releaseWorkflow, 'id: published_tag') < strpos($releaseWorkflow, '- name: Sign build provenance')
+    && substr_count($releaseWorkflow, "steps.published_tag.outputs.skipped != 'true'") === 5,
+    'published-tag guard precedes attestation and gates every release side-effect step');
 acceptance_check(str_contains($releaseWorkflow, 'always() && (failure() || cancelled())')
     && str_contains($releaseWorkflow, 'gh api --paginate --slurp')
     && str_contains($releaseWorkflow, 'owned_release "$id" >/dev/null')

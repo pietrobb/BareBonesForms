@@ -13,7 +13,7 @@ function check_upgrade(bool $condition, string $message): void {
     echo ($condition ? 'PASS ' : 'FAIL ') . $message . "\n";
 }
 
-function upgrade_run(array $command, string $cwd, array $env = []): array {
+function upgrade_run(array|string $command, string $cwd, array $env = []): array {
     $errFile = tempnam(sys_get_temp_dir(), 'bbft'); // stderr in a file: two pipes read in turn can deadlock
     $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']], $pipes, $cwd, $env + getenv());
     fclose($pipes[0]);
@@ -68,6 +68,8 @@ function upgrade_remanifest(string $dir, string $version, array $addCode = []): 
 $tmp = str_replace('\\', '/', sys_get_temp_dir()) . '/bbf-upgrade-test-' . bin2hex(random_bytes(5));
 mkdir($tmp, 0700);
 try {
+    define('BBF_LOADED', true);
+    require_once "$repo/bbf_upgrade.php";
     // ─── Release manifest ───────────────────────────────────────────
     $build = upgrade_run([PHP_BINARY, "$repo/tools/package-deploy.php", '--version', '2.1.0', '--destination', "$tmp/old"], $repo);
     check_upgrade($build['code'] === 0, 'packager builds a versioned package');
@@ -134,6 +136,21 @@ try {
     check_upgrade(($plan['check']['status'] ?? '') === 'passed', 'new code passes the smoke test against the live forms');
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'dry run changes nothing');
 
+    $shellPackage = $tmp . '/package %BBF_SHELL_PROBE% ${BBF_SHELL_PROBE}';
+    upgrade_copy("$tmp/new", $shellPackage);
+    upgrade_copy("$tmp/site", "$tmp/shellsite");
+    $shellBefore = upgrade_snapshot("$tmp/shellsite");
+    $shellEnv = ['BBF_SHELL_PROBE' => 'EXPANDED_WRONG'];
+    $shellDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$shellPackage"], "$tmp/shellsite", $shellEnv);
+    $shellLaunch = static fn(string $command): array|string => PHP_OS_FAMILY === 'Windows' ? 'cmd.exe /d /v:on /s /c "' . $command . '"' : ['/bin/sh', '-c', $command];
+    $shellApply = upgrade_run($shellLaunch($shellDry['json']['next']), "$tmp/shellsite", $shellEnv);
+    check_upgrade($shellApply['code'] === 0 && ($shellApply['json']['code_updated'] ?? false), 'maintenance suggested apply executes literal percent and dollar package path: ' . $shellApply['out'] . $shellApply['err']);
+    $shellBackup = $shellApply['json']['backup'] ?? '';
+    $literalBackup = dirname($shellBackup) . '/backup %BBF_SHELL_PROBE% ${BBF_SHELL_PROBE}';
+    rename($shellBackup, $literalBackup);
+    $shellUndo = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$literalBackup"], "$tmp/shellsite", $shellEnv);
+    $shellUndoApply = upgrade_run($shellLaunch($shellUndo['json']['next']), "$tmp/shellsite", $shellEnv);
+    check_upgrade($shellUndoApply['code'] === 0 && upgrade_snapshot("$tmp/shellsite") === $shellBefore, 'maintenance suggested rollback executes literal percent and dollar backup path');
     $wrong = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new", '--apply', '--confirm=' . str_repeat('0', 64)], "$tmp/site");
     check_upgrade($wrong['code'] !== 0 && upgrade_snapshot("$tmp/site") === $before, 'a wrong digest is refused without changes');
 
@@ -468,8 +485,11 @@ try {
         && str_contains(implode(' ', $evilDry['json']['notices'] ?? []), '--checksum=') && !str_contains($evilDry['json']['next'] ?? '', '--trust-package'),
         'it says the package is not verified and how to verify it (--checksum from SHA256SUMS)');
     $evilTrusted = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/evil"], "$tmp/esite");
+    $displayBefore = ini_get('display_errors'); ini_set('display_errors', '0'); // maintenance loads config fail-closed
+    $expectedTrusted = bbf_upgrade_apply_command(['maintenance.php', 'upgrade', "--package=$tmp/evil", '--trust-package', '--apply', '--confirm=' . ($evilTrusted['json']['confirm'] ?? '')]);
+    ini_set('display_errors', $displayBefore);
     check_upgrade($evilTrusted['code'] === 0 && is_file($ran) && ($evilTrusted['json']['upgrader'] ?? '') === 'package 2.2.1'
-        && str_contains($evilTrusted['json']['next'] ?? '', '--trust-package'), 'with --trust-package the package upgrader and smoke test run');
+        && ($evilTrusted['json']['next'] ?? '') === $expectedTrusted, 'with --trust-package the package upgrader and smoke test run');
     @unlink($ran);
     $unverifiedApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$tmp/evil", '--apply', '--confirm=' . ($evilDry['json']['confirm'] ?? '')], "$tmp/esite");
     check_upgrade($unverifiedApply['code'] === 0 && ($unverifiedApply['json']['ok'] ?? false) && !isset($unverifiedApply['json']['upgrader']),
@@ -595,8 +615,11 @@ try {
     $blockedBefore = upgrade_snapshot("$tmp/blockedsite");
     $blockedDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg"], "$tmp/blockedsite");
     $blockedPlan = $blockedDry['json'] ?? [];
+    $displayBefore = ini_get('display_errors'); ini_set('display_errors', '0');
+    $expectedBlocked = bbf_upgrade_apply_command(['maintenance.php', 'upgrade', "--package=$tmp/blockedpkg", '--trust-package', '--apply', '--confirm=' . ($blockedPlan['confirm'] ?? '')]);
+    ini_set('display_errors', $displayBefore);
     check_upgrade($blockedDry['code'] !== 0 && ($blockedPlan['ok'] ?? true) === false && ($blockedPlan['access_blocked'] ?? false)
-        && ($blockedPlan['next'] ?? '') === 'php maintenance.php upgrade ' . escapeshellarg("--package=$tmp/blockedpkg") . ' --trust-package --apply --confirm=' . ($blockedPlan['confirm'] ?? '') && str_contains(implode(' ', $blockedPlan['problems'] ?? []), '32 hexadecimal')
+        && ($blockedPlan['next'] ?? '') === $expectedBlocked && str_contains(implode(' ', $blockedPlan['problems'] ?? []), '32 hexadecimal')
         && upgrade_snapshot("$tmp/blockedsite") === $blockedBefore, 'admin-lockout dry run fails with an actionable repair, exact apply command, a digest and no changes');
     file_put_contents("$tmp/blockedpkg/bbf_upgrade.php", "\n// force package delegation\n", FILE_APPEND);
     upgrade_remanifest("$tmp/blockedpkg", '2.2.0');
@@ -666,6 +689,20 @@ try {
         $mock = upgrade_run([$bash, "$mockDir/test.sh"], $tmp);
         $actual = is_file("$mockDir/deleted") ? file_get_contents("$mockDir/deleted") : '';
         check_upgrade($mock['code'] === 0 && trim($mock['err']) === '' && $actual === ($deleted === '' ? '' : "repos/fixture/repo/releases/$deleted"), "owned ID cleanup: $label " . trim($mock['err']));
+    }
+    // Execute the pre-attestation guard with pagination, published/draft releases and API failures.
+    preg_match('/^      - name: Check whether tag is already published.*?^        run: \\|\\R(.*?)^      - name: Sign build provenance/ms', $workflow, $guardMatch);
+    $guardScript = preg_replace('/^          /m', '', $guardMatch[1] ?? '');
+    check_upgrade($guardScript !== '', 'pre-attestation published-tag guard is extracted');
+    foreach (['published-second-page' => [[[$other], [$public]], 'true'], 'foreign-draft' => [[[$other]], 'false'], 'API-failure' => [null, null]] as $label => [$pages, $skip]) {
+        @unlink("$mockDir/output");
+        $script = 'GITHUB_REPOSITORY=fixture/repo; GITHUB_REF_NAME=v2.2.0; GITHUB_OUTPUT=' . $shellQuote("$mockDir/output") . "\n"
+            . 'jq() { command ' . $shellQuote($jq) . ' "$@"; }' . "\n"
+            . 'gh() { ' . ($pages === null ? 'return 1;' : 'printf "%s" ' . $shellQuote(json_encode($pages)) . ';') . " }\n" . $guardScript;
+        file_put_contents("$mockDir/guard.sh", $script);
+        $mock = upgrade_run([$bash, "$mockDir/guard.sh"], $mockDir);
+        $output = is_file("$mockDir/output") ? trim(file_get_contents("$mockDir/output")) : '';
+        check_upgrade($skip === null ? ($mock['code'] !== 0 && $output === '') : ($mock['code'] === 0 && $output === "skipped=$skip"), "pre-attestation guard: $label");
     }
     // Execute the actual creation step with a stale list API; identity must come from POST.
     preg_match('/^      - name: Create draft GitHub release.*?^        run: \|\R(.*?)^      - name: Verify uploaded draft files/ms', $workflow, $createMatch);
@@ -752,7 +789,7 @@ try {
     // Both launchers accept empty/absent legacy credentials, with scoped records or no management at all.
     foreach (['empty', 'absent'] as $legacyPolicy) {
         foreach ([[], [['id' => 'reader', 'token' => str_repeat('c', 32), 'forms' => ['kontakt'], 'permissions' => ['read'], 'revoked' => false, 'expires_at' => '2099-01-01T00:00:00Z']]] as $scoped) {
-            $policySite = "$tmp/policy $legacyPolicy " . count($scoped);
+            $policySite = "$tmp/policy %BBF_SHELL_PROBE% $legacyPolicy " . count($scoped);
             upgrade_copy("$tmp/site", $policySite);
             $policyConfig = require "$policySite/config.php";
             $policyConfig['api_token'] = ''; $policyConfig['access_tokens'] = $scoped;
@@ -766,8 +803,8 @@ try {
                     && upgrade_snapshot($policySite) === $policyBefore, "$legacyPolicy legacy policy with " . count($scoped) . ' scoped records permits verified dry run without changes');
             }
             $policyPlan = $policyDry['json'];
-            check_upgrade(($policyPlan['next'] ?? '') === 'php ' . escapeshellarg("$tmp/new/tools/upgrade.php") . ' ' . escapeshellarg('--install=' . realpath($policySite)) . ' --apply --confirm=' . $policyPlan['confirm'], 'external apply command quotes the canonical spaced installation path exactly: ' . ($policyPlan['next'] ?? ''));
-            $policyApply = upgrade_run([PHP_BINARY, "$tmp/new/tools/upgrade.php", "--install=$policySite", '--apply', '--confirm=' . $policyPlan['confirm']], $tmp);
+            check_upgrade(($policyPlan['next'] ?? '') === bbf_upgrade_apply_command(["$tmp/new/tools/upgrade.php", '--install=' . realpath($policySite), '--apply', '--confirm=' . $policyPlan['confirm']]), 'external apply command quotes the canonical spaced installation path exactly: ' . ($policyPlan['next'] ?? ''));
+            $policyApply = upgrade_run($shellLaunch($policyPlan['next']), $tmp);
             check_upgrade($policyApply['code'] === 0 && ($policyApply['json']['code_updated'] ?? false) && !($policyApply['json']['access_blocked'] ?? true), 'intentional empty/absent admin policy also passes post-apply verification');
             upgrade_rmtree($policySite);
         }
@@ -787,6 +824,20 @@ try {
     $tempChild = json_decode($tempRun['json']['out'] ?? '', true);
     check_upgrade(($tempRun['json']['exit'] ?? null) === 0 && ($tempChild['ini'] ?? null) === "$tmp/private-temp"
         && str_starts_with(str_replace('\\', '/', $tempChild['file'] ?? ''), "$tmp/private-temp/"), 'restricted open_basedir child uses propagated writable sys_temp_dir');
+    // Literal interpolation syntax must survive both PHP INI parsing and the suggested shell launcher.
+    $literalTemp = $tmp . '/literal ${BBF_SHELL_PROBE} %BBF_SHELL_PROBE% !BBF_SHELL_PROBE!';
+    mkdir($literalTemp, 0700);
+    $shellProbe = "$tmp/shell-probe.php";
+    file_put_contents($shellProbe, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true)
+        . '; $args = ["-r", \'echo json_encode([ini_get("sys_temp_dir"), array_slice($argv, 1)]);\', "--", ...array_slice($argv, 1)];'
+        . ' echo json_encode(["next" => bbf_upgrade_apply_command($args), "child" => bbf_upgrade_run([PHP_BINARY, ...$args], getcwd())]);');
+    $literalArgs = ['space and apostrophe\'s', 'double"quote', '${BBF_SHELL_PROBE}', '%BBF_SHELL_PROBE%', '!BBF_SHELL_PROBE!', 'a\\\\b\\', '$(exit 9); & | < >'];
+    $probeEnv = ['BBF_SHELL_PROBE' => 'EXPANDED_WRONG'];
+    $shellPlan = upgrade_run([PHP_BINARY, '-d', 'sys_temp_dir="' . str_replace('$', '\\$', $literalTemp) . '"', $shellProbe, ...$literalArgs], $tmp, $probeEnv);
+    $shellResult = upgrade_run($shellLaunch($shellPlan['json']['next']), $tmp, $probeEnv);
+    check_upgrade($shellPlan['code'] === 0 && ($shellPlan['json']['child']['exit'] ?? null) === 0
+        && json_decode($shellPlan['json']['child']['out'] ?? '', true) === [$literalTemp, $literalArgs], 'array PHP child preserves literal ${} and percent INI values and arguments');
+    check_upgrade($shellResult['code'] === 0 && $shellResult['json'] === [$literalTemp, $literalArgs], 'suggested shell command preserves literal INI and all metacharacter arguments: ' . $shellResult['err']);
     $uncProbe = "$tmp/unc-probe.php";
     file_put_contents($uncProbe, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true)
         . '; ini_set("open_basedir", $argv[2]); echo json_encode(bbf_upgrade_run([PHP_BINARY, "-r", \'echo json_encode(ini_get("open_basedir"));\'], $argv[1]));');
@@ -828,7 +879,7 @@ try {
     $legacyBefore = upgrade_snapshot("$tmp/legacy");
     $legacyDry = upgrade_run([PHP_BINARY, "$tmp/new/tools/upgrade.php", "--install=$tmp/legacy"], $tmp);
     $legacyPlan = $legacyDry['json'] ?? [];
-    check_upgrade(($legacyPlan['ok'] ?? false) && $legacyPlan['from'] === 'unknown' && str_contains($legacyPlan['next'] ?? '', '--apply --confirm='),
+    check_upgrade(($legacyPlan['ok'] ?? false) && $legacyPlan['from'] === 'unknown' && isset($legacyPlan['next']),
         'tools/upgrade.php plans an upgrade of an installation without a manifest');
     check_upgrade(in_array('templates/notify.html', $legacyPlan['files']['keep_yours'] ?? [], true) && !isset($legacyPlan['files']['remove']),
         'without a manifest, differing templates are kept and nothing is removed');

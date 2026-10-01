@@ -23,10 +23,13 @@
 
     const scripts = Array.from(document.getElementsByTagName('script')).reverse();
     const rendererScript = document.currentScript || scripts.find(script => script.hasAttribute?.('data-bbf-base'))
-        || scripts.find(script => /\/bbf(?:\.min)?\.js(?:[?#]|$)/.test(script.src)) || scripts[0];
+        || scripts.find(script => /\/bbf(?:\.min)?\.js(?:[?#]|$)/.test(script.src));
     const rendererSrc = rendererScript?.src || '';
-    const rendererBase = rendererScript?.getAttribute?.('data-bbf-base')
-        ?? rendererSrc.substring(0, rendererSrc.lastIndexOf('/') + 1);
+    const explicitBase = rendererScript?.getAttribute?.('data-bbf-base');
+    const rendererBase = explicitBase != null
+        ? (explicitBase && !explicitBase.endsWith('/') ? explicitBase + '/' : explicitBase)
+        : (rendererSrc ? rendererSrc.substring(0, rendererSrc.lastIndexOf('/') + 1) : new URL('.', location.href).href);
+    if (!rendererSrc && explicitBase == null) console.warn('BareBonesForms: script URL not identified; using the document directory. Set data-bbf-base on the loading script to select the renderer directory.');
 
     const BBF = {
         baseUrl: rendererBase,
@@ -1248,7 +1251,14 @@
                 catch (error) { return null; }
             };
             el._bbfSubmitKey = newSubmitKey();
+            let redirectRecoveryTimer = null;
+            const cancelRedirectRecovery = () => {
+                clearTimeout(redirectRecoveryTimer);
+                redirectRecoveryTimer = null;
+            };
+            if (typeof window.addEventListener === 'function') window.addEventListener('pagehide', cancelRedirectRecovery);
             if (typeof window.addEventListener === 'function') window.addEventListener('pageshow', (event) => {
+                cancelRedirectRecovery();
                 if (el._bbfRedirecting) {
                     el._bbfRedirecting = false;
                     el._bbfSubmitting = false;
@@ -1489,9 +1499,9 @@
                         }
                         this._clearErrors(el);
 
-                        if (options.hideOnSuccess) {
-                            Array.from(el.querySelectorAll('.bbf-field, .bbf-submit-wrap, .bbf-page, .bbf-page-nav')).forEach(f => f.style.display = 'none');
-                        }
+                        const hiddenOnSuccess = options.hideOnSuccess
+                            ? Array.from(el.querySelectorAll('.bbf-field, .bbf-submit-wrap, .bbf-page, .bbf-page-nav')).map(f => [f, f.style.display]) : [];
+                        hiddenOnSuccess.forEach(([f]) => f.style.display = 'none');
                         if (hashRedirect) {
                             el._bbfRedirecting = leavingPage;
                             if (leavingPage) {
@@ -1504,21 +1514,30 @@
                                 restart.className = 'bbf-new-submission';
                                 restart.textContent = this._t('newSubmission', {}, langCode);
                                 restart.addEventListener('click', () => {
+                                    window.stop();
                                     el._bbfRedirecting = false;
                                     el._bbfSubmitting = false;
                                     el._bbfHideOnSuccess = false;
-                                    Array.from(el.querySelectorAll('.bbf-field, .bbf-submit-wrap, .bbf-page-nav')).forEach(f => f.style.display = '');
-                                    if (hasPages) { currentPage.value = 0; this._showPage(el, 0, pages.length, langCode, true); }
+                                    hiddenOnSuccess.forEach(([f, display]) => f.style.display = display);
+                                    if (hasPages) { currentPage.value = 0; this._showPage(el, 0, pages.length, langCode, false); }
                                     this._stabilizeOptionConditions(el);
                                     this._applyConditions(el, allFlat, false);
                                     btn.disabled = this._fileFieldsState(el) === 'pending';
                                     msg.style.display = 'none';
                                     msg.textContent = '';
+                                    const focusRoot = hasPages ? el.querySelector('.bbf-page') : el;
+                                    const first = Array.from(focusRoot.querySelectorAll('input, select, textarea, button'))
+                                        .find(node => node.type !== 'hidden' && !node.disabled && !this._isHidden(node) && !node.closest('[aria-hidden="true"]'));
+                                    if (first) first.focus();
                                 });
                                 link.style.marginInlineStart = '0.5em';
                                 restart.style.marginInlineStart = '0.5em';
-                                msg.appendChild(link);
-                                msg.appendChild(restart);
+                                redirectRecoveryTimer = setTimeout(() => {
+                                    redirectRecoveryTimer = null;
+                                    if (!el._bbfRedirecting) return;
+                                    msg.appendChild(link);
+                                    msg.appendChild(restart);
+                                }, 4000);
                             }
                             window.location.href = hashRedirect;
                             if (leavingPage) return;
@@ -2599,7 +2618,7 @@
                     return;
                 }
                 // Same rule as the server (bbf_functions.php validate()).
-                if (type === 'tel' && !/^[+]?[0-9\s\-().]{6,20}$/.test(String(value).trim())) {
+                if (type === 'tel' && !/^[+]?[0-9 \t\r\n\f\v\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\-().]{6,20}$/.test(String(value).trim())) {
                     errors[name] = t('invalidTel', { label });
                     return;
                 }

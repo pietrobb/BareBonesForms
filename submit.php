@@ -411,6 +411,7 @@ if ($isSandbox) {
     ];
 
     // Preview what would happen on_submit
+    $subjectVars = array_replace($data, ['_form' => $form['name'] ?? $formId, '_id' => $submissionId, '_time' => $timestamp]);
     $preview = [];
     $previewConfig = bbf_effective_storage_config($config, $formId, $form);
     $effectiveStorage = $previewConfig['storage'];
@@ -423,7 +424,7 @@ if ($isSandbox) {
         $ce = $onSubmit['confirm_email'];
         $preview['confirm_email'] = [
             'to'      => interpolate($ce['to'], $data),
-            'subject' => interpolate($ce['subject'] ?? 'Thank you', $data),
+            'subject' => interpolate($ce['subject'] ?? 'Thank you', $subjectVars),
             'reply_to' => isset($ce['reply_to']) ? interpolate($ce['reply_to'], $data) : $config['mail']['from_email'],
             'template' => $ce['template'] ?? 'confirm.html',
             'body_preview' => renderTemplate(
@@ -439,7 +440,7 @@ if ($isSandbox) {
             'to'      => ($_smokeAuth && !empty($config['smoke_email']))
                           ? ($config['smoke_notify'] ?? $config['smoke_email'] ?? '')
                           : (is_array($n['to']) ? implode(', ', array_map(fn($t) => interpolate($t, $data), $n['to'])) : interpolate($n['to'], $data)),
-            'subject' => interpolate($n['subject'] ?? "New submission: $formId", $data),
+            'subject' => interpolate($n['subject'] ?? "New submission: $formId", $subjectVars),
             'reply_to' => isset($n['reply_to']) ? interpolate($n['reply_to'], $data) : $config['mail']['from_email'],
             'template' => $n['template'] ?? 'notify.html',
             'body_preview' => renderTemplate(

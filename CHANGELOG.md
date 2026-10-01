@@ -3,6 +3,17 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.13] — 2026-10-01
+
+### Fixed
+- Redirect recovery actions appear only after four seconds on the same page. Starting a new fill stops pending navigation before unlocking, preserves hidden-field layout and restores focus.
+- Unidentified renderer modules fall back to the document directory with an explicit warning instead of borrowing another script's origin. `data-bbf-base` accepts a missing trailing slash.
+- Audit diagnostics check regular-file shape, write permission bits and the PHP guard before CLI/web ownership comparison, flag root-owned logs and accept symlinked deployment ancestors without accepting linked audit targets.
+- CLI diagnostics clean fixtures on SIGTERM/SIGINT where `pcntl` is available, scan matching fixture names independently of form-directory count, report unreclaimable stale fixtures, and explain redirect/SPA fallback probe failures.
+- Nested email sections render in one token pass without evaluating respondent text. Confirmation and notification subjects support authoritative system variables. Interior phone BOM is rejected consistently by client and server.
+- Upgrade children preserve literal `${...}` INI values. Suggested apply/rollback commands quote POSIX arguments and use a dependency-free encoded PowerShell launcher on Windows to preserve percent/dollar paths and native argument quoting.
+- Already-published tags are checked before build attestation and release mutation.
+
 ## [2.1.12] — 2026-10-01
 
 Includes all review fixes below. Tag `v2.1.11` was not published: its draft was removed after ownership discovery failed. Draft creation now pins the immutable ID directly from the API response, avoiding a stale list-API result; assets are uploaded and verified by ID.
