@@ -352,6 +352,15 @@ try {
         && !str_contains($spoofed['body'], '198.51.100.44') && !str_contains($spoofed['body'], '198.51.100.45'),
         'diagnostics report invalid cookie_path and never infer a proxy from untrusted forwarding headers');
     core_config($baseConfig);
+    rename("$root/config.php", "$root/config-fixture-saved.php");
+    try {
+        foreach (['viewer.php', 'editor.php', 'check.php'] as $path) {
+            $missing = core_http($path);
+            core_check($missing['code'] === 503 && str_contains($missing['body'], 'maintenance.php selfcheck')
+                && str_contains($missing['headers'], 'no-store') && !preg_match('/Missing config|config.example|Copy |edit it/', $missing['body']),
+                'missing config is a generic non-cacheable failure: ' . $path);
+        }
+    } finally { rename("$root/config-fixture-saved.php", "$root/config.php"); }
     // Review 2.1.9: anonymous failures never expose configuration diagnostics.
     core_config(['cookie_path' => 'relative/path', 'trusted_proxies' => ['bad-proxy'], 'access_tokens' => [$shortConfig['access_tokens'][7]]] + $baseConfig);
     foreach (['viewer.php', 'editor.php', 'check.php', 'submissions.php?form=alpha'] as $path) {
@@ -363,6 +372,7 @@ try {
     foreach (['viewer.php', 'submissions.php?form=alpha'] as $path) {
         $unavailable = core_http($path);
         core_check($unavailable['code'] === 503 && str_contains($unavailable['body'], 'Access audit unavailable.')
+            && str_contains($unavailable['body'], 'maintenance.php selfcheck')
             && !preg_match('/logs_dir|directory|check.php|missing-audit|config.php/', $unavailable['body']),
             'anonymous audit failure is generic in HTML/JSON: ' . $path);
     }

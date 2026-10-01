@@ -127,6 +127,18 @@ $broken = $good; $broken['access_tokens'][] = ['id' => 'x'];
 $b = bbf_auth_config_problems($broken);
 auth_check(($b[0]['level'] ?? '') === 'error' && str_contains($b[0]['message'], 'ALL tokens') && bbf_auth_registry($broken) === [], 'a malformed record is reported as disabling all access');
 auth_check(str_contains(implode(' ', array_column(bbf_auth_config_problems(['api_token' => '']), 'message')), 'No usable access token'), 'no token at all is reported');
+foreach ([['api_token' => ''], ['api_token' => '', 'access_tokens' => [$token('invalid', 'short')]],
+    ['api_token' => '', 'access_tokens' => [['id' => 'broken']]]] as $blocked) {
+    auth_check(bbf_auth_access_blocked($blocked) && in_array('error', array_column(bbf_auth_config_problems($blocked), 'level'), true),
+        'empty or all-invalid credentials are blocked and diagnosed as an error');
+}
+auth_check(!bbf_auth_access_blocked($good) && !bbf_auth_access_blocked(['api_token' => ''] + $good),
+    'admin and intentional scoped-only policies remain supported');
+auth_check(bbf_auth_token_usable(str_repeat('deadbeef', 4)), 'hex syntax is accepted without an entropy heuristic');
+$inactive = ['api_token' => '', 'access_tokens' => [$token('revoked', str_repeat('d', 32))]];
+$inactive['access_tokens'][0]['revoked'] = true;
+auth_check(bbf_auth_access_blocked($inactive) && in_array('error', array_column(bbf_auth_config_problems($inactive), 'level'), true),
+    'a registry with only revoked credentials is blocked');
 $px = bbf_auth_config_problems(['trusted_proxies' => ['10.0.0.0/', '192.0.2.0/24']] + $good);
 auth_check(count($px) === 1 && str_contains($px[0]['message'], '"10.0.0.0/"') && !str_contains($px[0]['message'], '192.0.2.0'), 'invalid trusted_proxies entries are reported');
 
@@ -201,6 +213,25 @@ try {
     file_put_contents("$audit.1", $guard);
     bbf_audit_write($ac, $principal, 'viewer_list', 'contact', [], 'allowed', 'completed', 1);
     auth_check(!file_exists("$audit.1") && str_contains((string)file_get_contents("$logs/access-audit.1.php"), 'legacy'), 'when access-audit.1.php exists the old file is removed, never overwriting it');
+
+    // Non-mutating audit preflight must inspect the file, not merely its directory.
+    $beforeAudit = file_get_contents($audit);
+    auth_check(bbf_audit_problem($ac) === null && file_get_contents($audit) === $beforeAudit,
+        'audit preflight accepts a writable guarded file without changing its bytes');
+    file_put_contents($audit, 'invalid guard');
+    auth_check(bbf_audit_problem($ac) !== null && file_get_contents($audit) === 'invalid guard', 'audit preflight rejects an invalid guard without repairing it');
+    file_put_contents($audit, $beforeAudit);
+    if (PHP_OS_FAMILY !== 'Windows') {
+        chmod($audit, 0444); clearstatcache();
+        auth_check(bbf_audit_problem($ac) !== null && file_get_contents($audit) === $beforeAudit,
+            'read-only audit permission bits fail even under root');
+        chmod($audit, 0600);
+    } else print "SKIP POSIX permission-bit check on Windows\n";
+    unlink($audit); mkdir($audit);
+    auth_check(bbf_audit_problem($ac) !== null, 'directory occupying audit filename is rejected');
+    rmdir($audit);
+    auth_check(bbf_audit_problem($ac) === null && !file_exists($audit), 'absent audit file is not created by preflight');
+    file_put_contents($audit, $beforeAudit);
 
     // ─── Audit redaction ignores tokens too short to be credentials ───
     $rc = $ac + ['api_token' => str_repeat('b', 32), 'access_tokens' => [$token('tiny', 'co')], 'smoke_token' => 'nt'];

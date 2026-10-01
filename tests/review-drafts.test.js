@@ -78,7 +78,7 @@ function harness() {
             requests.push({ url, options, wait });
             return wait.promise;
         },
-        setTimeout, clearTimeout, console,
+        setTimeout, clearTimeout, AbortController, console,
     });
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'bbf.js'), 'utf8'), context, { filename: 'bbf.js' });
     const form = new Element('form'); form.className = 'bbf-form';

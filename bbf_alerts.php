@@ -285,11 +285,17 @@ function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null, ?callab
         }
     }
 
-    if (function_exists('bbf_auth_config_problems')) {
-        foreach (bbf_auth_config_problems($config) as $problem) {
-            if ($problem['level'] === 'error') $problems[] = ['-', 'Access configuration problem', 'Self-check: ' . $problem['message']];
-        }
+    require_once __DIR__ . '/bbf_auth.php';
+    $accessProblems = bbf_auth_config_problems($config);
+    foreach ($accessProblems as $problem) {
+        if ($problem['level'] === 'error') $problems[] = ['-', 'Access configuration problem', 'Self-check: ' . $problem['message']];
     }
+
+    if (($auditProblem = bbf_audit_problem($config)) !== null)
+        $problems[] = ['-', 'Access audit unavailable', 'Self-check: ' . $auditProblem];
+    require_once __DIR__ . '/bbf_diagnostics.php';
+    $rewrite = bbf_diagnostic_rewrite($config);
+    if ($rewrite['status'] === 'error') $problems[] = ['-', 'Rewrite protection unavailable', 'Self-check: ' . $rewrite['detail']];
 
     // Security rules and docs: an upgrade by an older upgrader (or FTP) can leave the release's new rules out.
     require_once __DIR__ . '/bbf_upgrade.php';
@@ -330,6 +336,9 @@ function bbf_alert_selfcheck(array $config, ?callable $smtpProbe = null, ?callab
     return [
         'ok' => $problems === [],
         'forms_checked' => $forms,
+        'access_blocked' => bbf_auth_access_blocked($config),
+        'access_problems' => $accessProblems,
+        'rewrite_http' => $rewrite, // unverified is not a claim that web-server security works
         'problems' => array_map(static fn(array $p) => ['form' => $p[0], 'type' => $p[1], 'detail' => $p[2]], $problems),
         'update' => bbf_update_check($config, $fetchLatest),
         'notify' => trim((string)($config['error_notify'] ?? '')) === '' ? 'error_notify is empty: problems are only logged, no email is sent' : 'enabled',

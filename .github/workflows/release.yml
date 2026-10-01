@@ -118,9 +118,11 @@ jobs:
             on {print}
           ' CHANGELOG.md > "$notes"
           [ -s "$notes" ] || echo "See CHANGELOG.md." > "$notes"
+          cp "$notes" "$RUNNER_TEMP/draft-notes.md"
+          printf '\n<!-- bbf-release-run:%s:%s -->\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$RUNNER_TEMP/draft-notes.md"
           gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}.zip" \
             "$RUNNER_TEMP/barebonesforms-${GITHUB_REF_NAME}-upgrade.zip" "$RUNNER_TEMP/SHA256SUMS" \
-            --draft --title "$GITHUB_REF_NAME" --notes-file "$notes"
+            --draft --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/draft-notes.md"
       - name: Verify uploaded draft files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -139,15 +141,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release edit "$GITHUB_REF_NAME" --draft=false
+          gh release edit "$GITHUB_REF_NAME" --draft=false --notes-file "$RUNNER_TEMP/notes.md"
       - name: Remove this run's unverified draft
-        if: ${{ failure() && steps.create_release.outcome == 'success' }}
+        if: ${{ always() && (failure() || cancelled()) }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          # Never delete a release another actor has already published.
-          if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = true ]; then
-            gh release delete "$GITHUB_REF_NAME" --yes
+          # The server-side run marker also covers cancellation during draft creation.
+          marker="<!-- bbf-release-run:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT} -->"
+          release=$(gh release view "$GITHUB_REF_NAME" --json databaseId,isDraft,body) || exit 0
+          id=$(printf '%s' "$release" | jq -r --arg marker "$marker" 'select(.isDraft == true and (.body | contains($marker))) | .databaseId')
+          # Delete by immutable identity, not by a tag that another actor could reuse.
+          if [[ "$id" =~ ^[0-9]+$ ]]; then
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
           fi

@@ -369,10 +369,12 @@ acceptance_check(substr_count($workflow, 'actions/setup-python@') >= 2
     'PHP 8.2 and 8.1 gates install the pinned Draft 2020-12 schema test dependency');
 
 $releaseWorkflow = acceptance_source($root, '.github/workflows/release.yml');
-acceptance_check(str_contains($releaseWorkflow, "failure() && steps.create_release.outcome == 'success'")
-    && str_contains($releaseWorkflow, '--json isDraft --jq .isDraft')
-    && str_contains($releaseWorkflow, 'gh release delete "$GITHUB_REF_NAME" --yes'),
-    'failed release verification cleans only the draft created by this run, never a published release');
+acceptance_check(str_contains($releaseWorkflow, 'always() && (failure() || cancelled())')
+    && str_contains($releaseWorkflow, '--json databaseId,isDraft,body')
+    && str_contains($releaseWorkflow, 'select(.isDraft == true and (.body | contains($marker))) | .databaseId')
+    && str_contains($releaseWorkflow, 'repos/$GITHUB_REPOSITORY/releases/$id')
+    && !str_contains($releaseWorkflow, 'gh release delete "$GITHUB_REF_NAME"'),
+    'failed or cancelled release verification cleans only this run-marked draft by immutable ID, never another draft or a published release');
 
 $schema = json_decode(acceptance_source($root, 'forms/form.schema.json'), true, 512, JSON_THROW_ON_ERROR);
 $top = $schema['properties'] ?? []; $field = $schema['$defs']['field']['properties'] ?? [];

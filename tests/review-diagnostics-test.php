@@ -101,7 +101,7 @@ diagnostic_check(function_exists('curl_init'), 'cURL available for required two-
 $root = bbf_test_installation(dirname(__DIR__));
 $server = $httpServer = null;
 try {
-    foreach (['smoketest.php', 'check.php', 'bbf_diagnostics.php', 'bbf_auth.php'] as $file) {
+    foreach (['smoketest.php', 'check.php', 'bbf_diagnostics.php', 'bbf_auth.php', 'bbf_alerts.php'] as $file) {
         bbf_test_copy(dirname(__DIR__) . '/' . $file, $root . '/' . $file);
     }
     // Replace the fixture's real submission handler as a second safety barrier.
@@ -127,6 +127,14 @@ PHP;
     file_put_contents($root . '/probe.php', <<<'PHP'
 <?php
 $path = $_SERVER['PATH_INFO'] ?? '';
+if (preg_match('#\A/bbf-check-[0-9a-f]{32}/(control|\.rewrite)\.txt\z#D', $path, $m)) {
+    $mode = trim((string)@file_get_contents(__DIR__ . '/probe/rewrite-mode'));
+    file_put_contents(__DIR__ . '/logs/rewrite-requests', $path . "\n", FILE_APPEND);
+    if ($mode === 'redirect') { http_response_code(302); header('Location: /trap.php'); exit; }
+    if ($mode === 'fallback') exit('fallback page');
+    if ($mode === 'deny-all' || ($mode === 'enabled' && $m[1] === '.rewrite')) { http_response_code(403); exit; }
+    echo file_get_contents(__DIR__ . $path); exit;
+}
 file_put_contents(__DIR__ . '/logs/probe-requests', $_SERVER['REQUEST_URI'] . "\n", FILE_APPEND);
 $leak = is_file(__DIR__ . '/probe/leak') && preg_match('#\A/(?:[a-z]+/[^/]+|README\.md|CHANGELOG\.md|bbf_auth\.php)\z#', $path);
 $status = $leak ? 200 : (int)file_get_contents(__DIR__ . '/probe/status');
@@ -218,11 +226,84 @@ PHP);
             'permissions' => ['read'], 'expires_at' => '2099-01-01T00:00:00Z', 'revoked' => false]],
     ];
     diagnostic_config($root, $config);
+    file_put_contents($root . '/run-selfcheck.php', <<<'PHP'
+<?php
+ini_set('error_log', __DIR__ . '/logs/selfcheck-error.log');
+define('BBF_LOADED', true);
+require __DIR__ . '/bbf_functions.php';
+require __DIR__ . '/bbf_auth.php';
+$config = require __DIR__ . '/config.php';
+echo json_encode(bbf_alert_selfcheck($config, static fn() => ['ok' => true], static fn() => null));
+PHP);
     file_put_contents($root . '/forms/test_diag.json', json_encode([
         'id' => 'test_diag', 'schema_version' => 1, 'name' => 'Diagnostic mock form',
         'fields' => [['name' => 'message', 'type' => 'text', 'label' => 'Message']],
         'on_submit' => ['store' => false],
     ], JSON_THROW_ON_ERROR));
+    foreach ([false, true] as $streams) {
+        $rewriteConfig = ['diagnostic_base_url' => $base . '/probe.php'] + $config;
+        foreach (['missing' => 'error', 'enabled' => 'verified', 'deny-all' => 'unverified', 'fallback' => 'unverified', 'redirect' => 'unverified'] as $mode => $expected) {
+            file_put_contents($root . '/probe/rewrite-mode', $mode);
+            file_put_contents($root . '/run-rewrite.php', '<?php define("BBF_LOADED", true); require __DIR__ . "/bbf_diagnostics.php"; echo json_encode(bbf_diagnostic_rewrite(' . var_export($rewriteConfig, true) . ', __DIR__));');
+            bbf_test_verify_server($server);
+            [$exit, $output] = diagnostic_cli($root, [], $streams, 'run-rewrite.php');
+            $rewrite = json_decode($output, true);
+            diagnostic_check($exit === 0 && ($rewrite['status'] ?? '') === $expected, 'rewrite-only fixture ' . $mode . ' classified ' . $expected . ($streams ? ' streams' : ' cURL'));
+            diagnostic_check(glob($root . '/bbf-check-*') === [], 'rewrite fixtures cleaned after ' . $mode);
+        }
+    }
+    diagnostic_check(!file_exists($root . '/logs/trap'), 'rewrite probe never follows redirects');
+    $fixtureRules = file_get_contents(dirname(__DIR__) . '/.htaccess');
+    file_put_contents($root . '/.htaccess', str_replace('RewriteEngine On', "<IfModule mod_rewrite.c>\nRewriteEngine On", $fixtureRules) . "\n</IfModule>\n");
+    try {
+        require_once dirname(__DIR__) . '/bbf_upgrade.php';
+        diagnostic_check(bbf_htaccess_missing_rules($root) === [], 'IfModule-wrapped rewrite rules pass structural inspection');
+        bbf_test_verify_server($server);
+        $ignored = bbf_diagnostic_rewrite(['diagnostic_base_url' => $base], $root);
+        diagnostic_check($ignored['status'] === 'error' && str_contains($ignored['detail'], 'mod_rewrite'), 'actual owned php-S listener exposes rewrite-only fixture despite structurally complete IfModule rules');
+        diagnostic_check(glob($root . '/bbf-check-*') === [], 'actual ignored-rewrite probe removes every owned fixture');
+    } finally { unlink($root . '/.htaccess'); }
+    diagnostic_check(bbf_diagnostic_rewrite([], $root)['status'] === 'unverified', 'CLI without fixed HTTP target does not assure rewrite protection');
+    foreach ([['api_token' => '', 'access_tokens' => []], ['api_token' => '', 'access_tokens' => [['id' => 'invalid', 'token' => 'short']]]] as $blockedConfig) {
+        diagnostic_config($root, $blockedConfig + $config);
+        [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
+        $report = json_decode($output, true);
+        diagnostic_check($exit === 0 && ($report['ok'] ?? true) === false && in_array('Access configuration problem', array_column($report['problems'], 'type'), true), 'selfcheck is non-ok for empty/all-invalid access tokens');
+    }
+    diagnostic_config($root, ['api_token' => $config['api_token'] . ' '] + $config);
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
+    $report = json_decode($output, true);
+    diagnostic_check(($report['ok'] ?? true) === false && str_contains(implode(' ', array_column($report['access_problems'] ?? [], 'message')), 'trailing whitespace')
+        && !str_contains($output, $config['api_token']), 'selfcheck explains trailing whitespace without exposing the credential');
+    diagnostic_config($root, ['api_token' => ''] + $config);
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
+    $report = json_decode($output, true);
+    diagnostic_check($exit === 0 && ($report['ok'] ?? false) === true && ($report['rewrite_http']['status'] ?? '') === 'unverified', 'scoped-only selfcheck remains healthy but HTTP protection is explicitly unverified');
+    $auditPath = $root . '/logs/access-audit.php';
+    $auditBytes = "<?php http_response_code(404); exit; ?>\n{\"fixture\":true}\n";
+    file_put_contents($auditPath, $auditBytes);
+    diagnostic_config($root, $config);
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
+    diagnostic_check($exit === 0 && (json_decode($output, true)['ok'] ?? false) && file_get_contents($auditPath) === $auditBytes, 'selfcheck leaves existing audit bytes unchanged');
+    unlink($auditPath); mkdir($auditPath);
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
+    $report = json_decode($output, true);
+    diagnostic_check(($report['ok'] ?? true) === false && in_array('Access audit unavailable', array_column($report['problems'], 'type'), true), 'selfcheck rejects unwritable non-file audit target');
+    rmdir($auditPath);
+    if (PHP_OS_FAMILY !== 'Windows') {
+        file_put_contents($auditPath, $auditBytes); chmod($auditPath, 0444);
+        [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
+        $report = json_decode($output, true);
+        diagnostic_check(($report['ok'] ?? true) === false && in_array('Access audit unavailable', array_column($report['problems'], 'type'), true)
+            && file_get_contents($auditPath) === $auditBytes, 'selfcheck rejects read-only root-owned audit even when CLI is root');
+        chmod($auditPath, 0600); unlink($auditPath);
+    } else print "SKIP POSIX audit permissions on Windows\n";
+    diagnostic_config($root, ['diagnostic_base_url' => $base . '/probe.php'] + $config);
+    file_put_contents($root . '/probe/status', '403'); file_put_contents($root . '/probe/rewrite-mode', 'missing');
+    [$exit, $output] = diagnostic_cli($root, [], false, 'run-selfcheck.php');
+    $report = json_decode($output, true);
+    diagnostic_check(($report['ok'] ?? true) === false && ($report['rewrite_http']['status'] ?? '') === 'error', 'selfcheck is non-ok when rewrite-only fixture is exposed');
+    diagnostic_config($root, $config);
     [$exit, $output] = diagnostic_cli($root, ['--anonymous'], false, 'run-check.php');
     diagnostic_check(str_contains($output, '<h1>Sign in</h1>') && !str_contains($output, 'Invalid token')
         && !str_contains($output, 'blocked via HTTP'), 'check rejects hostile localhost SERVER_NAME without credentials');

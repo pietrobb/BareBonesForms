@@ -5,7 +5,7 @@
  */
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit('CLI only.'); }
 $options = getopt('', ['install:', 'apply', 'confirm:']);
-$install = realpath((string)($options['install'] ?? ''));
+$install = isset($options['install']) ? realpath((string)$options['install']) : false;
 if ($install === false || !is_file($install . '/config.php')) {
     fwrite(STDERR, "Required: --install=<installation folder with config.php> [--apply --confirm=<digest>]\n");
     exit(2);
@@ -21,12 +21,9 @@ if (realpath($package) === $install) {
 }
 define('BBF_LOADED', true);
 require_once $package . '/bbf_upgrade.php';
-$config = (static fn() => require $install . '/config.php')();
-if (!is_array($config)) {
-    fwrite(STDERR, "Cannot read $install/config.php.\n");
-    exit(1);
-}
 try {
+    $config = (static fn() => require $install . '/config.php')();
+    if (!is_array($config)) throw new RuntimeException("Cannot read $install/config.php.");
     $result = bbf_upgrade($config, $package, isset($options['apply']) ? (string)$options['confirm'] : null, $install);
 } catch (Throwable $error) {
     fwrite(STDERR, 'Upgrade failed: ' . $error->getMessage() . "\n");
@@ -36,4 +33,4 @@ if (!isset($options['apply']) && ($result['ok'] ?? false) && !($result['up_to_da
     $result['next'] = 'php ' . $argv[0] . ' --install=' . $install . ' --apply --confirm=' . $result['confirm'];
 }
 fwrite(STDOUT, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
-exit(($result['ok'] ?? false) ? 0 : 1);
+exit(bbf_upgrade_exit_code($result));

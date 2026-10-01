@@ -293,6 +293,8 @@ foreach (['README.md', 'CHANGELOG.md'] as $doc) {
         : "$doc is publicly readable (HTTP $docCode) and reveals the installed version. Add the *.md rule from .htaccess (Nginx: see its comments) or delete the file.")),
         $docCode === null ? 'warn' : 'error');
 }
+$rewrite = bbf_diagnostic_rewrite($config);
+check('Security', 'Rewrite execution via HTTP', $rewrite['status'] === 'verified', $rewrite['detail'], $rewrite['status'] === 'error' ? 'error' : 'warn');
 foreach (bbf_htaccess_missing_rules(__DIR__) as $missing) {
     check('Security', '.htaccess has the rules of this release', false, $missing);
 }

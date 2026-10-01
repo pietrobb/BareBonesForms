@@ -121,6 +121,7 @@ module.exports = { loadBBF, MiniElement }; function loadBBF(overrides = {}) {
         location: { href: 'https://example.test/demo.html', origin: 'https://example.test', search: '' },
         URL,
         URLSearchParams,
+        AbortController,
         Event: TestEvent,
         MouseEvent: TestEvent,
         FormData: overrides.FormData || class { forEach() {} },
@@ -146,6 +147,39 @@ async function settle() {
     for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve));
 }
 
+test('CSRF timeout aborts stalled fetch/body, settles shared callers and releases other forms', async () => {
+    for (const stalledBody of [false, true]) {
+        const timers = [], requests = [];
+        const late = deferred();
+        const { BBF } = loadBBF({
+            setTimeout: (fn, ms) => { assert.equal(ms, 15000); timers.push(fn); return fn; },
+            clearTimeout: fn => { const index = timers.indexOf(fn); if (index >= 0) timers.splice(index, 1); },
+            fetch: (url, options) => {
+                requests.push({ url, options });
+                if (requests.length === 1) return stalledBody ? Promise.resolve({ ok: true, json: () => late.promise }) : late.promise;
+                return Promise.resolve({ ok: true, json: async () => ({ csrf_token: 'second-token' }) });
+            }
+        });
+        const field = { value: 'old' }, firstForm = { querySelector: () => field };
+        const first = BBF._refreshCsrf('./', 'first', firstForm, 'old');
+        const shared = BBF._refreshCsrf('./', 'first', firstForm, 'old');
+        const next = BBF._refreshCsrf('./', 'second', null);
+        assert.equal(requests.length, 1);
+        timers[0]();
+        assert.equal(await first, null);
+        assert.equal(await shared, null);
+        assert.equal(await next, 'second-token');
+        assert.equal(requests[0].options.signal.aborted, true);
+        late.resolve(stalledBody ? { csrf_token: 'late-token' } : { ok: true, json: async () => ({ csrf_token: 'late-token' }) });
+        await settle();
+        assert.equal(field.value, 'old', 'a late timed-out result cannot overwrite the form token');
+        assert.equal(BBF._csrfRefreshQueues.size, 0);
+        assert.equal(BBF._csrfRefreshes.size, 0);
+        assert.equal(timers.length, 0);
+        assert.equal(await BBF._refreshCsrf('./', 'first', firstForm, 'old'), 'second-token', 'timeout permits a later retry');
+    }
+});
+
 test('currentScript owns the renderer and stylesheet URLs even with later scripts', () => {
     const { BBF, document } = loadBBF({ prelude: `
         document.currentScript = { src: 'https://forms.test/installation/bbf.js' };
@@ -153,6 +187,20 @@ test('currentScript owns the renderer and stylesheet URLs even with later script
     ` });
     assert.equal(BBF.baseUrl, 'https://forms.test/installation/');
     assert.equal(document.head.children[0].href, 'https://forms.test/installation/bbf.css');
+});
+
+test('module script resolves renderer and CSS instead of an unrelated last script', () => {
+    for (const suffix of ['', '?v=2#renderer']) {
+        const { BBF, document } = loadBBF({ prelude: `
+            document.currentScript = null;
+            document.getElementsByTagName = () => [
+                { src: 'https://forms.test/modules/bbf.js${suffix}' },
+                { src: 'https://unrelated.test/later.js' }
+            ];
+        ` });
+        assert.equal(BBF.baseUrl, 'https://forms.test/modules/');
+        assert.equal(document.head.children[0].href, 'https://forms.test/modules/bbf.css');
+    }
 });
 
 test('latest render request owns its container when an older request fails late', async () => {

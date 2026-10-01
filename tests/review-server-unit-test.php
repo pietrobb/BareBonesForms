@@ -133,6 +133,10 @@ $editorSource = file_get_contents(dirname(__DIR__) . '/editor.php');
 server_check(str_contains($editorSource, 'bbf_create_file_exclusive($file, $template)') && !str_contains($editorSource, 'file_put_contents($file, $template)'),
     'editor create uses the atomic exclusive writer');
 
+file_put_contents($root . '/numeric-template.html', '{{5}}|{{2024}}|{{name}}');
+server_check(renderTemplate($root . '/numeric-template.html', []) === '||', 'missing or hidden numeric email placeholders are removed');
+server_check(renderTemplate($root . '/numeric-template.html', [5 => '', 2024 => '0', 'name' => '<b>']) === '|0|&lt;b&gt;', 'empty numeric email fields are removed; zero and escaping are preserved');
+
 // ─── Submit releases the session lock right after reading the secret ─
 $submitSource = file_get_contents(dirname(__DIR__) . '/submit.php');
 preg_match('/function ensureSession\([^)]*\): void \{.*?\n\}/s', $submitSource, $m);

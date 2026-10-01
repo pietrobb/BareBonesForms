@@ -105,7 +105,7 @@ if (in_array($command, ['version', 'upgrade', 'upgrade-rollback'], true)) {
             . ($checksum !== '' ? " --checksum=$checksum" : '') . (!empty($options['trust']) ? ' --trust-package' : '') . " --apply --confirm={$result['confirm']}";
     }
     fwrite(STDOUT, json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
-    exit(($result['ok'] ?? false) ? 0 : 1);
+    exit(bbf_upgrade_exit_code($result));
 }
 if (in_array($command, ['selfcheck', 'alerts', 'alerts-test'], true)) {
     require_once __DIR__ . '/bbf_functions.php';

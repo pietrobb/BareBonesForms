@@ -16,6 +16,16 @@ const BBF_MANIFEST = '.bbf-manifest.json';
 const BBF_UPGRADE_RESULT = "\n--BBF-UPGRADE-RESULT--\n";
 const BBF_RELEASES_LATEST = 'https://api.github.com/repos/pietrobb/BareBonesForms/releases/latest';
 
+/** Public CLI statuses; the delegated child retains its legacy 0/1 wire contract for older parents. */
+function bbf_upgrade_exit_code(array $result): int {
+    if (($result['ok'] ?? false) === true) return 0;
+    if (isset($result['upgrader_exit_code']) && $result['upgrader_exit_code'] !== 1) return 1;
+    if (($result['access_checked'] ?? true) === false || !empty($result['access_blocked'])) return 4;
+    if (array_key_exists('rolled_back', $result) || isset($result['rollback_errors']) || isset($result['errors'])) return 5;
+    if (isset($result['problems']) || str_contains($result['error'] ?? '', 'changed since the dry run')) return 3;
+    return 1;
+}
+
 /** Installed release version, or 'dev' for a git checkout / package built without --version. */
 function bbf_version(): string {
     return bbf_upgrade_manifest(__DIR__)['version'] ?? 'dev';
@@ -172,18 +182,20 @@ function bbf_upgrade_breaking(string $changelog, string $from, string $to): arra
  * @return array{exit: int, out: string, err: string}|null
  */
 function bbf_upgrade_run(array $command, string $cwd): ?array {
-    $errFile = tempnam(sys_get_temp_dir(), 'bbf');
+    if (!function_exists('proc_open') || PHP_BINARY === '') return null;
+    $errFile = @tempnam(sys_get_temp_dir(), 'bbf');
     if ($errFile === false) return null;
     try {
         // CLI -d overrides are not inherited by PHP children. Preserve the active security restrictions,
         // resource limits and diagnostics only; do not replay arbitrary extension/startup configuration.
         if (($command[0] ?? null) === PHP_BINARY) {
             $settings = [];
-            foreach (['open_basedir', 'disable_functions', 'disable_classes', 'allow_url_fopen', 'allow_url_include', 'memory_limit', 'max_execution_time',
+            foreach (['open_basedir', 'sys_temp_dir', 'disable_functions', 'disable_classes', 'allow_url_fopen', 'allow_url_include', 'memory_limit', 'max_execution_time',
                 'display_errors', 'error_reporting', 'log_errors'] as $name) {
                 $value = ini_get($name);
-                // INI parsing still applies to -d values: quote semicolon-separated Windows path lists.
-                if ($value !== false) array_push($settings, '-d', $name . '="' . str_replace('"', '\\"', $value) . '"');
+                if ($name === 'error_reporting' && ($value === false || $value === '')) $value = (string)error_reporting();
+                // INI parsing still applies to -d values; escape backslashes too, preserving UNC prefixes.
+                if ($value !== false) array_push($settings, '-d', $name . '="' . str_replace(['\\', '"'], ['\\\\', '\\"'], $value) . '"');
             }
             array_splice($command, 1, 0, $settings);
         }
@@ -243,21 +255,23 @@ function bbf_upgrade_access_warnings(string $stageDir, string $install): array {
 
 /** Use the installed/package auth policy, never duplicate its token-strength rules here. */
 function bbf_upgrade_access_state(string $stageDir, string $install): array {
-    $unknown = ['warnings' => [], 'blocked' => false];
+    $unknown = ['warnings' => ['Administrative access could not be checked. Enable proc_open in the CLI PHP disable_functions setting, ensure PHP_BINARY and bbf_auth.php/config.php are available, and use a writable sys_temp_dir allowed by open_basedir; then repeat the dry run. Upgrade is refused until this check succeeds.'], 'blocked' => false, 'checked' => false];
     if (!function_exists('proc_open') || PHP_BINARY === '' || !is_file("$stageDir/bbf_auth.php") || !is_file("$install/config.php")) return $unknown;
     $script = 'ini_set("display_errors", "stderr"); define("BBF_LOADED", true); require $argv[1]; $c = require $argv[2];'
-        . ' $warnings = is_array($c) && function_exists("bbf_auth_config_problems") ? array_column(bbf_auth_config_problems($c), "message") : [];'
-        . ' $admin = false; if (is_array($c) && function_exists("bbf_auth_registry")) foreach (bbf_auth_registry($c) as $r)'
-        . ' if (!empty($r["admin"]) && empty($r["revoked"]) && ($r["expires"] ?? 0) > time()) $admin = true;'
-        . ' echo json_encode(["warnings" => $warnings, "blocked" => is_array($c) && !empty($c["api_token"]) && !$admin]);';
+        . ' if (!is_array($c) || !function_exists("bbf_auth_config_problems") || !function_exists("bbf_auth_registry")) throw new RuntimeException("Auth policy or config is unavailable.");'
+        . ' $warnings = array_column(bbf_auth_config_problems($c), "message");'
+        . ' $admin = false; $active = false; foreach (bbf_auth_registry($c) as $r)'
+        . ' if (empty($r["revoked"]) && ($r["expires"] ?? 0) > time()) { $active = true; if (!empty($r["admin"])) $admin = true; }'
+        . ' echo json_encode(["warnings" => $warnings, "blocked" => !$active || (!empty($c["api_token"]) && !$admin)]);';
     $run = bbf_upgrade_run([PHP_BINARY, '-r', $script, "$stageDir/bbf_auth.php", "$install/config.php"], $install);
     if ($run === null) return $unknown;
     $state = json_decode($run['out'], true);
-    if ($run['exit'] !== 0 || !is_array($state) || !is_array($state['warnings'] ?? null)) {
+    if ($run['exit'] !== 0 || !is_array($state) || !is_array($state['warnings'] ?? null) || !is_bool($state['blocked'] ?? null)) {
         $why = trim(strtok(trim($run['err'] . "\n" . $run['out']), "\n") ?: '');
-        return ['warnings' => ["The access tokens in config.php could not be checked (exit code {$run['exit']}" . ($why !== '' ? ": $why" : '') . '). Run php maintenance.php selfcheck after the upgrade.'], 'blocked' => false];
+        array_unshift($unknown['warnings'], "The access tokens in config.php could not be checked (exit code {$run['exit']}" . ($why !== '' ? ": $why" : '') . '). Fix the reported error and repeat the dry run.');
+        return $unknown;
     }
-    return ['warnings' => array_values(array_filter($state['warnings'], 'is_string')), 'blocked' => ($state['blocked'] ?? false) === true];
+    return ['warnings' => array_values(array_filter($state['warnings'], 'is_string')), 'blocked' => $state['blocked'], 'checked' => true];
 }
 
 /** Validate live definitions with the new version's existing validator, separately from generated smoke data. */
@@ -363,6 +377,7 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
 
     if ($runPackageCode) array_push($notices, ...bbf_upgrade_form_warnings($stage['dir'], $install));
     $access = bbf_upgrade_access_state($runPackageCode ? $stage['dir'] : $install, $install);
+    if (!$access['checked']) $problems[] = implode(' ', $access['warnings']);
     if ($access['blocked'] && !$applying) $problems[] = 'Administrative access would be blocked by the checked auth policy. Before upgrading, set a random api_token of at least 32 hexadecimal characters in config.php (php maintenance.php new-token), fix access_tokens errors, and repeat this dry run. An explicit --apply with this confirm digest may still update the code, but does not repair access; keep the backup for upgrade-rollback.';
     $changes = array_sum(array_map('count', [$files['add'], $files['replace'], $files['remove']]));
     $plan = [
@@ -379,6 +394,7 @@ function bbf_upgrade_plan(array $stage, string $install, bool $runPackageCode = 
         'breaking' => bbf_upgrade_breaking((string)@file_get_contents("{$stage['dir']}/CHANGELOG.md"), $from, $to),
         // Unverified package: the installed (trusted) code judges config.php, so token problems still show up.
         'access_warnings' => $access['warnings'],
+        'access_checked' => $access['checked'],
         'access_blocked' => $access['blocked'],
         'access_warnings_by' => $runPackageCode ? "new version $to" : "installed version $from (the new version may be stricter; see breaking)",
         'notices' => $notices,
@@ -494,7 +510,7 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
     $journal['completed_at'] = date('c');
     @file_put_contents("$backup/upgrade.json", json_encode($journal, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     $access = bbf_upgrade_access_state($install, $install);
-    $blocked = $access['blocked'];
+    $blocked = $access['blocked'] || !$access['checked'];
     return [
         'ok' => !$blocked,
         'code_updated' => true,
@@ -506,6 +522,7 @@ function bbf_upgrade_apply(array $config, array $stage, array $plan, array $file
         'breaking' => $plan['breaking'],
         // Judged by the code now installed, so a token it rejects is named again right after the upgrade.
         'access_warnings' => $access['warnings'],
+        'access_checked' => $access['checked'],
         'notices' => $plan['notices'],
         'check' => $after === null ? 'skipped: run php smoketest.php' : $after['summary'],
         'backup' => $backup,

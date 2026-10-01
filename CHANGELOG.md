@@ -3,6 +3,17 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
+## [2.1.10] — 2026-10-01
+
+### Fixed
+- Cross-page redirects keep the submit button and handler locked until `pageshow`; same-page anchors remain usable. No timer unlock permits a duplicate POST during slow navigation.
+- Shared CSRF refreshes abort and release their queue after 15 seconds, including stalled response bodies. Module scripts find their own `bbf.js` URL instead of an unrelated last script.
+- CLI selfcheck includes every access diagnostic (including trailing whitespace), fails for empty/all-invalid or inactive credentials, validates the existing audit file without changing it, and probes active dot-file HTTP protection with disposable fixtures. Missing/unreachable HTTP targets are explicitly unverified.
+- Missing-config viewer/editor responses are generic HTTP 503; unavailable audit responses point operators to selfcheck without leaking configuration details.
+- Automated upgrade fails closed when access preflight cannot run, preserves active error reporting, temporary-directory restrictions and UNC INI values, and distinguishes CLI failure categories (documented in README).
+- Copied Unicode whitespace at phone boundaries matches browser validation. Missing/hidden numeric email placeholders such as `{{5}}` are removed.
+- Failed or cancelled release runs clean only their own marked draft by immutable release ID, never a manually created draft sharing the tag.
+
 ## [2.1.9] — 2026-09-30
 
 Fixes from the review of 2.1.8. Production installations are not upgraded automatically.

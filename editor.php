@@ -14,7 +14,10 @@ error_reporting(E_ALL);
 ini_set('display_errors', '0');   // Never leak errors to browser — log only
 define('BBF_LOADED', true);
 if (!file_exists(__DIR__ . '/config.php')) {
-    die('Missing config.php. Copy config.example.php to config.php and edit it.');
+    http_response_code(503);
+    header('Cache-Control: no-store, private, max-age=0');
+    header('Content-Type: text/plain; charset=utf-8');
+    exit("Temporarily unavailable. Ask the operator to run php maintenance.php selfcheck.\n");
 }
 require_once __DIR__ . '/bbf_auth.php';
 require_once __DIR__ . '/bbf_versions.php';

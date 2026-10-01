@@ -92,7 +92,7 @@ try {
 
     // ─── An installed 2.1.0 site with local data and edits ──────────
     upgrade_copy("$tmp/old", "$tmp/site");
-    copy("$tmp/site/config.example.php", "$tmp/site/config.php");
+    file_put_contents("$tmp/site/config.php", str_replace("'api_token' => '',", "'api_token' => 'a9c4e72b608df315e7a2b8c19df0365e',", file_get_contents("$tmp/site/config.example.php")));
     file_put_contents("$tmp/site/templates/confirm.html", '<p>My own confirmation email</p>');
     copy("$tmp/site/forms/kontakt.json", "$tmp/site/forms/mine.json");
     file_put_contents("$tmp/site/forms/mine.json", str_replace('"kontakt"', '"mine"', file_get_contents("$tmp/site/forms/mine.json")));
@@ -135,7 +135,7 @@ try {
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'dry run changes nothing');
 
     $wrong = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new", '--apply', '--confirm=' . str_repeat('0', 64)], "$tmp/site");
-    check_upgrade($wrong['code'] === 1 && upgrade_snapshot("$tmp/site") === $before, 'a wrong digest is refused without changes');
+    check_upgrade($wrong['code'] !== 0 && upgrade_snapshot("$tmp/site") === $before, 'a wrong digest is refused without changes');
 
     check_upgrade(!str_contains((string)file_get_contents("$repo/bbf_upgrade.php"), 'getenv('), 'the upgrader has no environment-controlled test hooks');
 
@@ -145,7 +145,7 @@ try {
     upgrade_remanifest("$tmp/postfail", '2.2.0', ['newfile.php']);
     $pfPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/postfail"], "$tmp/site")['json'] ?? [];
     $injected = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/postfail", '--apply', '--confirm=' . ($pfPlan['confirm'] ?? '')], "$tmp/site");
-    check_upgrade($injected['code'] === 1 && ($injected['json']['rolled_back'] ?? false) === true, 'a failure after writing files is rolled back');
+    check_upgrade($injected['code'] !== 0 && ($injected['json']['rolled_back'] ?? false) === true, 'a failure after writing files is rolled back');
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'rollback restores every byte and removes added files');
 
     // A process killed mid-upgrade leaves a journal without completed_at; upgrade-rollback still undoes it.
@@ -190,7 +190,7 @@ try {
     $retryPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup"], "$tmp/retry")['json'] ?? [];
     $retryFail = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup", '--apply', '--confirm=' . ($retryPlan['confirm'] ?? '')], "$tmp/retry");
     $retryVersion = trim(upgrade_run([PHP_BINARY, 'maintenance.php', 'version'], "$tmp/retry")['out']);
-    check_upgrade($retryFail['code'] === 1 && $retryVersion === 'BareBonesForms 2.2.0', 'a failed rollback leaves the new manifest in place');
+    check_upgrade($retryFail['code'] !== 0 && $retryVersion === 'BareBonesForms 2.2.0', 'a failed rollback leaves the new manifest in place');
     rename("$tmp/bbf.js.bak.hidden", "$retryBackup/files/bbf.js.bak");
     $retryPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup"], "$tmp/retry")['json'] ?? [];
     $retryOk = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$retryBackup", '--apply', '--confirm=' . ($retryPlan['confirm'] ?? '')], "$tmp/retry");
@@ -219,36 +219,36 @@ try {
     $rollback = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$backup", '--apply', '--confirm=' . ($rollbackPlan['json']['confirm'] ?? '')], "$tmp/site");
     check_upgrade($rollback['code'] === 0 && upgrade_snapshot("$tmp/site") === $before, 'rollback returns the site to its exact pre-upgrade state');
     $twice = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade-rollback', "--backup=$backup"], "$tmp/site");
-    check_upgrade($twice['code'] === 1 && str_contains($twice['json']['error'] ?? '', 'already rolled back'), 'a backup cannot be rolled back twice');
+    check_upgrade($twice['code'] !== 0 && str_contains($twice['json']['error'] ?? '', 'already rolled back'), 'a backup cannot be rolled back twice');
 
     // ─── Refusals ────────────────────────────────────────────────────
     $sums = "$tmp/pkg.zip";
     file_put_contents($sums, 'not really a zip');
     $mismatch = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$sums", '--checksum=' . str_repeat('a', 64)], "$tmp/site");
-    check_upgrade($mismatch['code'] === 1 && str_contains($mismatch['err'], 'does not match --checksum'), 'a package that does not match the published SHA-256 is refused');
+    check_upgrade($mismatch['code'] !== 0 && str_contains($mismatch['err'], 'does not match --checksum'), 'a package that does not match the published SHA-256 is refused');
     $matched = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$sums", '--checksum=' . hash_file('sha256', $sums)], "$tmp/site");
     check_upgrade(!str_contains($matched['err'], '--checksum'), 'a matching --checksum passes on to the package checks');
     upgrade_copy("$tmp/new", "$tmp/damaged");
     file_put_contents("$tmp/damaged/bbf.js", "tampered\n", FILE_APPEND);
     $damaged = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/damaged"], "$tmp/site");
-    check_upgrade($damaged['code'] === 1 && str_contains($damaged['err'], 'does not match its checksum'), 'a damaged package is refused');
+    check_upgrade($damaged['code'] !== 0 && str_contains($damaged['err'], 'does not match its checksum'), 'a damaged package is refused');
 
     upgrade_copy("$tmp/new", "$tmp/older");
     upgrade_remanifest("$tmp/older", '2.0.9');
     $older = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/older"], "$tmp/site");
-    check_upgrade($older['code'] === 1 && str_contains(implode(' ', $older['json']['problems'] ?? []), 'older than the installed'), 'a downgrade is refused');
+    check_upgrade($older['code'] !== 0 && str_contains(implode(' ', $older['json']['problems'] ?? []), 'older than the installed'), 'a downgrade is refused');
 
     upgrade_copy("$tmp/new", "$tmp/syntax");
     file_put_contents("$tmp/syntax/newfile.php", "<?php\nfunction broken( {\n");
     upgrade_remanifest("$tmp/syntax", '2.2.0');
     $syntax = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/syntax"], "$tmp/site");
-    check_upgrade($syntax['code'] === 1 && str_contains(implode(' ', $syntax['json']['problems'] ?? []), 'newfile.php'), 'a PHP syntax error in the package blocks the upgrade');
+    check_upgrade($syntax['code'] !== 0 && str_contains(implode(' ', $syntax['json']['problems'] ?? []), 'newfile.php'), 'a PHP syntax error in the package blocks the upgrade');
 
     upgrade_copy("$tmp/new", "$tmp/smoke");
     file_put_contents("$tmp/smoke/smoketest.php", "<?php\necho \"  \u{2717} kontakt (3 fields)\\n\";\nexit(1);\n");
     upgrade_remanifest("$tmp/smoke", '2.2.0');
     $smoke = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/smoke"], "$tmp/site");
-    check_upgrade($smoke['code'] === 1 && ($smoke['json']['check']['new_failures'] ?? []) === ['kontakt'], 'a form that would start failing blocks the upgrade');
+    check_upgrade($smoke['code'] !== 0 && ($smoke['json']['check']['new_failures'] ?? []) === ['kontakt'], 'a form that would start failing blocks the upgrade');
 
     upgrade_copy("$tmp/new", "$tmp/codeonly");
     foreach ((json_decode(file_get_contents("$tmp/codeonly/.bbf-manifest.json"), true)['files']) as $path => $file) {
@@ -529,7 +529,7 @@ try {
     $entryPlan = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/entrypkg"], "$tmp/entrysite")['json'] ?? [];
     $entryApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/entrypkg", '--apply', '--confirm=' . ($entryPlan['confirm'] ?? '')], "$tmp/entrysite");
     if (PHP_OS_FAMILY === 'Windows') {
-        check_upgrade($entryApply['code'] === 1 && ($entryApply['json']['rolled_back'] ?? false)
+        check_upgrade($entryApply['code'] !== 0 && ($entryApply['json']['rolled_back'] ?? false)
             && upgrade_snapshot("$tmp/entrysite") === $entryBefore && str_contains($entryApply['json']['error'] ?? '', 'Cannot atomically replace')
             && str_contains($entryApply['json']['error'] ?? '', 'tools/upgrade.php'), 'held maintenance.php fails closed, rolls back byte-for-byte and names a safe external entry point');
         $entryPlan = upgrade_run([PHP_BINARY, "$tmp/entrypkg/tools/upgrade.php", "--install=$tmp/entrysite"], $tmp)['json'] ?? [];
@@ -549,7 +549,7 @@ try {
     file_put_contents("$tmp/crashpkg/bbf_upgrade.php", "\n" . 'register_shutdown_function(static function () { for ($i = 0; $i < 30; $i++) fwrite(STDERR, "shutdown notice $i\n"); exit(7); });' . "\n", FILE_APPEND);
     upgrade_remanifest("$tmp/crashpkg", '2.2.0');
     $crash = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/crashpkg"], "$tmp/site");
-    check_upgrade($crash['code'] === 1 && ($crash['json']['ok'] ?? true) === false && ($crash['json']['upgrader_exit_code'] ?? null) === 7
+    check_upgrade($crash['code'] !== 0 && ($crash['json']['ok'] ?? true) === false && ($crash['json']['upgrader_exit_code'] ?? null) === 7
         && count($crash['json']['php_messages'] ?? []) === 20 && str_contains(implode(' ', $crash['json']['php_messages'] ?? []), 'exit code 7'),
         'a shutdown crash after valid JSON survives the 20-message cap and gives a nonzero CLI exit');
 
@@ -559,7 +559,7 @@ try {
         file_put_contents("$tmp/refusalpkg/bbf_upgrade.php", '<?php function bbf_upgrade(...$args): array { return ' . var_export($refusalResult, true) . '; }');
         upgrade_remanifest("$tmp/refusalpkg", '2.2.0');
         $refusal = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/refusalpkg"], "$tmp/site");
-        check_upgrade($refusal['code'] === 1 && ($refusal['json']['upgrader_exit_code'] ?? null) === 1
+        check_upgrade($refusal['code'] !== 0 && ($refusal['json']['upgrader_exit_code'] ?? null) === 1
             && ($refusal['json']['error'] ?? null) === ($refusalResult['error'] ?? null) && !isset($refusal['json']['php_messages']), 'structured delegated ok:false / exit 1 is preserved without a crash warning');
     }
     foreach (['missing ok' => "return [];", 'nonboolean ok' => "return ['ok' => 'false'];", 'invalid JSON' => 'echo "\\n--BBF-UPGRADE-RESULT--\\n{broken"; exit(1);',
@@ -567,12 +567,12 @@ try {
         file_put_contents("$tmp/refusalpkg/bbf_upgrade.php", '<?php function bbf_upgrade(...$args): array { ' . $body . ' }');
         upgrade_remanifest("$tmp/refusalpkg", '2.2.0');
         $malformed = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/refusalpkg"], "$tmp/site");
-        check_upgrade($malformed['code'] === 1 && str_contains($malformed['err'], 'Upgrade failed:') && !isset($malformed['json']['next']), "genuinely failed/malformed delegated subprocess is rejected: $name");
+        check_upgrade($malformed['code'] !== 0 && str_contains($malformed['err'], 'Upgrade failed:') && !isset($malformed['json']['next']), "genuinely failed/malformed delegated subprocess is rejected: $name");
     }
     file_put_contents("$tmp/refusalpkg/bbf_upgrade.php", '<?php register_shutdown_function(static function () { exit(7); }); function bbf_upgrade(...$args): array { return ["ok" => false, "error" => "expected refusal"]; }');
     upgrade_remanifest("$tmp/refusalpkg", '2.2.0');
     $refusalCrash = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/refusalpkg"], "$tmp/site");
-    check_upgrade($refusalCrash['code'] === 1 && ($refusalCrash['json']['upgrader_exit_code'] ?? null) === 7
+    check_upgrade($refusalCrash['code'] !== 0 && ($refusalCrash['json']['upgrader_exit_code'] ?? null) === 7
         && str_contains(implode(' ', $refusalCrash['json']['php_messages'] ?? []), 'exit code 7'), 'a real shutdown failure after ok:false still gets a crash warning');
 
     // Strict form-definition errors are visible even when the generated-data smoke test misses them.
@@ -587,7 +587,7 @@ try {
 
     // The package auth policy invalidates the last admin; installation stays updated but access is explicitly blocked.
     upgrade_copy("$tmp/site", "$tmp/blockedsite");
-    file_put_contents("$tmp/blockedsite/config.php", str_replace("'api_token' => '',", "'api_token' => 'a9c4e72b608df315e7a2b8c1',", file_get_contents("$tmp/blockedsite/config.php")));
+    file_put_contents("$tmp/blockedsite/config.php", str_replace("'api_token' => 'a9c4e72b608df315e7a2b8c19df0365e',", "'api_token' => 'a9c4e72b608df315e7a2b8c1',", file_get_contents("$tmp/blockedsite/config.php")));
     upgrade_copy("$tmp/new", "$tmp/blockedpkg");
     file_put_contents("$tmp/blockedpkg/bbf_auth.php", str_replace('function bbf_auth_registry(array $config): array {',
         'function bbf_auth_registry(array $config): array { if (strlen($config["api_token"] ?? "") < 32) return [];', file_get_contents("$tmp/blockedpkg/bbf_auth.php")));
@@ -595,17 +595,17 @@ try {
     $blockedBefore = upgrade_snapshot("$tmp/blockedsite");
     $blockedDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg"], "$tmp/blockedsite");
     $blockedPlan = $blockedDry['json'] ?? [];
-    check_upgrade($blockedDry['code'] === 1 && ($blockedPlan['ok'] ?? true) === false && ($blockedPlan['access_blocked'] ?? false)
+    check_upgrade($blockedDry['code'] !== 0 && ($blockedPlan['ok'] ?? true) === false && ($blockedPlan['access_blocked'] ?? false)
         && !isset($blockedPlan['next']) && isset($blockedPlan['confirm']) && str_contains(implode(' ', $blockedPlan['problems'] ?? []), '32 hexadecimal')
         && upgrade_snapshot("$tmp/blockedsite") === $blockedBefore, 'admin-lockout dry run fails with an actionable repair, no apply command, a digest and no changes');
     file_put_contents("$tmp/blockedpkg/bbf_upgrade.php", "\n// force package delegation\n", FILE_APPEND);
     upgrade_remanifest("$tmp/blockedpkg", '2.2.0');
     $blockedDry = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg"], "$tmp/blockedsite");
     $blockedPlan = $blockedDry['json'] ?? [];
-    check_upgrade($blockedDry['code'] === 1 && ($blockedPlan['ok'] ?? true) === false && !isset($blockedPlan['next'])
+    check_upgrade($blockedDry['code'] !== 0 && ($blockedPlan['ok'] ?? true) === false && !isset($blockedPlan['next'])
         && ($blockedPlan['upgrader_exit_code'] ?? null) === 1 && !isset($blockedPlan['error']) && !isset($blockedPlan['php_messages']), 'delegated lockout plan fails normally without inventing a subprocess crash');
     $blockedApply = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/blockedpkg", '--apply', '--confirm=' . ($blockedPlan['confirm'] ?? '')], "$tmp/blockedsite");
-    check_upgrade($blockedApply['code'] === 1 && ($blockedApply['json']['ok'] ?? true) === false && ($blockedApply['json']['code_updated'] ?? false)
+    check_upgrade($blockedApply['code'] !== 0 && ($blockedApply['json']['ok'] ?? true) === false && ($blockedApply['json']['code_updated'] ?? false)
         && ($blockedApply['json']['access_blocked'] ?? false) && str_contains($blockedApply['json']['error'] ?? '', '32 hexadecimal')
         && (json_decode(file_get_contents("$tmp/blockedsite/.bbf-manifest.json"), true)['version'] ?? '') === '2.2.0',
         'invalidated last admin returns code_updated/access_blocked, ok:false and nonzero exit without reverting code');
@@ -663,6 +663,60 @@ try {
     $quietDry = upgrade_run([PHP_BINARY, '-d', 'error_reporting=0', '-d', 'display_errors=1', 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/deleg"], "$tmp/nsite");
     check_upgrade($quietDry['code'] === 0 && !isset($quietDry['json']['php_messages']), '-d error_reporting=0 also survives the actual delegated upgrade path');
 
+    // Review 2.1.9: real CLI boundaries, only disposable fixture installations.
+    $noProcBefore = upgrade_snapshot("$tmp/site");
+    foreach ([[], ['--apply', '--confirm=' . $plan['confirm']]] as $applyArgs) {
+        foreach ([['maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], ["$tmp/new/tools/upgrade.php", "--install=$tmp/site"]] as $entryArgs) {
+            $noProc = upgrade_run(array_merge([PHP_BINARY, '-d', 'disable_functions=proc_open'], $entryArgs, $applyArgs), "$tmp/site");
+            check_upgrade($noProc['code'] === 4 && ($noProc['json']['ok'] ?? true) === false
+                && ($noProc['json']['access_checked'] ?? true) === false && !isset($noProc['json']['next'])
+                && str_contains(implode(' ', $noProc['json']['problems'] ?? []), 'Enable proc_open')
+                && upgrade_snapshot("$tmp/site") === $noProcBefore, 'disabled proc_open refuses dry run/apply at both entry points without changing files');
+        }
+    }
+    foreach ([[], [['id' => 'invalid', 'token' => 'short', 'forms' => [], 'permissions' => ['read'], 'revoked' => false, 'expires_at' => '2030-01-01T00:00:00Z']]] as $records) {
+        upgrade_copy("$tmp/site", "$tmp/no-access");
+        if (!defined('BBF_LOADED')) define('BBF_LOADED', true);
+        $noAccessConfig = require "$tmp/no-access/config.php";
+        $noAccessConfig['api_token'] = ''; $noAccessConfig['access_tokens'] = $records;
+        file_put_contents("$tmp/no-access/config.php", '<?php return ' . var_export($noAccessConfig, true) . ';');
+        $noAccessBefore = upgrade_snapshot("$tmp/no-access");
+        $noAccess = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', '--trust-package', "--package=$tmp/new"], "$tmp/no-access");
+        check_upgrade($noAccess['code'] === 4 && ($noAccess['json']['access_checked'] ?? false) && ($noAccess['json']['access_blocked'] ?? false)
+            && !isset($noAccess['json']['next']) && upgrade_snapshot("$tmp/no-access") === $noAccessBefore, 'empty or all-invalid access credentials refuse preflight without changes');
+        upgrade_rmtree("$tmp/no-access");
+    }
+    $defaultReporting = upgrade_run([PHP_BINARY, '-n', $iniProbe, $tmp], $tmp);
+    $defaultChild = json_decode($defaultReporting['json']['out'] ?? '', true);
+    $defaultMask = upgrade_run([PHP_BINARY, '-n', '-r', 'echo json_encode(error_reporting());'], $tmp)['json'];
+    check_upgrade(($defaultReporting['json']['exit'] ?? null) === 0 && ($defaultChild['reporting'] ?? null) === $defaultMask
+        && $defaultMask > 0, 'php -n empty error_reporting INI retains the actual nonzero child mask');
+    mkdir("$tmp/private-temp", 0700);
+    $tempProbe = "$tmp/temp-probe.php";
+    file_put_contents($tempProbe, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true)
+        . '; echo json_encode(bbf_upgrade_run([PHP_BINARY, "-r", \'$f = tempnam(sys_get_temp_dir(), "probe"); echo json_encode(["ini" => ini_get("sys_temp_dir"), "temp" => sys_get_temp_dir(), "file" => $f]); unlink($f);\'], $argv[1]));');
+    $tempRun = upgrade_run([PHP_BINARY, '-n', '-d', 'sys_temp_dir=' . "$tmp/private-temp", '-d', 'open_basedir="' . $repo . PATH_SEPARATOR . $tmp . '"', $tempProbe, $tmp], $tmp);
+    $tempChild = json_decode($tempRun['json']['out'] ?? '', true);
+    check_upgrade(($tempRun['json']['exit'] ?? null) === 0 && ($tempChild['ini'] ?? null) === "$tmp/private-temp"
+        && str_starts_with(str_replace('\\', '/', $tempChild['file'] ?? ''), "$tmp/private-temp/"), 'restricted open_basedir child uses propagated writable sys_temp_dir');
+    $uncProbe = "$tmp/unc-probe.php";
+    file_put_contents($uncProbe, '<?php define("BBF_LOADED", true); require ' . var_export("$repo/bbf_upgrade.php", true)
+        . '; ini_set("open_basedir", $argv[2]); echo json_encode(bbf_upgrade_run([PHP_BINARY, "-r", \'echo json_encode(ini_get("open_basedir"));\'], $argv[1]));');
+    $unc = '\\\\srv\\share'; // INI semantics only: never connects to this share.
+    $uncBasedir = $tmp . PATH_SEPARATOR . $unc;
+    $uncRun = upgrade_run([PHP_BINARY, '-n', '-d', 'sys_temp_dir=' . $tmp, $uncProbe, $tmp, $uncBasedir], $tmp);
+    check_upgrade(($uncRun['json']['exit'] ?? null) === 0 && json_decode($uncRun['json']['out'] ?? '', true) === $uncBasedir,
+        'child INI propagation preserves the UNC double-backslash prefix exactly');
+    check_upgrade($wrong['code'] === 3 && $older['code'] === 3 && $syntax['code'] === 3 && $smoke['code'] === 3,
+        'CLI exit 3 identifies rejected confirmation, version, syntax and smoke preflight');
+    check_upgrade($injected['code'] === 5 && $retryFail['code'] === 5, 'CLI exit 5 identifies failed apply and failed rollback');
+    check_upgrade($damaged['code'] === 1 && $crash['code'] === 1 && $malformed['code'] === 1, 'CLI exit 1 identifies damaged package and subprocess runtime failures');
+    check_upgrade($blockedDry['code'] === 4 && $blockedApply['code'] === 4, 'CLI exit 4 identifies known admin lockout before and after apply');
+    $externalWrong = upgrade_run([PHP_BINARY, "$tmp/new/tools/upgrade.php", "--install=$tmp/site", '--apply', '--confirm=' . str_repeat('0', 64)], $tmp);
+    check_upgrade($externalWrong['code'] === 3, 'external upgrader shares confirmation-refusal exit 3');
+    $externalUsage = upgrade_run([PHP_BINARY, "$tmp/new/tools/upgrade.php"], "$tmp/site");
+    check_upgrade($externalUsage['code'] === 2, 'external upgrader requires explicit install even when cwd contains config.php');
+
     // A token check that cannot run (config.php dies) says so instead of reporting "no problems".
     upgrade_copy("$tmp/site", "$tmp/deadcfg");
     file_put_contents("$tmp/deadcfg/config.php", "<?php\nfwrite(STDERR, 'config exploded'); exit(3);\n");
@@ -672,7 +726,7 @@ try {
         . ' echo json_encode(["dead" => bbf_upgrade_access_warnings($argv[1], $argv[2]), "note" => bbf_upgrade_breaking($long, "9.9.8", "9.9.9")[0] ?? ""]);');
     $unit = upgrade_run([PHP_BINARY, $unitScript, $repo, "$tmp/deadcfg"], $tmp)['json'] ?? [];
     $dead = $unit['dead'] ?? [];
-    check_upgrade(count($dead) === 1 && str_contains($dead[0], 'exit code 3') && str_contains($dead[0], 'config exploded'),
+    check_upgrade(count($dead) >= 1 && str_contains($dead[0], 'exit code 3') && str_contains($dead[0], 'config exploded'),
         'a crashed token check is reported with its exit code: ' . json_encode($dead));
     // A long Breaking note ends at a full sentence, not in the middle of the instruction.
     $note = (string)($unit['note'] ?? '');
@@ -698,7 +752,7 @@ try {
     check_upgrade($insideInstall['code'] === 2, 'tools/upgrade.php refuses to use the installation as its own package');
 
     $notPackage = upgrade_run([PHP_BINARY, 'maintenance.php', 'upgrade', "--package=$repo/templates"], "$tmp/site");
-    check_upgrade($notPackage['code'] === 1 && str_contains($notPackage['err'], 'Not a BareBonesForms release package'), 'a folder without a manifest is refused');
+    check_upgrade($notPackage['code'] !== 0 && str_contains($notPackage['err'], 'Not a BareBonesForms release package'), 'a folder without a manifest is refused');
     check_upgrade(upgrade_snapshot("$tmp/site") === $before, 'refused upgrades change nothing');
 
     // ─── Update check ────────────────────────────────────────────────

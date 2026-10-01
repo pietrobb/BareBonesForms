@@ -37,7 +37,7 @@ function bbf_auth_fail(int $code = 403, string $detail = ''): void {
     $login = $GLOBALS['bbf_auth_login_page'] ?? null;
     if ($code === 503) {
         // HTTP failures are public, even when audit preflight fails before authorization.
-        $message = 'Access audit unavailable.' . (PHP_SAPI === 'cli' && $detail !== '' ? ' ' . $detail : '');
+        $message = 'Access audit unavailable. Ask the operator to run php maintenance.php selfcheck.' . (PHP_SAPI === 'cli' && $detail !== '' ? ' ' . $detail : '');
         if (is_array($login)) {
             header('Content-Type: text/html; charset=utf-8');
             echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>BareBonesForms: unavailable</title></head>'
@@ -279,6 +279,12 @@ function bbf_auth_registry(array $config): array {
     foreach ($registry as $r) if (isset($secrets[hash('sha256', $r['id'])])) return []; return $registry;
 }
 
+/** Deliberately scoped-only installations are supported; a missing active credential is blocked. */
+function bbf_auth_access_blocked(array $config): bool {
+    $active = array_filter(bbf_auth_registry($config), static fn(array $r): bool => !$r['revoked'] && $r['expires'] > time());
+    return $active === [] || (!empty($config['api_token']) && !isset($active['legacy-admin']));
+}
+
 /** access_tokens records with invalid credential format (skipped by bbf_auth_registry). */
 function bbf_auth_short_records(array $config): array {
     $records = $config['access_tokens'] ?? [];
@@ -310,8 +316,11 @@ function bbf_auth_config_problems(array $config): array {
             + (is_array($records) ? count($records) - count($short) : 0);
         if (!is_array($records) || !array_is_list($records) || ($usable > 0 && count(bbf_auth_registry($config)) !== $usable))
             $out[] = ['level' => 'error', 'message' => 'access_tokens contains a malformed or duplicate record; ALL tokens, including api_token, are disabled until it is fixed.'];
-        elseif ($usable === 0) $out[] = ['level' => 'warn', 'message' => 'No usable access token: viewer, editor and submissions API are locked. Set api_token (at least ' . BBF_AUTH_MIN_TOKEN . ' hexadecimal characters). Generate a random value with php maintenance.php new-token.'];
+        elseif ($usable === 0) $out[] = ['level' => 'error', 'message' => 'No usable access token: viewer, editor and submissions API are locked. Set api_token (at least ' . BBF_AUTH_MIN_TOKEN . ' hexadecimal characters). Generate a random value with php maintenance.php new-token.'];
     }
+    $registry = bbf_auth_registry($config);
+    if ($registry !== [] && !array_filter($registry, static fn(array $r): bool => !$r['revoked'] && $r['expires'] > time()))
+        $out[] = ['level' => 'error', 'message' => 'No active access token: all usable tokens are expired or revoked; management access is blocked.'];
     $smoke = $config['smoke_token'] ?? '';
     foreach (['api_token' => $legacy, 'smoke_token' => $smoke] as $name => $value) {
         if (is_string($value) && $value !== '' && rtrim($value) !== $value)
@@ -522,6 +531,30 @@ function bbf_audit_secrets(array $config): array {
     foreach (is_array($config['access_tokens'] ?? null) ? $config['access_tokens'] : [] as $r)
         if (is_array($r)) $secrets[] = $r['token'] ?? '';
     return array_values(array_filter($secrets, static fn($s): bool => is_string($s) && strlen($s) >= BBF_AUTH_MIN_TOKEN));
+}
+
+/** Read-only preflight: never create, append, rotate or chmod an operator's audit file.
+ * Permission bits catch read-only files even when CLI runs as root; ACLs are checked by PHP too.
+ */
+function bbf_audit_problem(array $config): ?string {
+    $dir = rtrim((string)($config['logs_dir'] ?? __DIR__ . '/logs'), '/\\');
+    $file = $dir . '/access-audit.php';
+    clearstatcache(true, $dir); clearstatcache(true, $file);
+    if (is_link($dir) || is_link($file)) return 'The logs directory or access-audit.php is a symlink, which is refused.';
+    if (!is_dir($dir) || !is_writable($dir) || (PHP_OS_FAMILY !== 'Windows' && ((int)@fileperms($dir) & 0222) === 0))
+        return 'The logs directory is missing or not writable by PHP.';
+    if (!file_exists($file)) return null; // creation is possible; do not create it just to check
+    if (!is_file($file) || !is_writable($file) || (PHP_OS_FAMILY !== 'Windows' && ((int)@fileperms($file) & 0222) === 0))
+        return 'The existing access-audit.php is not a writable regular file.';
+    $fp = @fopen($file, 'r+b'); // test write access without writing a byte
+    if (!$fp) return 'The existing access-audit.php cannot be opened for writing by PHP.';
+    try {
+        $stat = fstat($fp);
+        $guard = "<?php http_response_code(404); exit; ?>\n";
+        if (!$stat || ($stat['mode'] & 0170000) !== 0100000) return 'The audit file is not a regular file.';
+        if ($stat['size'] !== 0 && fread($fp, strlen($guard)) !== $guard) return 'The existing access-audit.php has an invalid PHP guard.';
+    } finally { fclose($fp); }
+    return null;
 }
 
 /** Guarded PHP log, exclusive locked append + flush. No URLs, bodies or addresses.

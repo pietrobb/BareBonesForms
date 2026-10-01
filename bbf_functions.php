@@ -413,7 +413,7 @@ function renderTemplate(string $templateFile, array $vars): string {
     }
 
     // Clean up any remaining unreplaced tags
-    $template = preg_replace('/\{\{[a-zA-Z_]\w*\}\}/', '', $template);
+    $template = preg_replace('/\{\{\w+\}\}/', '', $template);
 
     return $template;
 }
@@ -2063,6 +2063,7 @@ function validate(array $fields, array $input): array {
 
         $raw   = $input[$name] ?? '';
         $value = bbfNormalizeInputValue($raw);
+        if ($type === 'tel' && is_string($value)) $value = preg_replace('/\A[\s\x{FEFF}]+|[\s\x{FEFF}]+\z/u', '', $value) ?? $value;
         $label = $field['label'] ?? $name;
 
         // Required

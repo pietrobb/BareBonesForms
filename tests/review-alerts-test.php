@@ -159,9 +159,9 @@ $report = bbf_alert_selfcheck($selfConfig, static fn() => bbf_delivery_result(fa
 $types = array_map(static fn(array $p) => $p['form'] . '|' . $p['type'], $report['problems']);
 sort($types);
 check_alert(!$report['ok'] && $report['forms_checked'] === 2, 'self-check reads form definitions but skips map and schema files');
-check_alert($types === ['-|SMTP check failed', 'broken|Invalid form definition', 'kontakt|Deliveries waiting for action'],
-    'self-check finds the broken form, the SMTP failure and the stuck delivery: ' . implode(', ', $types));
-check_alert(count(alert_incidents($logs)) === $before + 3, 'every self-check problem is recorded as an incident');
+check_alert($types === ['-|Access configuration problem', '-|SMTP check failed', 'broken|Invalid form definition', 'kontakt|Deliveries waiting for action'],
+    'self-check finds unavailable access, the broken form, the SMTP failure and the stuck delivery: ' . implode(', ', $types));
+check_alert(count(alert_incidents($logs)) === $before + 4, 'every self-check problem, including unavailable access, is recorded as an incident');
 check_alert(str_contains($report['notify'], 'only logged'), 'self-check warns when error_notify is empty');
 touch($outbox, time() - 8 * 86400);
 touch($outbox2, time() - 8 * 86400);

@@ -85,15 +85,15 @@ test('redirect resets stored answers before navigation, so Back cannot resubmit 
         };
     });
     assert.equal(context.window.location.href, '/thanks');
-    assert.equal(form.querySelector('.bbf-submit').disabled, false);
-    assert.equal(form._bbfSubmitting, false);
+    assert.equal(form.querySelector('.bbf-submit').disabled, true);
+    assert.equal(form._bbfSubmitting, true);
     assert.match(form.querySelector('.bbf-message').className, /bbf-success/);
     assert.equal(resets, 1);
     assert.notEqual(form._bbfSubmitKey, originalKey);
     assert.equal((context.window.listeners.pageshow || []).length, 1, 'only the standard idempotency-key listener remains');
 });
 
-test('2.1.6 a redirect that never leaves the page (#done, 204) does not leave the button disabled', async () => {
+test('same-page anchor stays usable; cross-page navigation waits for pageshow without a timer', async () => {
     let pageUrl = '';
     const hash = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '#done' }, true, {}, runtime => { pageUrl = String(runtime.context.location.href).split('#')[0]; });
     assert.equal(hash.context.window.location.href, pageUrl + '#done',
@@ -106,7 +106,12 @@ test('2.1.6 a redirect that never leaves the page (#done, 204) does not leave th
     const timers = [];
     const { context, form } = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/no-content' }, true, {}, () => {}, timers);
     const btn = form.querySelector('.bbf-submit');
-    assert.equal(btn.disabled, false, 'the stored submission is complete even if navigation never leaves');
+    assert.equal(btn.disabled, true, 'no duplicate submission while cross-page navigation is pending');
+    await form.listeners.submit[0]({ preventDefault() {} });
+    assert.equal(form._bbfSubmitting, true);
+    for (const listener of context.window.listeners.pageshow) listener({ persisted: true });
+    assert.equal(btn.disabled, false, 'returning through pageshow restores the button');
+    assert.equal(form._bbfSubmitting, false);
     assert.equal(timers.length, 0, 'no five-second guess about redirect completion');
     assert.match(form.querySelector('.bbf-message').className, /bbf-success/);
 
@@ -114,6 +119,10 @@ test('2.1.6 a redirect that never leaves the page (#done, 204) does not leave th
     const left = await submit({ status: 'ok', submission_id: 'bbf_fixture', redirect: '/thanks' }, true, {}, () => {}, leave);
     [...(left.context.window.listeners.pagehide || [])].forEach(fn => fn({}));
     assert.equal(leave.length, 0, 'once the page really unloads, the fallback is cancelled');
+    assert.equal(left.form.querySelector('.bbf-submit').disabled, true);
+    await left.form.listeners.submit[0]({ preventDefault() {} });
+    assert.equal(left.events.length, 1, 'a slow target cannot cause a second POST via Enter or programmatic submit');
+    for (const listener of left.context.window.listeners.pageshow) listener({ persisted: false });
     assert.equal(left.form.querySelector('.bbf-submit').disabled, false);
 });
 

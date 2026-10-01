@@ -21,17 +21,18 @@
 (function() {
     'use strict';
 
+    const rendererScript = document.currentScript || Array.from(document.getElementsByTagName('script')).reverse()
+        .find(script => /\/bbf\.js(?:[?#]|$)/.test(script.src));
+
     const BBF = {
         baseUrl: (function() {
-            const scripts = document.getElementsByTagName('script');
-            const src = (document.currentScript || scripts[scripts.length - 1]).src;
+            const src = rendererScript.src;
             return src.substring(0, src.lastIndexOf('/') + 1);
         })(),
 
         // ─── Auto-load bbf.css if not already present ───────
         _cssInjected: (function() {
-            const scripts = document.getElementsByTagName('script');
-            const src = (document.currentScript || scripts[scripts.length - 1]).src;
+            const src = rendererScript.src;
             const base = src.substring(0, src.lastIndexOf('/') + 1);
             const cssUrl = base + 'bbf.css';
             // Check if already loaded
@@ -956,11 +957,19 @@
                 const previous = queues.get(installation);
                 refresh = (async () => {
                     if (previous) await previous;
+                    const controller = new AbortController();
+                    let timer;
                     try {
-                        const resp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`, { credentials: 'same-origin' });
-                        const token = resp.ok ? (await resp.json()).csrf_token : null;
-                        return typeof token === 'string' && token ? token : null;
+                        return await Promise.race([
+                            (async () => {
+                                const resp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=csrf`, { credentials: 'same-origin', signal: controller.signal });
+                                const token = resp.ok ? (await resp.json()).csrf_token : null;
+                                return typeof token === 'string' && token ? token : null;
+                            })(),
+                            new Promise(resolve => { timer = setTimeout(() => { resolve(null); controller.abort(); }, 15000); })
+                        ]);
                     } catch (error) { return null; }
+                    finally { clearTimeout(timer); }
                 })();
                 pending.set(key, refresh);
                 queues.set(installation, refresh);
@@ -1237,7 +1246,16 @@
                 catch (error) { return null; }
             };
             el._bbfSubmitKey = newSubmitKey();
-            if (typeof window.addEventListener === 'function') window.addEventListener('pageshow', (event) => { if (event.persisted && el._bbfSubmitted) { el._bbfSubmitKey = newSubmitKey(); el._bbfSubmitted = false; } });
+            if (typeof window.addEventListener === 'function') window.addEventListener('pageshow', (event) => {
+                if (el._bbfRedirecting) {
+                    el._bbfRedirecting = false;
+                    el._bbfSubmitting = false;
+                    const btn = el.querySelector('.bbf-submit');
+                    btn.disabled = this._fileFieldsState(el) === 'pending';
+                    btn.textContent = form.submit_label || this._t('submitDefault', {}, langCode);
+                }
+                if (event.persisted && el._bbfSubmitted) { el._bbfSubmitKey = newSubmitKey(); el._bbfSubmitted = false; }
+            });
 
             // CSRF token
             if (csrfToken) {
@@ -1339,6 +1357,7 @@
             // Submit handler
             el.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (el._bbfSubmitting) return;
                 // Enter in a field on a non-final page means "next page", never "submit everything".
                 if (hasPages && currentPage.value < pages.length - 1) {
                     const next = el.querySelector('.bbf-next');
@@ -1443,7 +1462,7 @@
                             return;
                         }
                         // Only http(s) targets: a redirect is never allowed to run script (javascript:, data:).
-                        let hashRedirect = null;
+                        let hashRedirect = null, leavingPage = false;
                         if (typeof result.redirect === 'string' && result.redirect) {
                             let protocol = '', target = null;
                             try { protocol = new URL(result.redirect, 'https://relative.invalid/').protocol; target = new URL(result.redirect, location.href); } catch (e) { /* invalid URL: show success instead */ }
@@ -1453,6 +1472,7 @@
                             if (samePage) hashRedirect = target.href;
                             else if (protocol === 'https:' || protocol === 'http:') {
                                 hashRedirect = result.redirect;
+                                leavingPage = true;
                             }
                         }
                         msg.className = 'bbf-message bbf-success';
@@ -1470,7 +1490,11 @@
                         if (options.hideOnSuccess) {
                             Array.from(el.querySelectorAll('.bbf-field, .bbf-submit-wrap, .bbf-page, .bbf-page-nav')).forEach(f => f.style.display = 'none');
                         }
-                        if (hashRedirect) window.location.href = hashRedirect;
+                        if (hashRedirect) {
+                            el._bbfRedirecting = leavingPage;
+                            window.location.href = hashRedirect;
+                            if (leavingPage) return;
+                        }
                     } else {
                         if (options.onError) options.onError(result);
                         // Errors with no field to sit under (cross-field rules, _payment) are the useful message here.
@@ -1480,6 +1504,7 @@
                         msg.style.display = 'block';
                     }
                 } catch (err) {
+                    el._bbfRedirecting = false;
                     msg.className = 'bbf-message bbf-error';
                     msg.textContent = this._t('networkError', {}, langCode);
                     msg.style.display = 'block';

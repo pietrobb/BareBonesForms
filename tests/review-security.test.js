@@ -278,6 +278,67 @@ test('editor preview renders hostile errors as text inside an opaque-origin sand
     }
 });
 
+test('module renderer and pending redirect resist duplicate submit in real Chromium', () => {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'bbf-module-redirect-'));
+    let server;
+    try {
+        const page = '<!doctype html><meta charset="utf-8"><body><pre id="redirect-result"></pre>'
+            + '<script type="module" src="/renderer/bbf.js?v=review"></script><script src="/later.js"></script>'
+            + '<script type="module">'
+            + '(async()=>{try{const errors=[];const check=(ok,name)=>{if(!ok)errors.push(name)};'
+            + 'check(BBF.baseUrl===location.origin+"/renderer/","module base URL");'
+            + 'check([...document.querySelectorAll("link")].some(l=>l.href===location.origin+"/renderer/bbf.css"),"module CSS");'
+            + 'const form=BBF._buildForm({fields:[{name:"answer",type:"text"}]},"redirect",BBF.baseUrl,{},null,"en",true);document.body.append(form);'
+            + 'const btn=form.querySelector(".bbf-submit");let submitted;const stored=new Promise(r=>submitted=r);'
+            + 'document.addEventListener("bbf:submitted",()=>submitted(),{once:true});'
+            + 'form.requestSubmit();await stored;await new Promise(r=>setTimeout(r,200));'
+            + 'check(btn.disabled&&form._bbfSubmitting,"locked during slow navigation");btn.click();form.requestSubmit();'
+            + 'await new Promise(r=>setTimeout(r,1800));'
+            + 'check(await (await fetch("/count")).text()==="1","only one stored POST while redirect pending");'
+            + 'check(btn.disabled,"no timer unlock after a 204 target");'
+            + 'window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}));'
+            + 'check(!btn.disabled&&!form._bbfSubmitting,"pageshow restores form");'
+            + 'document.getElementById("redirect-result").textContent=JSON.stringify({errors});'
+            + '}catch(error){document.getElementById("redirect-result").textContent=JSON.stringify({errors:[String(error.stack)]});}})();</script>';
+        fs.writeFileSync(path.join(temporary, 'page.html'), page);
+        const portFile = path.join(temporary, 'port.txt');
+        const serverCode = `
+            const http=require('node:http'),fs=require('node:fs'),path=require('node:path');let count=0;
+            const root=process.argv[1],repo=process.argv[2];
+            http.createServer((req,res)=>{
+                const url=new URL(req.url,'http://localhost');
+                if(url.pathname==='/renderer/bbf.js'){res.setHeader('Content-Type','application/javascript');res.end(fs.readFileSync(path.join(repo,'bbf.js')));}
+                else if(url.pathname==='/renderer/bbf.css'){res.setHeader('Content-Type','text/css');res.end('');}
+                else if(url.pathname==='/later.js'){res.setHeader('Content-Type','application/javascript');res.end('');}
+                else if(url.pathname==='/renderer/submit.php'&&req.method==='POST'){
+                    req.resume();req.on('end',()=>{count++;res.setHeader('Content-Type','application/json');res.end(JSON.stringify({status:'ok',submission_id:'owned_'+count,redirect:'/slow-thanks'}));});
+                }else if(url.pathname==='/slow-thanks'){setTimeout(()=>{res.writeHead(204);res.end();},1500);}
+                else if(url.pathname==='/count'){res.end(String(count));}
+                else if(url.pathname==='/page.html'){res.setHeader('Content-Type','text/html');res.end(fs.readFileSync(path.join(root,'page.html')));}
+                else{res.writeHead(404);res.end();}
+            }).listen(0,'127.0.0.1',function(){fs.writeFileSync(path.join(root,'port.txt'),String(this.address().port));});
+        `;
+        server = spawn(process.execPath, ['-e', serverCode, temporary, path.join(__dirname, '..')], { stdio: 'ignore', windowsHide: true });
+        const deadline = Date.now() + 5000;
+        while (!fs.existsSync(portFile) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+        assert.ok(fs.existsSync(portFile), 'Owned module/redirect fixture server started');
+        const args = ['--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+            '--disable-background-networking', '--disable-extensions', '--virtual-time-budget=10000',
+            '--user-data-dir=' + path.join(temporary, 'profile'), '--dump-dom',
+            'http://127.0.0.1:' + fs.readFileSync(portFile, 'utf8').trim() + '/page.html'];
+        if (process.platform !== 'win32' && process.getuid?.() === 0) args.unshift('--no-sandbox');
+        const result = spawnSync(browserExecutable(), args, { encoding: 'utf8', timeout: 45000, maxBuffer: 4 * 1024 * 1024, windowsHide: true });
+        assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
+        const encoded = result.stdout.match(/<pre id="redirect-result">([\s\S]*?)<\/pre>/)?.[1];
+        assert.ok(encoded, 'Browser completed module/redirect checks: ' + result.stdout.slice(-3000));
+        const check = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+        assert.deepEqual(check.errors, []);
+    } finally {
+        if (server && server.exitCode === null) server.kill();
+        fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+});
+
 test('renderer and sandbox load failures keep hostile messages inert in real Chromium', () => {
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'bbf-load-error-security-'));
     try {

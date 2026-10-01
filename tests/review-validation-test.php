@@ -77,6 +77,11 @@ foreach ([
 ] as $i => [$field, $value, $message]) {
     check("existing scalar constraint $i", fn() => rejects($field, $value, $message));
 }
+foreach (["\u{00A0}+421 123456\u{00A0}", "\u{FEFF}+421123456\u{FEFF}", "\u{202F}+421123456\u{202F}"] as $phone) {
+    check('tel trims copied Unicode boundary whitespace ' . bin2hex($phone), fn() => accepts(['type' => 'tel'], $phone));
+}
+check('tel required rejects Unicode-only whitespace', fn() => rejects(['type' => 'tel', 'required' => true], "\u{00A0}\u{FEFF}", 'required'));
+check('tel optional accepts Unicode-only whitespace', fn() => accepts(['type' => 'tel'], "\u{00A0}"));
 check('6129-F14 number rejects a non-finite numeric literal', fn() => rejects(['type' => 'number'], '1e309', 'invalidNumber'));
 foreach (['1.5', '0', '6', '1e309'] as $rating) {
     $message = $rating === '0' ? 'numberMin' : ($rating === '6' ? 'numberMax' : 'invalidNumber');
