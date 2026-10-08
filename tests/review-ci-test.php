@@ -296,6 +296,7 @@ try {
         'Token revocation' => [__DIR__ . '/review-access-core-test.php', [PHP_BINARY, __DIR__ . '/review-access-core-test.php']],
         'Portable backend authorization' => [__DIR__ . '/review-access-storage-test.php', [PHP_BINARY, __DIR__ . '/review-access-storage-test.php']],
         'Sandbox submit authorization' => [__DIR__ . '/review-sandbox-test.php', [PHP_BINARY, __DIR__ . '/review-sandbox-test.php']],
+        'Embedded form library (bbf_form.php)' => [__DIR__ . '/review-embedded-form-test.php', [PHP_BINARY, __DIR__ . '/review-embedded-form-test.php']],
         'Embedded host contract (aeon withdrawal, standalone=false)' => [__DIR__ . '/review-embedded-host-test.php', [PHP_BINARY, __DIR__ . '/review-embedded-host-test.php']],
         'Diagnostic target isolation' => [__DIR__ . '/review-diagnostics-test.php', [PHP_BINARY, __DIR__ . '/review-diagnostics-test.php']],
         'Payment duplicate and out-of-order events' => [__DIR__ . '/review-payment-test.php', [PHP_BINARY, __DIR__ . '/review-payment-test.php']],
