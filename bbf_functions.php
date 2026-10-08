@@ -47,6 +47,13 @@ function bbf_options_resolver_from_config(array $config): callable {
     };
 }
 
+/** Whether the server can check an options_from source with this config (check.php flags the ones it cannot). */
+function bbf_options_source_checkable(array $config, string $source): bool {
+    if (is_callable($config['options_resolver'] ?? null)) return true;
+    $base = is_string($config['diagnostic_base_url'] ?? null) ? trim($config['diagnostic_base_url']) : '';
+    return bbf_options_source_url($source, $base) !== null;
+}
+
 /** Absolute http(s) URL of an options_from source, or null when it is relative and no base URL is configured. */
 function bbf_options_source_url(string $source, string $base): ?string {
     if (preg_match('~\Ahttps?://~i', $source)) return $source;

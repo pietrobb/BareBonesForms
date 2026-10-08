@@ -1286,7 +1286,7 @@ The URL must return a JSON array of `{value, label}` objects — the same format
 **How it works:**
 - `bbf.js` fetches all `options_from` URLs in parallel before rendering the form
 - Options are populated into the field exactly like static `options`
-- Server-side option validation is skipped for `options_from` fields (the server doesn't know the valid values)
+- Since 2.2.0 the server checks a submitted value against the same list. It loads the source through `options_resolver` in `config.php`, or fetches it: an absolute `https://` URL as is, a relative one (like `/api/countries.php`) against `diagnostic_base_url`. **With the default config (empty `diagnostic_base_url`, no resolver) a relative source cannot be loaded, and every value of that field is refused.** `check.php` reports each such field as an error.
 - If the fetch fails, the field renders with an empty options list and a warning in the console
 - Works with `select`, `radio`, and `checkbox` field types
 - Use `options_from` OR `options`, not both. `options_from` takes precedence.

@@ -152,6 +152,15 @@ check('2.2.0 R8: unresolved options_from refuses every non-empty value', functio
         accepts(['type' => $type, 'options_from' => '/api/countries.php'], $type === 'checkbox' ? [] : '');
     }
 });
+check('2.2.0 R8: check.php can tell which sources the shipped default config cannot load', function () {
+    $defaults = require dirname(__DIR__) . '/config.example.php';
+    same(false, bbf_options_source_checkable($defaults, '/api/countries.php'));
+    same(false, bbf_options_source_checkable($defaults, 'options.php?type=a'));
+    same(true, bbf_options_source_checkable($defaults, 'https://api.example.com/countries'));
+    same(true, bbf_options_source_checkable(['diagnostic_base_url' => 'https://forms.example.com/bbf'] + $defaults, '/api/countries.php'));
+    same(true, bbf_options_source_checkable(['options_resolver' => static fn() => []] + $defaults, '/api/countries.php'));
+    same(false, bbf_options_source_checkable(['diagnostic_base_url' => 'https://forms.example.com/bbf'] + $defaults, '//cdn.example.com/c.json'));
+});
 check('2.2.0 R8: an unavailable source falls back to static options, like bbf.js', function () {
     $fields = bbf_resolve_options([['name' => 'value', 'label' => 'Value', 'type' => 'select', 'options_from' => 'x', 'options' => ['static']]],
         static fn() => null, $cache, $failed);

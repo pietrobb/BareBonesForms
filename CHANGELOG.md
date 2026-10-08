@@ -18,7 +18,8 @@ Items marked **Breaking** need action when you upgrade an existing installation.
 ### Compatibility for existing sites
 - The standalone mode stays the default: `submit.php?form=…&action=definition`, `action=csrf` (64 hex characters) and the JSON submit response keep their shape. CI replays the aeon.sk withdrawal-form contract (`odstupenie-od-zmluvy`: definition, CSRF, submit → HTTP 200, `success` not false, its own action file receives the data).
 - A site's own files that are not part of the package (for example `actions/eshop-withdrawal.php`) are never touched by `maintenance.php upgrade`. If you deploy BBF fresh from git instead, copy such files over again.
-- No change is needed for forms without `options_from`.
+- No change is needed for forms without `options_from`. None of the forms on airdomes.sk, airdomes.pro, umelypovrch.sk or the aeon.sk withdrawal form use it.
+- **Before upgrading a site whose forms use a relative `options_from` (for example `/api/countries.php`)**, set `diagnostic_base_url` (or `options_resolver`) in `config.php`. With the default config the server cannot load a relative source and refuses every value of that field. Run `check.php` after the upgrade: it reports every `options_from` field the server cannot check as an error.
 
 ## [2.1.14] — 2026-10-01
 

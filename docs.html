@@ -1030,7 +1030,7 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
 <ul>
     <li><code>bbf.js</code> fetches all <code>options_from</code> URLs in parallel before rendering.</li>
     <li>If a fetch fails, the field renders with no options and a console warning.</li>
-    <li>Server-side option validation is skipped for these fields &mdash; the server doesn&rsquo;t know the valid values.</li>
+    <li>Since 2.2.0 the server checks submitted values against the same list, loaded through <code>options_resolver</code> or fetched (a relative URL against <code>diagnostic_base_url</code>). <strong>With the default config a relative source cannot be loaded, so every value of that field is refused.</strong> <code>check.php</code> reports each such field as an error.</li>
     <li>Use <code>options_from</code> <em>or</em> <code>options</code>. If both are present, <code>options_from</code> wins.</li>
 </ul>
 

@@ -356,7 +356,8 @@ foreach ($formFiles as $formFile) {
     $fieldNames = [];
     $fieldsOk = true;
     $fieldIssue = '';
-    $checkFieldList = function(array $fields, string $path) use (&$checkFieldList, &$fieldNames, &$fieldsOk, &$fieldIssue) {
+    $optionSources = [];
+    $checkFieldList = function(array $fields, string $path) use (&$checkFieldList, &$fieldNames, &$fieldsOk, &$fieldIssue, &$optionSources) {
         $validTypes = ['text', 'email', 'tel', 'url', 'number', 'date', 'textarea', 'select', 'radio', 'checkbox', 'hidden', 'password', 'section', 'page_break', 'rating', 'group', 'file'];
         foreach ($fields as $i => $field) {
             if (!$fieldsOk) break;
@@ -385,6 +386,10 @@ foreach ($formFiles as $formFile) {
                 continue;
             }
 
+            if (is_string($field['options_from'] ?? null) && $field['options_from'] !== '') {
+                $optionSources[$field['name']] = $field['options_from'];
+                continue;
+            }
             if (in_array($type, ['select', 'radio', 'checkbox']) && empty($field['options'])) {
                 $fieldsOk = false;
                 $fieldIssue = "{$field['name']}: type '$type' requires options.";
@@ -394,6 +399,11 @@ foreach ($formFiles as $formFile) {
     };
     $checkFieldList($form['fields'] ?? [], 'fields');
     check('Forms', "$fname.json: field definitions", $fieldsOk, $fieldIssue);
+    if ($optionSources !== []) require_once __DIR__ . '/bbf_functions.php';
+    foreach ($optionSources as $optField => $optSource) {
+        check('Forms', "$fname.json: options_from of '$optField' checkable", bbf_options_source_checkable($config ?? [], $optSource),
+            "The server cannot load \"$optSource\", so every submitted value of this field is refused. Set diagnostic_base_url (relative sources) or options_resolver in config.php.");
+    }
 
     // Check referenced templates
     $onSubmit = $form['on_submit'] ?? [];

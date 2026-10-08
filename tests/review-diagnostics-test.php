@@ -177,7 +177,7 @@ if (!in_array('--anonymous', $argv, true)) $_SERVER['HTTP_X_BBF_TOKEN'] = hash('
 ob_start();
 require __DIR__ . '/check.php';
 ob_end_clean();
-echo json_encode(array_values(array_filter($results, static fn($r) => str_ends_with($r['name'], 'blocked via HTTP') || str_starts_with($r['name'], '.htaccess has'))));
+echo json_encode(array_values(array_filter($results, static fn($r) => str_ends_with($r['name'], 'blocked via HTTP') || str_starts_with($r['name'], '.htaccess has') || str_contains($r['name'], 'options_from'))));
 PHP);
     file_put_contents($root . '/poison-smoke.php', <<<'PHP'
 <?php
@@ -614,6 +614,20 @@ PHP);
     $rows = array_column(json_decode($output, true) ?: [], null, 'name');
     diagnostic_check(($rows['README.md blocked via HTTP']['pass'] ?? false) === true, 'README.md fallback page is not reported as exposed');
     diagnostic_check(!isset($rows['.htaccess has the rules of this release']), 'no .htaccess rule problem is reported for an installation without one');
+    // 2.2.0 R8: an options_from source the server cannot load refuses every value, so check.php must say so.
+    $optForm = static fn(string $id, string $src) => json_encode(['id' => $id, 'schema_version' => 1, 'name' => $id, 'fields' => [
+        ['name' => 'grp', 'type' => 'group', 'fields' => [['name' => 'country', 'type' => 'select', 'label' => 'C', 'options_from' => $src]]]]]);
+    file_put_contents($root . '/forms/opt-relative.json', $optForm('opt-relative', '/api/countries.php'));
+    file_put_contents($root . '/forms/opt-protocol.json', $optForm('opt-protocol', '//cdn.invalid/countries.json'));
+    [, $optOutput] = diagnostic_cli($root, [], false, 'run-check.php');
+    $optRows = array_column(json_decode($optOutput, true) ?: [], null, 'name');
+    $relRow = $optRows["opt-relative.json: options_from of 'country' checkable"] ?? [];
+    $protoRow = $optRows["opt-protocol.json: options_from of 'country' checkable"] ?? [];
+    diagnostic_check(($relRow['pass'] ?? false) === true, 'check.php: relative options_from inside a group is checkable with diagnostic_base_url set');
+    diagnostic_check(($protoRow['pass'] ?? true) === false && ($protoRow['level'] ?? '') === 'error' && str_contains($protoRow['detail'] ?? '', 'refused'),
+        'check.php: an options_from the server cannot load is an error that says submissions are refused');
+    unlink($root . '/forms/opt-relative.json');
+    unlink($root . '/forms/opt-protocol.json');
     $ownHtaccess = @file_get_contents($root . '/.htaccess');
     file_put_contents($root . '/.htaccess', "AddHandler application/x-httpd-php84 .php\n");
     [, $htOutput] = diagnostic_cli($root, [], false, 'run-check.php');
