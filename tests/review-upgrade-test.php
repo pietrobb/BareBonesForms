@@ -133,7 +133,8 @@ try {
     // The fixture reuses the real CHANGELOG, so releases after 2.1.0 contribute their own Breaking items too.
     $breaking = $plan['breaking'] ?? [];
     $breakingVersions = array_map(static fn($item) => strstr((string)$item, ':', true), $breaking);
-    check_upgrade(str_starts_with($breaking[0] ?? '', '2.2.0: **Renamed') && count(array_keys($breakingVersions, '2.2.0', true)) === 1
+    check_upgrade(str_starts_with($breaking[0] ?? '', '2.2.0: **Renamed')
+        && count(array_filter($breaking, static fn($item) => str_contains((string)$item, '`old_key`'))) === 1
         && array_filter($breakingVersions, static fn($v) => !is_string($v) || version_compare($v, '2.1.0', '<=')) === [],
         'Breaking items since the installed version are listed');
     check_upgrade(($plan['check']['status'] ?? '') === 'passed', 'new code passes the smoke test against the live forms');
