@@ -124,6 +124,7 @@ details summary:hover { text-decoration: underline; }
     <div class="group">Frontend</div>
     <a href="#embedding">Embedding</a>
     <a href="#cross-domain">Cross-Domain</a>
+    <a href="#embedded-mode">Embedded Mode</a>
     <a href="#styling">Styling</a>
     <a href="#language-support">Language Support</a>
 
@@ -1125,6 +1126,47 @@ cp barebonesforms/forms/form.schema.json /path/to/bbf/forms/   # keep editor aut
     <strong>CSRF + CORS</strong>
     CSRF tokens are automatically skipped for cross-origin requests (they're protected by CORS headers instead). Same-origin requests use session-based HMAC tokens. The system handles this distinction without your intervention.
 </div>
+
+<!-- ============================================================ -->
+<h2 id="embedded-mode">Embedded Mode (Host Application, 2.2)</h2>
+
+<p>A PHP application &mdash; an e-shop, a CMS admin &mdash; can use BBF form definitions as a library and keep its own session, CSRF and database. Normal installations are unaffected: the standalone mode stays the default.</p>
+
+<p><strong>Switch off the web endpoints (optional):</strong> <code>'standalone' =&gt; false</code> in <code>config.php</code> makes every public BBF PHP page answer 404 before any session or file write.</p>
+
+<div class="code-block"><span class="lang">php</span><pre>require 'vendor/bbf/bbf_render.php';   // loads bbf_form.php too; no config, session, output or file writes
+$form = bbf_load_form('admin-product', __DIR__ . '/forms');
+$categories = fn(string $source, array $field) =&gt; $db-&gt;categoryOptions();   // options list, or null when unavailable
+$stored = $product-&gt;toArray();         // from YOUR database, never the posted input
+
+$r = bbf_validate($form, $_POST, $_FILES, ['lang' =&gt; 'sk', 'options_resolver' =&gt; $categories, 'values' =&gt; $stored]);
+// ['errors' =&gt; [field =&gt; message], 'data' =&gt; [...]]; file fields: ['action' =&gt; keep|remove|replace, 'files' =&gt; [...]]
+
+echo bbf_render_html($form, [
+    'action' =&gt; '/admin/products/5', 'lang' =&gt; 'sk', 'options_resolver' =&gt; $categories,
+    'values' =&gt; $_POST ?: $stored, 'errors' =&gt; $r['errors'] ?? [], 'hidden' =&gt; ['csrf_token' =&gt; $token],
+    'id_prefix' =&gt; 'field-', 'form_attrs' =&gt; ['id' =&gt; 'form-admin-product', 'class' =&gt; 'admin-form'],
+    'before_submit' =&gt; $attributesHtml,   // trusted host HTML right before the submit button
+]);</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<ul>
+    <li><code>bbf_validate()</code> applies the same rules as <code>submit.php</code> to the definition's fields only; other input keys (<code>csrf_token</code>, your own arrays) are ignored. <code>lang</code> falls back to English; <code>messages</code> overrides single texts.</li>
+    <li><code>options_from</code> values are checked against <code>options_resolver</code>; an unavailable source accepts no value. A stored value that is no longer listed stays valid only when it equals <code>values[field]</code>, and the render offers it selected, so saving never silently changes it.</li>
+    <li>File fields show the stored file (<code>['url' =&gt; …, 'name' =&gt; …]</code>) with a <code>&lt;field&gt;__remove</code> checkbox; validation checks <code>$_FILES</code> (extension, real content type, size, PHP refused). Moving the file is the host's job.</li>
+    <li><code>templates.control</code> / <code>templates.field</code> replace one control or a whole field (<code>null</code> keeps BBF's) and get <code>ctx</code>: <code>id</code>, <code>name</code>, <code>value</code>, <code>error</code>, <code>error_id</code>, raw <code>attrs</code> (print with <code>bbf_attrs()</code>), <code>hidden</code>, <code>lang</code>. A type the server render cannot draw throws instead of disappearing.</li>
+    <li>Custom <code>x-…</code> types: <code>bbf_register_type('x-category-tree', ['validate' =&gt; …, 'normalize' =&gt; …, 'render' =&gt; …])</code>. Values are raw (an array for <code>name[]</code>); <code>normalize</code> runs only after <code>validate</code> passed; a second registration throws.</li>
+</ul>
+
+<div class="code-block"><span class="lang">js</span><pre>BBF.render('admin-product', '#form', {
+    definition: productDefinition, values: {...}, errors: {...},
+    submitUrl: '/admin/products/5',        // JSON, or multipart with file fields; BBF CSRF and drafts are off
+    hiddenFields: { csrf_token: token },
+    optionsResolver: async (source, field) =&gt; [...],
+});
+BBF.enhance('#form-admin-product', productDefinition, { lang: 'sk' });   // for a server-rendered form
+BBF.registerType('x-category-tree', { render, value, validate, enhance });</pre><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+
+<p>The host endpoint answers <code>{"status": "ok"}</code> or HTTP 422 <code>{"status": "error", "message": "…", "errors": {"field": "…"}}</code>; errors appear under their fields.</p>
 
 <!-- ============================================================ -->
 <h2 id="styling">Styling</h2>

@@ -3,10 +3,22 @@
 All notable changes to BareBonesForms. Upgrade steps are in the [README](README.md#upgrading).
 Items marked **Breaking** need action when you upgrade an existing installation.
 
-## [Unreleased]
+## [2.2.0] — 2026-10-08
+
+### Added
+- **Embedded mode** for host applications (see README "Embedded Mode"): `bbf_form.php` validates and normalizes input against a form definition with no configuration, session, output or file writes (`bbf_load_form()`, `bbf_validate()` with language fallback to English, message overrides, `options_resolver`, `$_FILES` checks returning keep/remove/replace). `bbf_render.php` draws the same DOM as `bbf.js` on the server (`bbf_render_html()` with values, errors, hidden inputs, the stored file with a remove checkbox, `id_prefix`, `form_attrs`, `before_submit`, `templates.control`/`templates.field`, `bbf_attrs()`); a field type it cannot draw throws instead of disappearing.
+- `bbf.js`: `BBF.render()` options `definition`, `values`, `errors`, `submitUrl` (JSON or multipart with files to the host; no BBF CSRF or drafts), `hiddenFields`, `optionsResolver`; `BBF.enhance()` adds client validation and conditions to a server-rendered form; `BBF.registerType()` and `bbf_register_type()` add custom `x-…` field types (raw values, `normalize` after a passed `validate`, a second registration throws).
+- `'standalone' => false` in `config.php` makes every public BBF PHP page answer 404 before any session or file write.
+- Field property `step` for number fields.
 
 ### Changed
+- **Breaking (only for forms with `options_from`):** the server now checks a submitted value against the options the source returns (config `options_resolver`, or the source URL fetched with `diagnostic_base_url`). A value outside the list is refused, and when the source cannot be loaded no value is accepted (before, any value was stored). Forms without `options_from` are unaffected.
 - Lithuanian success message uses the production wording “Ačiū! Jūsų užklausa gauta.”, so upgrading airdomes.pro no longer overwrites it.
+
+### Compatibility for existing sites
+- The standalone mode stays the default: `submit.php?form=…&action=definition`, `action=csrf` (64 hex characters) and the JSON submit response keep their shape. CI replays the aeon.sk withdrawal-form contract (`odstupenie-od-zmluvy`: definition, CSRF, submit → HTTP 200, `success` not false, its own action file receives the data).
+- A site's own files that are not part of the package (for example `actions/eshop-withdrawal.php`) are never touched by `maintenance.php upgrade`. If you deploy BBF fresh from git instead, copy such files over again.
+- No change is needed for forms without `options_from`.
 
 ## [2.1.14] — 2026-10-01
 

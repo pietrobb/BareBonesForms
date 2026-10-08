@@ -180,7 +180,7 @@ Your data lives in places that an upgrade never needs to touch: **`config.php`**
 Every release from 2.1.0 on knows its version (`php maintenance.php version`, also shown in `check.php` and the viewer) and ships a manifest with a checksum of every file. Download the release ZIP and `SHA256SUMS` from the [GitHub release page](https://github.com/pietrobb/BareBonesForms/releases), upload the ZIP next to your installation and run:
 
 ```bash
-php maintenance.php upgrade --package=../barebonesforms-v2.1.14.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
+php maintenance.php upgrade --package=../barebonesforms-v2.2.0.zip --checksum=<SHA-256 of that ZIP from SHA256SUMS>
 ```
 
 This is a dry run — nothing changes. `--checksum` proves the ZIP is the published release (a wrong ZIP is refused); `gh attestation verify barebonesforms-vX.Y.Z.zip -R pietrobb/BareBonesForms` proves the same with the signed build provenance. **Only a verified package's code runs in the dry run.** Then the upgrader inside the new package plans and applies the upgrade (from 2.1.3 on; the result says `"upgrader": "package X.Y.Z"`), so fixes to the upgrade itself already apply to it, and the new version's smoke test runs against **your** forms and templates. Without `--checksum` (since 2.1.5) the dry run only checks the files against the package's own manifest and their PHP syntax, runs none of the new code (`"check": {"status": "skipped"}`) and says how to verify; `--apply` then uses the installed upgrader. For a package you built yourself, `--trust-package` has the effect of `--checksum`. PHP notices printed along the way (e.g. `display_errors=On` on XAMPP) are listed under `php_messages` and do not fail the upgrade. The dry run checks the new PHP files for syntax errors and prints:
@@ -205,7 +205,7 @@ To undo a finished upgrade later: `php maintenance.php upgrade-rollback --backup
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing   # or compare the ZIP's SHA-256 by hand
-unzip barebonesforms-v2.1.14.zip            # creates ./barebonesforms
+unzip barebonesforms-v2.2.0.zip            # creates ./barebonesforms
 php barebonesforms/tools/upgrade.php --install=/path/to/bbf
 ```
 
@@ -526,6 +526,58 @@ Classic scripts, renamed module scripts and dynamic `import()` can all load the 
 ```
 
 Add the origin to `allowed_origins` in `config.php`. Fail to do so, and CORS will deny your request.
+
+---
+
+## Embedded Mode (Host Application, 2.2)
+
+A PHP application (an e-shop, a CMS admin) can use BBF form definitions as a library: it renders, validates and stores the form itself, with its own session, CSRF and database. Nothing changes for normal installations — the standalone mode (`submit.php`, viewer, e-mails, storage) stays the default.
+
+**Switch off the web endpoints (optional).** With `'standalone' => false` in `config.php`, every public BBF PHP page answers 404 before any session or file write. Use it when the BBF directory is reachable from the web but only the host application should use it.
+
+**Server side** — no configuration, session, output or file writes:
+
+```php
+require 'vendor/bbf/bbf_render.php';            // loads bbf_form.php too
+$form = bbf_load_form('admin-product', __DIR__ . '/forms');   // checked definition, throws BbfFormException
+
+$categories = fn(string $source, array $field) => $db->categoryOptions();   // [['value'=>'7','label'=>'Stany'], …] or null
+$stored = $product->toArray();                  // the record from YOUR database (never the posted input)
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $r = bbf_validate($form, $_POST, $_FILES, ['lang' => 'sk', 'options_resolver' => $categories, 'values' => $stored]);
+    if (!$r['errors']) { save($r['data']); /* file fields: ['action' => keep|remove|replace, 'files' => [...]] */ }
+}
+echo bbf_render_html($form, [
+    'action' => '/admin/products/5', 'lang' => 'sk', 'options_resolver' => $categories,
+    'values' => $_POST ?: $stored, 'errors' => $r['errors'] ?? [], 'hidden' => ['csrf_token' => $token],
+    'id_prefix' => 'field-',                                   // id="field-sku"
+    'form_attrs' => ['id' => 'form-admin-product', 'class' => 'admin-form'],
+    'before_submit' => $attributesHtml,                        // your trusted HTML right before the button
+]);
+```
+
+- `bbf_validate()` returns `['errors' => [field => message], 'data' => [...]]`: the same rules as `submit.php`, only for fields of the definition (other input keys such as `csrf_token` are ignored). `lang` falls back to English; `messages` overrides single texts.
+- `options_from` is checked against what `options_resolver` returns. A source that cannot be loaded accepts no value. A stored value no longer in the list (a deleted category) stays valid only when it equals `values[field]`, and the render offers it as a selected option, so saving a record never silently changes it.
+- File fields: the render shows the stored file (`values['image'] = ['url' => …, 'name' => …]`) with a "remove" checkbox (`image__remove`). Validation checks `$_FILES` (extension, real content type, size, PHP files refused) and returns keep, remove or replace; moving the file is your job.
+- `templates.control` / `templates.field` callbacks replace one control or a whole field (return `null` to keep BBF's). They get `ctx` with `id`, `name`, `value`, `error`, `error_id`, raw `attrs` (print them with `bbf_attrs()`), `hidden`, `lang`. A field type the server render cannot draw (rating, repeatable group, page break) throws instead of disappearing.
+- Custom types `x-…`: `bbf_register_type('x-category-tree', ['validate' => …, 'normalize' => …, 'render' => …])`. The value is raw (an array for `name[]`); `normalize` runs only after `validate` passed. Registering a type twice throws.
+
+**Client side** — the same definition in the browser, posting to your endpoint:
+
+```js
+BBF.render('admin-product', '#form', {
+    definition: productDefinition,          // no request to submit.php
+    values: {...}, errors: {...},
+    submitUrl: '/admin/products/5',          // JSON, or multipart when the form has file fields
+    hiddenFields: { csrf_token: token },     // BBF's CSRF and drafts are off in this mode
+    optionsResolver: async (source, field) => [...],
+});
+BBF.enhance('#form-admin-product', productDefinition, { lang: 'sk' });   // validation and conditions for a server-rendered form
+BBF.registerType('x-category-tree', { render, value, validate, enhance });
+```
+
+Your endpoint answers `{"status": "ok"}` or HTTP 422 `{"status": "error", "message": "…", "errors": {"field": "…"}}`; the errors appear under their fields.
 
 ---
 
