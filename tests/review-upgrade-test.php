@@ -100,6 +100,9 @@ try {
     file_put_contents("$tmp/site/forms/mine.json", str_replace('"kontakt"', '"mine"', file_get_contents("$tmp/site/forms/mine.json")));
     mkdir("$tmp/site/submissions/kontakt", 0700, true);
     file_put_contents("$tmp/site/submissions/kontakt/record.json", '{"id":"x"}');
+    // A site's own action (aeon.sk: actions/eshop-withdrawal.php for the statutory withdrawal form) is not in any manifest.
+    if (!is_dir("$tmp/site/actions")) mkdir("$tmp/site/actions", 0700, true);
+    file_put_contents("$tmp/site/actions/eshop-withdrawal.php", "<?php\nreturn ['ok' => true];\n");
     $version = upgrade_run([PHP_BINARY, 'maintenance.php', 'version'], "$tmp/site");
     check_upgrade(trim($version['out']) === 'BareBonesForms 2.1.0', 'maintenance.php version reports the installed release');
     $before = upgrade_snapshot("$tmp/site");
@@ -191,7 +194,7 @@ try {
     check_upgrade($after['maintenance.php'] === $before['maintenance.php'], 'an unchanged running maintenance.php is left intact');
     check_upgrade($after['templates/notify.html'] === hash_file('sha256', "$tmp/new/templates/notify.html"), 'an untouched template is updated');
     check_upgrade(file_get_contents("$tmp/site/templates/confirm.html") === '<p>My own confirmation email</p>', 'your template survives');
-    foreach (['config.php', 'forms/mine.json', 'forms/kontakt.json', 'submissions/kontakt/record.json'] as $path) {
+    foreach (['config.php', 'forms/mine.json', 'forms/kontakt.json', 'submissions/kontakt/record.json', 'actions/eshop-withdrawal.php'] as $path) {
         check_upgrade($after[$path] === $before[$path], "$path is untouched");
     }
     $version = upgrade_run([PHP_BINARY, 'maintenance.php', 'version'], "$tmp/site");
