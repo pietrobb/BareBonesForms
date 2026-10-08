@@ -114,8 +114,8 @@ function deploy_test_expected_files(): array
     $files = [
         '.bbf-manifest.json', '.bbf-package', '.gitignore', '.htaccess', 'CHANGELOG.md', 'LICENSE', 'README.md', 'actions/README.md',
         'api-psc.php', 'bbf-theme.css', 'bbf.css', 'bbf.js', 'bbf_alerts.php', 'bbf_auth.php', 'bbf_backup.php',
-        'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php', 'bbf_functions.php',
-        'bbf_outbox.php', 'bbf_read.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_upgrade.php', 'bbf_uploads.php', 'bbf_versions.php', 'check.php', 'config.example.php',
+        'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php', 'bbf_form.php', 'bbf_functions.php',
+        'bbf_outbox.php', 'bbf_read.php', 'bbf_render.php', 'bbf_review.php', 'bbf_retention.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_upgrade.php', 'bbf_uploads.php', 'bbf_versions.php', 'check.php', 'config.example.php',
         'data/city-to-psc.json', 'data/psc-to-city.json', 'demo.css', 'demo.html',
         'demo1.html', 'demo2.html', 'demo3.html', 'demo4.html', 'demo5.html', 'demo6.html',
         'demo7.html', 'demo8.html', 'demo9.html', 'demo10.html', 'docs.html', 'editor.php', 'index.html',
@@ -176,7 +176,7 @@ try {
     $expected = deploy_test_expected_files();
     $actual = deploy_test_files($destination);
     deploy_test_check($actual === $expected, 'package has the exact independently specified sorted file set');
-    deploy_test_check(count($actual) === 150, 'package manifest contains exactly 150 files');
+    deploy_test_check(count($actual) === 152, 'package manifest contains exactly 152 files');
 
     foreach ([
         'bbf_alerts.php', 'bbf_auth.php', 'bbf_backup.php', 'bbf_delivery.php', 'bbf_diagnostics.php', 'bbf_drafts.php', 'bbf_export.php',

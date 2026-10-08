@@ -129,7 +129,7 @@ $missionInventory = [
         'failure' => [['tests/review-backup-test.php', 'tampered bundle fails integrity validation before target access'], ['tests/review-backup-test.php', 'backup refuses an active delivery lease']],
     ],
     'G3.1 currently visible option validation with row context' => [
-        'fixes' => [['bbf_functions.php', 'function validate'], ['bbf_functions.php', 'evalCondition($opt[\'show_if\'], $input)']],
+        'fixes' => [['bbf_form.php', 'function bbf_validate_fields'], ['bbf_form.php', 'bbf_eval_condition($opt[\'show_if\'], $input)']],
         'positive' => [['tests/review-validation-test.php', 'repeatable option condition uses its row context']],
         'failure' => [['tests/review-validation-test.php', 'conditionally hidden option is rejected']],
     ],
@@ -139,7 +139,7 @@ $missionInventory = [
         'failure' => [['tests/review-validation-test.php', 'cross-field rules use only normalized visible data']],
     ],
     'G3.3 real calendar date validation' => [
-        'fixes' => [['bbf_functions.php', 'checkdate((int)$dateParts[2]']],
+        'fixes' => [['bbf_form.php', 'checkdate((int)$dateParts[2]']],
         'positive' => [['tests/review-validation-test.php', 'date accepts real calendar value']],
         'failure' => [['tests/review-validation-test.php', 'date rejects invalid calendar value']],
     ],
@@ -149,7 +149,7 @@ $missionInventory = [
         'failure' => [['tests/review-security.test.js', 'forward email escapes multivalue answers']],
     ],
     'G3.5 multivalue repeatable and historical validation compatibility' => [
-        'fixes' => [['bbf_functions.php', 'Support both string options'], ['submit.php', 'bbfRepeatableRowInput']],
+        'fixes' => [['bbf_form.php', 'Support both string options'], ['bbf_form.php', 'bbfRepeatableRowInput']],
         'positive' => [['tests/review-repeatable-test.php', 'valid rows pass row-local field and condition validation']],
         'failure' => [['tests/review-repeatable-test.php', "'nested scalar child' =>"]],
     ],
@@ -262,7 +262,7 @@ $review6129Inventory = [
         'failure' => [['tests/review-payment-test.php', '6129-F02 paid payload persistence failure preserves the exact pending plan before any effect'], ['tests/review-payment-test.php', '6129-F02 tampered pending payload cannot be legitimized during paid finalization']],
     ],
     '6129-F03 normalized conditional validation and collection' => [
-        'fixes' => [['bbf_functions.php', 'function bbfNormalizeInputValue'], ['submit.php', "bbfNormalizeInputValue(\$input[\$name] ?? '', \$type)"], ['bbf_functions.php', 'bbfRepeatableRowInput($childFields, $input, $row)']],
+        'fixes' => [['bbf_form.php', 'function bbfNormalizeInputValue'], ['bbf_form.php', "bbfNormalizeInputValue(\$input[\$name] ?? '', \$type)"], ['bbf_form.php', 'bbfRepeatableRowInput($childFields, $input, $row)']],
         'positive' => [['tests/review-validation-test.php', '6129-F03 collection and conditions share normalized scalar input']],
         'failure' => [['tests/review-conditions-test.php', '6129-F03 normalized scalar condition enforces a required field'], ['tests/review-conditions-test.php', '6129-F03 repeatable conditions use normalized row-local values']],
     ],
@@ -282,7 +282,7 @@ $review6129Inventory = [
         'failure' => [['tests/review-retention-test.php', '6129-F06 numeric-string submission ID survives capture maps']],
     ],
     '6129-F07 draft Other companion privacy and restoration' => [
-        'fixes' => [['bbf_functions.php', 'Generated Other companion name collides with declared field'], ['bbf_drafts.php', 'isset($declared[$otherName])'], ['bbf.js', "body[field.name + '_other']"]],
+        'fixes' => [['bbf_form.php', 'Generated Other companion name collides with declared field'], ['bbf_drafts.php', 'isset($declared[$otherName])'], ['bbf.js', "body[field.name + '_other']"]],
         'positive' => [['tests/review-drafts-test.php', '6129-F07 save persists only allowlisted nonsensitive values'], ['tests/review-drafts-test.php', '6129-F07 valid bearer restores the exact Other companion text'], ['tests/review-drafts-test.php', '6129-F07 radio and select Other companions survive'], ['tests/review-drafts.test.js', '6129-F07 draft restore follows the main Other selection'], ['tests/review-drafts.test.js', '6129-F07 scalar radio and select Other companions collect']],
         'failure' => [['tests/review-drafts-test.php', '6129-F07 declared sensitive field cannot collide'], ['tests/review-drafts-test.php', '6129-F07 draft filter rejects a colliding sensitive companion'], ['tests/review-drafts-test.php', '6129-F07 repeatable child cannot collide'], ['tests/review-drafts.test.js', '6129-F07 client restore cannot overwrite a colliding sensitive field'], ['tests/review-drafts-test.php', '6129-F07 unselected Other companion text is discarded'], ['tests/review-drafts-test.php', '6129-F07 tightened scalar-field privacy removes radio and select'], ['tests/review-drafts-test.php', '6129-F07 tightened main-field privacy removes both']],
     ],
@@ -317,7 +317,7 @@ $review6129Inventory = [
         'failure' => [['tests/viewer-navigation.test.js', '6129-F13 static groups retain flattened child previews']],
     ],
     '6129-F14 finite numbers and bounded integer ratings' => [
-        'fixes' => [['bbf_functions.php', '!is_finite($number)'], ['bbf_functions.php', '$field[\'max\'] ?? 5']],
+        'fixes' => [['bbf_form.php', '!is_finite($number)'], ['bbf_form.php', '$field[\'max\'] ?? 5']],
         'positive' => [['tests/review-validation-test.php', '6129-F14 rating accepts integer in implicit one-to-five range'], ['tests/review-validation-test.php', '6129-F14 rating honors an explicit renderer maximum']],
         'failure' => [['tests/review-validation-test.php', '6129-F14 number rejects a non-finite numeric literal'], ['tests/review-validation-test.php', '6129-F14 rating rejects invalid value']],
     ],
