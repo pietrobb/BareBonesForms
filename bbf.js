@@ -157,6 +157,7 @@
                     throw new Error(`BareBonesForms: registerType(${type}): "${key}" is not a render, value, validate or enhance function.`);
                 }
             });
+            if (this._types[type]) throw new Error(`BareBonesForms: custom field type ${type} is already registered.`);
             this._types[type] = handlers || {};
         },
 
@@ -211,6 +212,9 @@
                 if (field.options_from) {
                     field.options = Array.from(wrap.querySelectorAll('option, input[type="radio"], input[type="checkbox"]'))
                         .map(node => node.value).filter(v => v !== '' && v !== '__other__');
+                } else if (Array.isArray(field.options)) {
+                    // The record's stored value the server kept as an option (no longer in the list) stays valid.
+                    wrap.querySelectorAll('[data-bbf-stored]').forEach(node => field.options.push(node.value));
                 }
                 const handler = /^x-/.test(field.type || '') ? this._types[field.type] : null;
                 if (handler) {
@@ -2277,6 +2281,7 @@
             if (field.maxlength) input.maxLength = field.maxlength;
             if (field.min !== undefined) input.min = field.min;
             if (field.max !== undefined) input.max = field.max;
+            if (field.step !== undefined && type === 'number') input.step = field.step;
             if (field.pattern) input.pattern = field.pattern;
             if (field.autocomplete) input.autocomplete = field.autocomplete;
             // Set defaults, not just current values, so form.reset() after a successful submit restores them.

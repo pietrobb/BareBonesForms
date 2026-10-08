@@ -234,6 +234,13 @@
                     ],
                     "description": "Minimum numeric value or YYYY-MM-DD date boundary."
                 },
+                "step": {
+                    "oneOf": [
+                        { "type": "number", "exclusiveMinimum": 0 },
+                        { "type": "string", "enum": ["any"] }
+                    ],
+                    "description": "Number input granularity (HTML step), e.g. 0.01 for prices or \"any\"."
+                },
                 "max": {
                     "oneOf": [
                         { "type": "number" },

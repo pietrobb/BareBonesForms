@@ -89,6 +89,53 @@ bbf_register_type('x-category-tree', [
 ef_check('a registered x- type validates and normalizes', fn() => bbf_validate($tree, ['parent' => '12'])['data'] === ['parent' => 12]
     && bbf_validate($tree, ['parent' => 'x'])['errors'] === ['parent' => 'Neplatná kategória.']
     && isset(bbf_validate($tree, [])['errors']['parent']));
+$calls = [];
+bbf_register_type('x-category-list', [
+    'validate' => function ($v) use (&$calls) {
+        $calls[] = ['validate', $v];
+        return is_array($v) && array_filter($v, 'ctype_digit') === $v ? null : 'Neplatné kategórie.';
+    },
+    'normalize' => function ($v) use (&$calls) {
+        $calls[] = ['normalize', $v];
+        return array_map('intval', $v);
+    },
+]);
+$list = ['id' => 'cl', 'fields' => [['name' => 'cats', 'type' => 'x-category-list', 'label' => 'Kategórie', 'required' => true]]];
+ef_check('x- array value (name[]) reaches validate raw, then normalize, whose result is data', function () use ($list, &$calls) {
+    $calls = [];
+    $r = bbf_validate($list, ['cats' => ['3', '12']]);
+    return $r['errors'] === [] && $r['data'] === ['cats' => [3, 12]] && $calls === [['validate', ['3', '12']], ['normalize', ['3', '12']]];
+});
+ef_check('x- value that fails validate is never normalized and is not in data', function () use ($list, &$calls) {
+    $calls = [];
+    $r = bbf_validate($list, ['cats' => ['3', 'x']]);
+    return $r['errors'] === ['cats' => 'Neplatné kategórie.'] && !array_key_exists('cats', $r['data']) && count($calls) === 1;
+});
+ef_check('x- required means a non-empty array or a non-blank string', function () use ($list, &$calls) {
+    $calls = [];
+    return isset(bbf_validate($list, ['cats' => []])['errors']['cats']) && isset(bbf_validate($list, ['cats' => '  '])['errors']['cats'])
+        && isset(bbf_validate($list, [])['errors']['cats']) && $calls === [];
+});
+ef_check('registering the same x- type twice throws, the first stays', fn() => ef_throws(fn() => bbf_register_type('x-category-list', []), InvalidArgumentException::class)
+    && bbf_validate($list, ['cats' => ['5']])['data'] === ['cats' => [5]]);
+
+// ── BareBonesEshop AdminForm points (unknown keys, stored option values) ──
+ef_check('unknown input keys (csrf_token, attr[…], options[], category_ids[]) are ignored, data has only definition fields', function () use ($product, $editing) {
+    $r = bbf_validate($product, ['title' => 'A', 'price' => '1', 'csrf_token' => 'abc', 'attr' => ['3' => 'x'], 'options' => ['a', 'b'], 'category_ids' => ['7', '9']], [], $editing);
+    return $r['errors'] === [] && array_keys($r['data']) === ['title', 'price', 'category', 'on_sale', 'image'];
+});
+ef_check('a stored select value no longer among the options is accepted when it equals values[field]', fn() =>
+    bbf_validate($product, ['title' => 'A', 'price' => '1', 'category' => '42'], [], ['values' => $editing['values'] + ['category' => '42']] + $editing)['data']['category'] === '42');
+ef_check('any other value outside the options stays refused, even with a stored value', fn() =>
+    isset(bbf_validate($product, ['title' => 'A', 'price' => '1', 'category' => '43'], [], ['values' => $editing['values'] + ['category' => '42']] + $editing)['errors']['category']));
+ef_check('the stored value is accepted even when the source failed (deleted category, DB down)', fn() =>
+    bbf_validate($product, ['title' => 'A', 'price' => '1', 'category' => '42'], [], ['values' => $editing['values'] + ['category' => '42']])['errors'] === []
+    && isset(bbf_validate($product, ['title' => 'A', 'price' => '1', 'category' => '7'], [], ['values' => $editing['values'] + ['category' => '42']])['errors']['category']));
+ef_check('stored checkbox values are kept per value', function () use ($product, $editing) {
+    $opts = ['values' => $editing['values'] + ['on_sale' => ['yes', 'legacy']]] + $editing;
+    return bbf_validate($product, ['title' => 'A', 'price' => '1', 'on_sale' => ['legacy']], [], $opts)['errors'] === []
+        && isset(bbf_validate($product, ['title' => 'A', 'price' => '1', 'on_sale' => ['forged']], [], $opts)['errors']['on_sale']);
+});
 
 // ── Files (R6, $_FILES) ─────────────────────────────────────────
 $png = "$tmp/upload.tmp";

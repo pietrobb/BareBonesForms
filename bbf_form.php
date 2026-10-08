@@ -633,6 +633,19 @@ function bbf_validate_fields(array $fields, array $input): array {
         $value = bbfNormalizeInputValue($raw, $type);
         $label = $field['label'] ?? $name;
 
+        // Custom types get the raw value: a name[] array stays an array.
+        if (bbf_is_custom_type($type)) {
+            if (bbfCustomValueEmpty($raw)) {
+                if (!empty($field['required'])) $errors[$name] = bbf_t('required', ['label' => $label]);
+                continue;
+            }
+            $handler = bbf_custom_type($type);
+            $message = is_callable($handler['validate'] ?? null) ? ($handler['validate'])($raw, $field, $input) : null;
+            if ($handler === null) $message = bbf_t('invalidFormat', ['label' => $label]);
+            if (is_string($message) && $message !== '') $errors[$name] = $message;
+            continue;
+        }
+
         // Required
         if (!empty($field['required'])) {
             if ((is_array($value) && count($value) === 0) || (!is_array($value) && $value === '')) {
@@ -644,14 +657,6 @@ function bbf_validate_fields(array $fields, array $input): array {
         // Optional and empty — skip further checks
         if (!is_array($value) && $value === '') continue;
         if (is_array($value) && count($value) === 0) continue;
-
-        if (bbf_is_custom_type($type)) {
-            $handler = bbf_custom_type($type);
-            $message = is_callable($handler['validate'] ?? null) ? ($handler['validate'])($value, $field, $input) : null;
-            if ($handler === null) $message = bbf_t('invalidFormat', ['label' => $label]);
-            if (is_string($message) && $message !== '') $errors[$name] = $message;
-            continue;
-        }
 
         // File fields carry upload tokens; the files themselves are checked in the submit transaction.
         if ($type === 'file') {
@@ -801,7 +806,12 @@ function bbf_validate_cross(array $rules, array $data): array {
 }
 
 
-function bbf_collect_data(array $fields, array $input): array {
+function bbfCustomValueEmpty(mixed $raw): bool {
+    return is_array($raw) ? $raw === [] : ($raw === null || trim((string)(is_scalar($raw) ? $raw : '')) === '');
+}
+
+/** Visible fields' values; $errors (from bbf_validate_fields) keeps a failed custom-type value from normalize. */
+function bbf_collect_data(array $fields, array $input, array $errors = []): array {
     $data = [];
     $input = bbfVisibleInput($fields, $input);
     foreach ($fields as $field) {
@@ -815,8 +825,12 @@ function bbf_collect_data(array $fields, array $input): array {
             if (!empty($field['show_if']) && !bbf_eval_condition($field['show_if'], $input)) continue;
             $childFields = bbf_flatten_fields($field['fields'] ?? []);
             $rows = [];
-            foreach ($input[$name] ?? [] as $row) {
-                $rows[] = bbf_collect_data($childFields, bbfRepeatableRowInput($childFields, $input, $row));
+            foreach ($input[$name] ?? [] as $index => $row) {
+                $rowErrors = [];
+                foreach ($errors as $key => $message) {
+                    if (str_starts_with((string)$key, "$name.$index.")) $rowErrors[substr((string)$key, strlen("$name.$index."))] = $message;
+                }
+                $rows[] = bbf_collect_data($childFields, bbfRepeatableRowInput($childFields, $input, $row), $rowErrors);
             }
             $data[$name] = $rows;
             continue;
@@ -827,12 +841,14 @@ function bbf_collect_data(array $fields, array $input): array {
             continue;
         }
 
-        $value = !empty($field['_bbf_system']) ? ($input[$name] ?? '') : bbfNormalizeInputValue($input[$name] ?? '', $type);
         if (bbf_is_custom_type($type)) {
+            if (isset($errors[$name])) continue; // a value that failed validate is never normalized
+            $raw = $input[$name] ?? '';
             $normalize = bbf_custom_type($type)['normalize'] ?? null;
-            $data[$name] = is_callable($normalize) ? $normalize($value, $field) : $value;
+            $data[$name] = is_callable($normalize) && !bbfCustomValueEmpty($raw) ? $normalize($raw, $field) : $raw;
             continue;
         }
+        $value = !empty($field['_bbf_system']) ? ($input[$name] ?? '') : bbfNormalizeInputValue($input[$name] ?? '', $type);
 
         // Resolve "other" option: if value is __other__, use the _other text field
         if (!empty($field['other']) && $value === '__other__') {
@@ -1176,8 +1192,12 @@ function &bbf_type_registry(): array {
  * Register a custom field type for the embedded mode. $type starts with "x-" (x-category-tree). Handlers, all optional:
  *   validate(mixed $value, array $field, array $input): ?string   error message or null; runs for non-empty values
  *   normalize(mixed $value, array $field): mixed                   the value bbf_validate() returns in data
- *   render(array $field, mixed $value, array $ctx): string         control HTML for bbf_render_html() (ctx: id, name, error, attrs)
- * A form that uses an unregistered x- type is a definition error, so it never silently loses a value.
+ *   render(array $field, mixed $value, array $ctx): string         control HTML for bbf_render_html() (ctx as in templates.control)
+ * The value is the raw input: a string, or an array for name[] / structured inputs (never cast to a string). "required"
+ * means not empty: a non-blank string or a non-empty array. Order: required → validate(raw) → only when that passed
+ * and the value is not empty, normalize(raw), whose result is the field's data (without normalize: the raw value).
+ * A form that uses an unregistered x- type is a definition error, so it never silently loses a value. Registering the
+ * same type twice throws: nothing is silently replaced.
  */
 function bbf_register_type(string $type, array $handlers): void {
     if (!preg_match('/\Ax-[a-z0-9][a-z0-9-]*\z/D', $type)) {
@@ -1187,6 +1207,9 @@ function bbf_register_type(string $type, array $handlers): void {
         if (!in_array($key, ['validate', 'normalize', 'render'], true) || !is_callable($handler)) {
             throw new InvalidArgumentException("bbf_register_type($type): '$key' is not a callable validate, normalize or render handler.");
         }
+    }
+    if (isset(bbf_type_registry()[$type])) {
+        throw new InvalidArgumentException("bbf_register_type($type): the type is already registered; a second registration never replaces it.");
     }
     bbf_type_registry()[$type] = $handlers;
 }
@@ -1235,6 +1258,36 @@ function bbf_resolve_options(array $fields, ?callable $resolver, ?array &$cache 
         }
         $fields[$i]['options'] = $cache[$source];
         $fields[$i]['_bbf_options_resolved'] = true;
+    }
+    return $fields;
+}
+
+/**
+ * The record's stored values ($values = opts.values, trusted: from the host's database) that are no longer among a
+ * select/radio/checkbox field's options (a deleted category, a retired status) become extra options marked
+ * _bbf_stored, so editing a record never silently changes them. Fields with "other" keep their own handling.
+ * Recurses into non-repeatable groups.
+ */
+function bbf_keep_stored_options(array $fields, array $values): array {
+    foreach ($fields as $i => $field) {
+        if (!is_array($field)) continue;
+        $type = $field['type'] ?? 'text';
+        if ($type === 'group') {
+            if (empty($field['repeatable']) && is_array($field['fields'] ?? null)) $fields[$i]['fields'] = bbf_keep_stored_options($field['fields'], $values);
+            continue;
+        }
+        $name = $field['name'] ?? null;
+        if (!in_array($type, ['select', 'radio', 'checkbox'], true) || !is_string($name) || !array_key_exists($name, $values) || !empty($field['other'])) continue;
+        $options = is_array($field['options'] ?? null) ? $field['options'] : [];
+        $known = array_map(static fn($o) => is_array($o) ? (string)(is_scalar($o['value'] ?? null) ? $o['value'] : '') : (string)$o, $options);
+        foreach (is_array($values[$name]) ? $values[$name] : [$values[$name]] as $stored) {
+            if (!is_scalar($stored) || is_bool($stored)) continue;
+            $stored = (string)$stored;
+            if ($stored === '' || $stored === '__other__' || in_array($stored, $known, true)) continue;
+            $options[] = ['value' => $stored, 'label' => $stored, '_bbf_stored' => true];
+            $known[] = $stored;
+        }
+        $fields[$i]['options'] = $options;
     }
     return $fields;
 }
@@ -1294,7 +1347,9 @@ function bbf_prepare_form(array $form): array {
  *   $input  the submitted values ($_POST or a decoded JSON body)
  *   $files  $_FILES (only file fields are read)
  *   $opts   lang ('en'), messages ([key => text]), options_resolver (callable($source, $field): ?array),
- *           values (the record's current values when editing: an existing file satisfies a required file field),
+ *           values (the record's stored values when editing, from the host's database, never the posted input: an
+ *           existing file satisfies a required file field, and a stored select/radio/checkbox value that is no longer
+ *           among the options stays valid, so saving never silently changes it; any other value outside the list is refused),
  *           uploads (['allowed_extensions' => [...], 'max_file_size' => bytes]), check_uploaded (true: is_uploaded_file())
  * Returns ['errors' => [field => message], 'data' => normalized values of visible fields]. A file field's data is
  * ['action' => 'keep'|'remove'|'replace', 'files' => [['tmp_name', 'name', 'ext', 'size', 'type', 'sha256'], …]];
@@ -1305,7 +1360,8 @@ function bbf_validate(array $form, array $input, array $files = [], array $opts 
     return bbf_with_messages($opts, static function () use ($form, $input, $files, $opts): array {
         $resolver = $opts['options_resolver'] ?? null;
         if ($resolver !== null && !is_callable($resolver)) throw new BbfFormException('options_resolver must be callable.');
-        $fields = bbf_resolve_options(bbf_flatten_fields($form['fields']), $resolver);
+        $values = is_array($opts['values'] ?? null) ? $opts['values'] : [];
+        $fields = bbf_keep_stored_options(bbf_resolve_options(bbf_flatten_fields($form['fields']), $resolver), $values);
         // File fields are checked from $files below; a value posted under their name is never data.
         $plainFields = [];
         $plainInput = $input;
@@ -1318,7 +1374,7 @@ function bbf_validate(array $form, array $input, array $files = [], array $opts 
         }
         $errors = bbf_validate_fields($plainFields, $plainInput);
         $shapeErrors = bbf_validate_shapes($plainFields, $plainInput);
-        $data = $shapeErrors ? [] : bbf_collect_data($plainFields, $plainInput);
+        $data = $shapeErrors ? [] : bbf_collect_data($plainFields, $plainInput, $errors);
         if (!$shapeErrors) $errors = array_replace($errors, bbf_validate_cross($form['validations'] ?? [], $data));
         $visible = bbfVisibleInput($fields, $plainInput);
         foreach ($fields as $field) {

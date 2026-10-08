@@ -26,6 +26,7 @@ const SERVER_DEFINITION = {
         { name: 'category', type: 'select', label: 'Category', required: true, options_from: '/api/categories', options: [{ value: 'x', label: 'Fallback' }] },
         { name: 'tags', type: 'checkbox', label: 'Tags', options: ['new', 'sale'] },
         { name: 'sale_price', type: 'number', label: 'Sale price', show_if: { field: 'tags', op: 'contains', value: 'sale' } },
+        { name: 'status', type: 'select', label: 'Status', required: true, options: ['active', 'hidden'] },
         { name: 'image', type: 'file', label: 'Image', required: true, accept: ['png', 'jpg'] },
     ],
 };
@@ -61,6 +62,9 @@ async function browserChecks(serverHtml, serverDefinition) {
     let threw = false;
     try { BBF.registerType('stars', { render() {} }); } catch (error) { threw = true; }
     check('registerType refuses names without x-', () => threw);
+    threw = false;
+    try { BBF.registerType('x-stars', {}); } catch (error) { threw = /already registered/.test(error.message); }
+    check('registerType refuses a second registration of the same type', () => threw && BBF._types['x-stars'].validate);
     const definition = { id: 'product', name: 'Product', fields: [
         { name: 'title', type: 'text', label: 'Title', required: true },
         { name: 'category', type: 'select', label: 'Category', options_from: '/api/categories', required: true },
@@ -165,7 +169,8 @@ async function browserChecks(serverHtml, serverDefinition) {
     f4.querySelector('[name="category"]').value = '9';
     f4.requestSubmit();
     const shownErrors = Array.from(f4.querySelectorAll('.bbf-field-error')).map(e => e.textContent).filter(Boolean).join(' | ');
-    check('server-resolved options and the stored file pass: the form posts natively' + (shownErrors ? ' — ' + shownErrors : ''), () => nativeSubmits === 1 && shownErrors === '');
+    check('server-resolved options, the stored status no longer in the list and the stored file pass: the form posts natively' + (shownErrors ? ' — ' + shownErrors : ''),
+        () => nativeSubmits === 1 && shownErrors === '' && f4.querySelector('[name="status"]').value === 'archived');
     f4.querySelector('[name="image__remove"]').checked = true;
     f4.requestSubmit();
     check('removing the required stored file stops the native post', () => nativeSubmits === 1 && errorOf(f4, 'image') !== '');
@@ -177,7 +182,7 @@ async function browserChecks(serverHtml, serverDefinition) {
 test('embedded mode client (render options, custom types, enhance) in real Chromium', () => {
     const renderScript = `require ${JSON.stringify(path.join(__dirname, '..', 'bbf_render.php'))};
         echo bbf_render_html(json_decode(stream_get_contents(STDIN), true), ['action' => '/admin.php?page=product', 'lang' => 'en',
-            'values' => ['title' => 'Tent', 'category' => '7', 'image' => ['url' => '/u/tent.png', 'name' => 'tent.png']],
+            'values' => ['title' => 'Tent', 'category' => '7', 'status' => 'archived', 'image' => ['url' => '/u/tent.png', 'name' => 'tent.png']],
             'options_resolver' => fn($s) => [['value' => '7', 'label' => 'Tents'], ['value' => '9', 'label' => 'Halls']]]);`;
     const php = spawnSync(process.env.PHP_BINARY || 'php', ['-r', renderScript], { input: JSON.stringify(SERVER_DEFINITION), encoding: 'utf8' });
     assert.equal(php.status, 0, php.stderr || php.stdout);
@@ -204,7 +209,7 @@ test('embedded mode client (render options, custom types, enhance) in real Chrom
         const browserResults = JSON.parse(encoded.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
         const failures = browserResults.filter(check => !check.ok);
         assert.equal(failures.length, 0, JSON.stringify({ passed: browserResults.length - failures.length, failures }, null, 2));
-        assert.equal(browserResults.length, 25, 'all embedded browser checks executed');
+        assert.equal(browserResults.length, 26, 'all embedded browser checks executed');
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }

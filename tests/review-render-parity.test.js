@@ -80,6 +80,13 @@ test('bbf_render_html field DOM matches bbf.js _buildField', () => {
     for (const field of FIELDS) {
         const client = skeleton(fromMini(BBF._buildField(JSON.parse(JSON.stringify(field)), 'en', 'bbf')));
         assert.ok(server[field.name], `server rendered ${field.name}`);
-        assert.deepEqual(skeleton(server[field.name]), client, `DOM of ${field.type} field "${field.name}"`);
+        const rendered = skeleton(server[field.name]);
+        if (field.name === 'plain') {
+            // Deliberate difference: the server render gives an optional select an empty "—" choice (host admin forms);
+            // bbf.js keeps its standalone behaviour so the live sites' forms do not change.
+            const select = rendered.children.find(c => c.tag === 'select');
+            assert.deepEqual(select.children.shift(), { tag: 'option', cls: '', text: '—' });
+        }
+        assert.deepEqual(rendered, client, `DOM of ${field.type} field "${field.name}"`);
     }
 });

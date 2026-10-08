@@ -127,7 +127,7 @@ er_check('max_files > 1: name[] and multiple', static function () use ($base): b
     $x = er_dom(bbf_render_html(['id' => 'g', 'fields' => [['name' => 'photos', 'type' => 'file', 'max_files' => 3, 'accept' => ['png']]]], $base));
     return er_attr($x, '//input[@id="bbf-photos"]', 'name') === 'photos[]' && er_attr($x, '//input[@id="bbf-photos"]', 'multiple') !== null;
 });
-er_check('id_prefix changes ids, labels and aria links', static fn() => er_attr(er_dom(bbf_render_html($product, $base + ['id_prefix' => 'shop'])), '//label[@for="shop-title"]', 'class') === 'bbf-label');
+er_check('id_prefix changes ids, labels and aria links', static fn() => er_attr(er_dom(bbf_render_html($product, $base + ['id_prefix' => 'shop-'])), '//label[@for="shop-title"]', 'class') === 'bbf-label');
 er_check('an unsafe id_prefix throws', static fn() => er_throws(static fn() => bbf_render_html($product, $base + ['id_prefix' => '"><x'])));
 
 // Unavailable source: static options stay the fallback; none means an empty select (bbf_validate refuses any value).
@@ -170,8 +170,8 @@ er_check('a stored value outside the options selects "other" with the text', sta
         && er_attr($x, '//input[@name="color_other"]', 'style') === 'margin-top:6px'
         && er_attr($x, '//input[@id="bbf-extras-other"]', 'checked') !== null && er_attr($x, '//input[@name="extras_other"]', 'value') === 'vlastné';
 });
-er_check('a value matching no option (no other) leaves the select empty like bbf.js', static fn() =>
-    er_attr(er_dom(bbf_render_html(['id' => 's', 'fields' => [['name' => 's', 'type' => 'select', 'options' => ['a', 'b']]]], ['action' => '/x', 'values' => ['s' => 'zzz']])),
+er_check('a default value matching no option leaves a required select empty like bbf.js', static fn() =>
+    er_attr(er_dom(bbf_render_html(['id' => 's', 'fields' => [['name' => 's', 'type' => 'select', 'required' => true, 'value' => 'zzz', 'options' => ['a', 'b']]]], ['action' => '/x'])),
         '//select/option[1]', 'hidden') !== null);
 er_check('language: sk "other" label, en fallback, messages override', static function () use ($choice): bool {
     $sk = bbf_render_html($choice, ['action' => '/x', 'lang' => 'sk']);
@@ -203,9 +203,9 @@ er_check('templates.field replaces the wrapper and gets the control HTML', stati
 er_check('a field matched by a template error is not repeated as a form error', static fn() => er_count($t, '//div[@class="bbf-message bbf-error"]') === 0);
 
 $tree = ['id' => 'cat', 'fields' => [['name' => 'parent', 'type' => 'x-category-tree', 'label' => 'Nadradená', 'required' => true]]];
-er_check('an x- type without a render handler throws', static function () use ($tree): bool {
-    bbf_register_type('x-category-tree', ['validate' => static fn($v) => null]);
-    return er_throws(static fn() => bbf_render_html($tree, ['action' => '/x']), 'render handler');
+er_check('an x- type without a render handler throws', static function (): bool {
+    bbf_register_type('x-no-render', ['validate' => static fn($v) => null]);
+    return er_throws(static fn() => bbf_render_html(['id' => 'nr', 'fields' => [['name' => 'n', 'type' => 'x-no-render']]], ['action' => '/x']), 'render handler');
 });
 er_check('an x- type render handler draws the control inside the BBF wrapper', static function () use ($tree): bool {
     bbf_register_type('x-category-tree', ['render' => static fn(array $f, $v, array $ctx): string =>
@@ -237,6 +237,76 @@ er_check('rendered names round-trip through bbf_validate()', static function () 
     $result = bbf_validate($product, ['title' => 'Stan', 'price' => '10', 'category' => '7', 'on_sale' => ['yes'], 'sale_price' => '8', 'note' => ''],
         [], ['options_resolver' => $categories, 'values' => ['image' => ['url' => '/u/a.png']]]);
     return $result['errors'] === [] && $result['data']['image']['action'] === 'keep' && $result['data']['on_sale'] === ['yes'];
+});
+
+// BareBonesEshop AdminForm replacement (review of R4/R5, points 1-10).
+$admin = ['id' => 'admin-product', 'fields' => [
+    ['name' => 'sku', 'type' => 'text', 'label' => 'SKU', 'required' => true],
+    ['name' => 'category_id', 'type' => 'select', 'label' => 'Kategória', 'options_from' => '/api/categories'],
+    ['name' => 'status', 'type' => 'select', 'label' => 'Stav', 'required' => true, 'options' => ['active', 'hidden']],
+    ['name' => 'stock', 'type' => 'number', 'label' => 'Sklad', 'min' => 0, 'max' => 9999, 'step' => 1],
+    ['name' => 'price', 'type' => 'number', 'label' => 'Cena', 'step' => 0.01],
+]];
+$adminOpts = ['action' => '/admin.php?a=save', 'options_resolver' => $categories, 'id_prefix' => 'field-',
+    'form_attrs' => ['id' => 'form-admin-product', 'class' => 'admin-form', 'data-x' => '"><b>']];
+$a = er_dom(bbf_render_html($admin, $adminOpts + ['before_submit' => '<div class="attrs"><input name="attr[3]" value="x"><input name="category_ids[]" value="7"></div>']));
+er_check('form_attrs: id and class on <form>, values escaped, class added to bbf-form', static fn() =>
+    er_attr($a, '//form', 'id') === 'form-admin-product' && er_attr($a, '//form', 'class') === 'bbf-form admin-form'
+    && er_attr($a, '//form', 'data-x') === '"><b>' && er_count($a, '//b') === 0);
+er_check('form_attrs cannot set method, action or enctype', static fn() => er_throws(static fn() => bbf_render_html($admin, ['action' => '/x', 'form_attrs' => ['action' => '/evil']]), 'form_attrs'));
+er_check('id_prefix "field-" gives id="field-sku" and matching label/error ids', static fn() =>
+    er_count($a, '//input[@id="field-sku"]') === 1 && er_count($a, '//select[@id="field-category_id"]') === 1
+    && er_count($a, '//label[@for="field-sku"]') === 1 && er_count($a, '//div[@id="field-sku-error"]') === 1);
+er_check('before_submit: host HTML unescaped right before the submit button', static fn() =>
+    er_count($a, '//div[@class="attrs"]/following-sibling::*[1][contains(@class,"bbf-submit-wrap")]') === 1
+    && er_count($a, '//input[@name="attr[3]"]') === 1 && er_count($a, '//input[@name="category_ids[]"]') === 1);
+er_check('before_submit must be a string', static fn() => er_throws(static fn() => bbf_render_html($admin, ['action' => '/x', 'before_submit' => ['x']]), 'before_submit'));
+er_check('number fields carry min, max and step', static fn() => er_attr($a, '//input[@id="field-stock"]', 'min') === '0'
+    && er_attr($a, '//input[@id="field-stock"]', 'max') === '9999' && er_attr($a, '//input[@id="field-stock"]', 'step') === '1'
+    && er_attr($a, '//input[@id="field-price"]', 'step') === '0.01');
+er_check('an optional select starts with an empty "—" choice, selected without a value', static fn() =>
+    er_attr($a, '//select[@id="field-category_id"]/option[1]', 'value') === '' && trim($a->query('//select[@id="field-category_id"]/option[1]')->item(0)->textContent) === '—'
+    && er_attr($a, '//select[@id="field-category_id"]/option[1]', 'selected') !== null);
+er_check('a required select without a value has "—"; with a value it has none', static function () use ($admin, $adminOpts, $a): bool {
+    $v = er_dom(bbf_render_html($admin, $adminOpts + ['values' => ['status' => 'active', 'category_id' => '9']]));
+    return trim($a->query('//select[@id="field-status"]/option[1]')->item(0)->textContent) === '—'
+        && er_attr($v, '//select[@id="field-status"]/option[1]', 'value') === 'active' && er_attr($v, '//select[@id="field-status"]/option[1]', 'selected') !== null
+        && er_attr($v, '//select[@id="field-category_id"]/option[@value="9"]', 'selected') !== null
+        && er_attr($v, '//select[@id="field-category_id"]/option[1]', 'selected') === null;
+});
+er_check('a stored value no longer among the options is offered, selected and marked data-bbf-stored', static function () use ($admin, $adminOpts): bool {
+    $v = er_dom(bbf_render_html($admin, $adminOpts + ['values' => ['category_id' => '42', 'status' => 'archived']]));
+    return er_attr($v, '//select[@id="field-category_id"]/option[@value="42"]', 'selected') !== null
+        && er_attr($v, '//select[@id="field-category_id"]/option[@value="42"]', 'data-bbf-stored') !== null
+        && er_attr($v, '//select[@id="field-status"]/option[@value="archived"]', 'selected') !== null
+        && er_attr($v, '//select[@id="field-category_id"]/option[@value="7"]', 'data-bbf-stored') === null;
+});
+er_check('errors: aria-invalid on the control, aria-describedby names the error element, ctx.error_id', static function () use ($admin, $adminOpts): bool {
+    $ctxs = [];
+    $html = bbf_render_html($admin, $adminOpts + ['errors' => ['sku' => 'Povinné'], 'templates' => ['control' => static function (array $f, $v, array $ctx) use (&$ctxs) {
+        $ctxs[$f['name']] = $ctx;
+        return null;
+    }]]);
+    $v = er_dom($html);
+    $described = explode(' ', (string)er_attr($v, '//input[@id="field-sku"]', 'aria-describedby'));
+    return er_attr($v, '//input[@id="field-sku"]', 'aria-invalid') === 'true' && in_array('field-sku-error', $described, true)
+        && trim($v->query('//div[@id="field-sku-error"]')->item(0)->textContent) === 'Povinné'
+        && $ctxs['sku']['error_id'] === 'field-sku-error' && er_attr($v, '//input[@id="field-stock"]', 'aria-invalid') === null;
+});
+er_check('ctx.attrs are raw values; bbf_attrs() escapes them and refuses a bad attribute name', static function () use ($admin, $adminOpts): bool {
+    $out = '';
+    bbf_render_html(['id' => 'q', 'fields' => [['name' => 'q', 'type' => 'text', 'placeholder' => 'a"<b>', 'required' => true]]], ['action' => '/x',
+        'templates' => ['control' => static function (array $f, $v, array $ctx) use (&$out) {
+            $out = '<input' . bbf_attrs(['name' => $ctx['name']] + $ctx['attrs']) . '>';
+            return $out;
+        }]]);
+    $raw = false;
+    try { bbf_attrs(['onclick x' => '1']); } catch (InvalidArgumentException $e) { $raw = true; }
+    return str_contains($out, 'placeholder="a&quot;&lt;b&gt;"') && str_contains($out, ' required') && $raw;
+});
+er_check('registering the same x- type twice throws', static function (): bool {
+    try { bbf_register_type('x-category-tree', ['render' => static fn() => '']); } catch (InvalidArgumentException $e) { return str_contains($e->getMessage(), 'already registered'); }
+    return false;
 });
 
 print "Embedded render: $passed passed, $failed failed.\n";
