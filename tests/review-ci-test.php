@@ -298,6 +298,7 @@ try {
         'Sandbox submit authorization' => [__DIR__ . '/review-sandbox-test.php', [PHP_BINARY, __DIR__ . '/review-sandbox-test.php']],
         'Embedded form library (bbf_form.php)' => [__DIR__ . '/review-embedded-form-test.php', [PHP_BINARY, __DIR__ . '/review-embedded-form-test.php']],
         'Embedded server render (bbf_render.php)' => [__DIR__ . '/review-embedded-render-test.php', [PHP_BINARY, __DIR__ . '/review-embedded-render-test.php']],
+        'Real-browser embedded client (render options, x- types, enhance)' => [__DIR__ . '/review-embedded-client.test.js', ['node', '--test', __DIR__ . '/review-embedded-client.test.js']],
         'Server render DOM parity with bbf.js' => [__DIR__ . '/review-render-parity.test.js', ['node', '--test', __DIR__ . '/review-render-parity.test.js']],
         'Embedded host contract (aeon withdrawal, standalone=false)' => [__DIR__ . '/review-embedded-host-test.php', [PHP_BINARY, __DIR__ . '/review-embedded-host-test.php']],
         'Diagnostic target isolation' => [__DIR__ . '/review-diagnostics-test.php', [PHP_BINARY, __DIR__ . '/review-diagnostics-test.php']],

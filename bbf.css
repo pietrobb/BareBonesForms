@@ -721,3 +721,8 @@
 }
 
 .bbf-file-status { font-size: 0.85em; color: var(--bbf-text-muted); margin-top: 4px; }
+
+/* The stored file when editing (embedded mode): preview or link, and "remove" */
+.bbf-file-current { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.bbf-file-preview { display: block; max-width: 160px; max-height: 120px; border: 1px solid var(--bbf-border-light); border-radius: var(--bbf-radius); }
+.bbf-file-current .bbf-file-link { overflow-wrap: anywhere; }

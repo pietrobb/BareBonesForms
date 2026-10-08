@@ -173,7 +173,10 @@
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "hidden", "password", "section", "page_break", "rating", "group", "file"],
+                    "anyOf": [
+                        { "enum": ["text", "email", "tel", "url", "number", "date", "textarea", "select", "radio", "checkbox", "hidden", "password", "section", "page_break", "rating", "group", "file"] },
+                        { "pattern": "^x-[a-z0-9][a-z0-9-]*$", "description": "Custom type a host application registers (embedded mode): bbf_register_type() in PHP, BBF.registerType() in bbf.js." }
+                    ],
                     "default": "text",
                     "description": "Field input type."
                 },

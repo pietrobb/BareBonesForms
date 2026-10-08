@@ -298,7 +298,7 @@ function bbf_render_control(array $field, mixed $value, array $ctx, array $state
                     : '<a class="bbf-file-link" href="' . bbf_e($file['url']) . '">' . bbf_e($file['name']) . '</a>';
             }
             $removeName = count($files) === 1 ? $files[0]['name'] : ($field['label'] ?? $name);
-            $html .= '<label class="bbf-option bbf-file-remove"><input' . bbf_render_attrs(['type' => 'checkbox', 'name' => $name . '__remove',
+            $html .= '<label class="bbf-option bbf-file-remove-existing"><input' . bbf_render_attrs(['type' => 'checkbox', 'name' => $name . '__remove',
                 'id' => $ctx['id'] . '-remove', 'value' => '1', 'checked' => in_array((string)($state['values'][$name . '__remove'] ?? ''), ['1', 'on'], true)]) . '>'
                 . '<span>' . bbf_e(bbf_t('fileRemove', ['name' => $removeName])) . '</span></label></div>';
         }

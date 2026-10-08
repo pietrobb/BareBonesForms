@@ -111,7 +111,7 @@ er_check('existing image: preview, link, remove checkbox, input not required', s
     && er_attr($e, '//div[@class="bbf-file-current"]/a/img', 'alt') === 'stan.jpg'
     && er_attr($e, '//input[@name="image__remove"]', 'type') === 'checkbox' && er_attr($e, '//input[@name="image__remove"]', 'checked') === null
     && er_attr($e, '//input[@id="bbf-image"]', 'required') === null
-    && str_contains($e->query('//label[contains(@class,"bbf-file-remove")]')->item(0)->textContent, 'stan.jpg'));
+    && str_contains($e->query('//label[contains(@class,"bbf-file-remove-existing")]')->item(0)->textContent, 'stan.jpg'));
 er_check('existing non-image file is a link', static fn() => er_count(er_dom(bbf_render_html($product, $base + ['values' => ['image' => ['url' => 'https://cdn.test/a/manual.pdf', 'name' => 'manual.pdf']]])),
     '//div[@class="bbf-file-current"]/a[@href="https://cdn.test/a/manual.pdf"][.="manual.pdf"]') === 1);
 er_check('a javascript: or data: URL is never linked', static function () use ($product, $base): bool {

@@ -134,6 +134,160 @@
             this.langs[String(code).toLowerCase()] = messages;
         },
 
+        // ─── Embedded mode (2.2.0) ───────────────────────────
+        // A host application renders and stores forms itself (docs/EMBEDDED.md):
+        //   BBF.render(id, el, { definition, values, errors, submitUrl, hiddenFields, optionsResolver, lang })
+        //   BBF.enhance(formEl, definition, { lang })   client validation and conditions on a bbf_render_html() form
+        //   BBF.registerType('x-…', { render, value, validate, enhance })
+
+        _types: Object.create(null),
+
+        /**
+         * Register a custom field type, named x-… (x-category-tree). Handlers, all optional:
+         *   render(field, value, ctx) → Element   the control BBF.render() puts in the field (ctx: id, name, lang)
+         *   value(wrap) → any                      the field's value read from its wrapper ([data-field]); default: its inputs
+         *   validate(value, field) → string|null   error message for a non-empty value
+         *   enhance(wrap, field, ctx)              binds behaviour to a server-rendered field (BBF.enhance)
+         * A form using an unregistered x- type fails to render instead of silently losing the field.
+         */
+        registerType: function(type, handlers) {
+            if (!/^x-[a-z0-9][a-z0-9-]*$/.test(String(type))) throw new Error('BareBonesForms: custom field types are named x-…, e.g. x-category-tree: ' + type);
+            Object.keys(handlers || {}).forEach(key => {
+                if (!['render', 'value', 'validate', 'enhance'].includes(key) || typeof handlers[key] !== 'function') {
+                    throw new Error(`BareBonesForms: registerType(${type}): "${key}" is not a render, value, validate or enhance function.`);
+                }
+            });
+            this._types[type] = handlers || {};
+        },
+
+        _hosted: function(options) {
+            return !!(options && typeof options.submitUrl === 'string' && options.submitUrl);
+        },
+
+        /** values (field → current value) become the fields' defaults, so reset() returns to them. */
+        _applyValues: function(fields, values) {
+            const has = key => Object.prototype.hasOwnProperty.call(values, key);
+            fields.forEach(field => {
+                if (!field || typeof field !== 'object') return;
+                if (field.type === 'group' && !field.repeatable) { this._applyValues(field.fields || [], values); return; }
+                if (!field.name || !has(field.name) || values[field.name] === null || values[field.name] === undefined) return;
+                let value = values[field.name];
+                // A stored choice outside the options is the "Other…" text when the field offers one (as bbf_render_html).
+                if (field.other && ['select', 'radio', 'checkbox'].includes(field.type)) {
+                    const known = (field.options || []).map(o => String(o && typeof o === 'object' ? o.value : o));
+                    const list = (Array.isArray(value) ? value : [value]).map(String);
+                    const unknown = list.filter(v => v !== '' && v !== '__other__' && !known.includes(v));
+                    if (unknown.length) {
+                        field._bbfOtherText = has(field.name + '_other') ? String(values[field.name + '_other']) : unknown[0];
+                        value = field.type === 'checkbox' ? list.filter(v => known.includes(v)).concat('__other__') : '__other__';
+                    } else if (list.includes('__other__') && has(field.name + '_other')) {
+                        field._bbfOtherText = String(values[field.name + '_other']);
+                    }
+                }
+                field.value = value;
+                if (field.type === 'email' && field.confirm) field._bbfConfirmValue = has(field.name + '_confirm') ? values[field.name + '_confirm'] : value;
+                if (field.type === 'file' && has(field.name + '__remove')) field._bbfRemove = !['', '0'].includes(String(values[field.name + '__remove']));
+            });
+        },
+
+        /**
+         * Client-side validation and conditions for a form bbf_render_html() drew on the server. The form still posts
+         * natively to its action; an invalid form is stopped and shows the errors like BBF.render().
+         */
+        enhance: function(formEl, definition, options = {}) {
+            if (typeof formEl === 'string') formEl = document.querySelector(formEl);
+            if (!formEl || !definition || typeof definition !== 'object') throw new Error('BareBonesForms: enhance(formEl, definition) needs a form element and its definition.');
+            const form = JSON.parse(JSON.stringify(definition));
+            if (form.templates) form.fields = this._resolveTemplates(form.fields || [], form.templates);
+            const langCode = String(options.lang || formEl.getAttribute('data-lang') || '').toLowerCase() || null;
+            const allFlat = this._flattenFields(form.fields || []);
+            const dataFields = allFlat.filter(f => !['page_break', 'section', 'group'].includes(f.type));
+            formEl.noValidate = true;
+            formEl.classList.add('bbf-form');
+            allFlat.forEach(field => {
+                const wrap = field.name ? formEl.querySelector(`[data-field="${field.name}"]`) : null;
+                if (!wrap) return;
+                // The server resolved options_from: validate against the options it drew, not the definition's fallback.
+                if (field.options_from) {
+                    field.options = Array.from(wrap.querySelectorAll('option, input[type="radio"], input[type="checkbox"]'))
+                        .map(node => node.value).filter(v => v !== '' && v !== '__other__');
+                }
+                const handler = /^x-/.test(field.type || '') ? this._types[field.type] : null;
+                if (handler) {
+                    wrap._bbfType = handler;
+                    if (handler.enhance) handler.enhance(wrap, field, { lang: langCode });
+                }
+            });
+            formEl.querySelectorAll('.bbf-other-input').forEach(other => {
+                const wrap = other.closest('[data-field]');
+                const choice = wrap && (wrap.querySelector('select') || wrap.querySelector('input[value="__other__"]'));
+                if (!choice) return;
+                other._bbfSyncOther = () => { other.style.display = (choice.tagName === 'SELECT' ? choice.value === '__other__' : choice.checked) ? '' : 'none'; };
+                wrap.addEventListener('change', other._bbfSyncOther);
+            });
+            if (allFlat.some(f => f.show_if || (f.options || []).some(o => o && typeof o === 'object' && o.show_if))) {
+                this._bindConditions(formEl, allFlat, !!form.animate_conditions);
+            }
+            formEl.addEventListener('submit', event => {
+                const errors = this._validate(dataFields, formEl, langCode);
+                Object.assign(errors, this._validateCrossField(form.validations, formEl, langCode));
+                if (Object.keys(errors).length) {
+                    event.preventDefault();
+                    this._showErrors(formEl, errors);
+                } else {
+                    this._clearErrors(formEl);
+                }
+            });
+            return formEl;
+        },
+
+        /** A file field's chosen files: upload tokens, files kept for the host (submitUrl) or the native input's; the stored file counts until "remove" is ticked. */
+        _fileFieldValue: function(wrap) {
+            if (!wrap) return [];
+            let files;
+            if (wrap._bbfFiles) files = wrap._bbfFiles.filter(f => f.state === 'done').map(f => f.token || f.name);
+            else {
+                const input = wrap.querySelector('input[type="file"]');
+                files = input && input.files ? Array.from(input.files).map(f => f.name) : [];
+            }
+            const remove = wrap.querySelector('.bbf-file-remove-existing input');
+            if (!files.length && wrap.querySelector('.bbf-file-current') && !(remove && remove.checked)) files = ['(stored)'];
+            return files;
+        },
+
+        /** Custom (x-) field values into the submit body. */
+        _collectCustomFields: function(formEl, body) {
+            formEl.querySelectorAll('[data-field]').forEach(wrap => {
+                if (wrap._bbfType && wrap._bbfType.value) body[wrap.getAttribute('data-field')] = wrap._bbfType.value(wrap);
+            });
+        },
+
+        /** Embedded mode: visible file fields' files as [key, File] for a multipart POST to the host. */
+        _collectHostFiles: function(formEl, body) {
+            const files = [];
+            formEl.querySelectorAll('.bbf-field-file').forEach(wrap => {
+                const name = wrap.getAttribute('data-field');
+                delete body[name];
+                if (this._isHidden(wrap)) return;
+                const key = (wrap._bbfField && (wrap._bbfField.max_files || 1) > 1) ? name + '[]' : name;
+                (wrap._bbfFiles || []).filter(entry => entry.state === 'done').forEach(entry => files.push([key, entry.file]));
+            });
+            return files;
+        },
+
+        /** Body as multipart/form-data with PHP bracket names (rows[0][name], tags[]) and the files. */
+        _multipartBody: function(body, files) {
+            const data = new FormData();
+            const append = (key, value) => {
+                if (Array.isArray(value)) value.forEach((item, i) => append(item !== null && typeof item === 'object' ? `${key}[${i}]` : `${key}[]`, item));
+                else if (value !== null && typeof value === 'object') Object.keys(value).forEach(k => append(`${key}[${k}]`, value[k]));
+                else data.append(key, value === null || value === undefined ? '' : String(value));
+            };
+            Object.keys(body).forEach(key => append(key, body[key]));
+            files.forEach(([key, file]) => data.append(key, file, file.name));
+            return data;
+        },
+
         /**
          * Translate a message key with parameters.
          * _t('required', { label: 'Email' }, 'de') → 'Email ist erforderlich.'
@@ -148,7 +302,8 @@
         _instanceSequence: 0, _clientScripts: Object.create(null), _loadClientScript: function(url) { return this._clientScripts[url] || (this._clientScripts[url] = new Promise(resolve => { const script = document.createElement('script'); const timer = setTimeout(resolve, 5000); script.onload = script.onerror = () => { clearTimeout(timer); resolve(); }; script.src = url; document.head.appendChild(script); })); },
 
 
-        _prepareFormDefinition: async function(form, isCurrent = () => true) {
+        /** optionsResolver(source, field) → options list (or a Promise of it) replaces fetching options_from; null = unavailable. */
+        _prepareFormDefinition: async function(form, isCurrent = () => true, optionsResolver = null) {
             if (form.templates && !form._bbfTemplatesResolved) {
                 form.fields = this._resolveTemplates(form.fields || [], form.templates);
                 form._bbfTemplatesResolved = true;
@@ -156,9 +311,15 @@
             const fields = this._flattenFields(form.fields || [], true);
             await Promise.all(fields.filter(field => field.options_from).map(async field => {
                 try {
-                    const response = await fetch(field.options_from);
-                    if (!response.ok) throw new Error(response.status);
-                    const options = await response.json();
+                    let options;
+                    if (typeof optionsResolver === 'function') {
+                        options = await optionsResolver(field.options_from, field);
+                        if (!Array.isArray(options)) throw new Error('optionsResolver returned no list');
+                    } else {
+                        const response = await fetch(field.options_from);
+                        if (!response.ok) throw new Error(response.status);
+                        options = await response.json();
+                    }
                     if (isCurrent()) field.options = options;
                 } catch (error) {
                     if (!isCurrent()) return;
@@ -202,32 +363,41 @@
                     await this._loadClientScript(`${baseUrl}lang/${langCode}.js`);
                 }
 
-                // Load form definition (always via submit.php — it strips
-                // server-side config and works with .htaccess protection)
-                const formUrl = `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=definition`;
-                const resp = await fetch(formUrl);
-                if (!resp.ok) {
-                    // 404 means the form is missing; anything else is a server problem worth showing verbatim
-                    // (e.g. "Missing config.php"), so the installer looks in the right place.
-                    let serverMessage = '';
-                    if (resp.status !== 404) {
-                        try { serverMessage = String((await resp.json()).message || ''); } catch (e) { /* not JSON */ }
+                // Embedded mode: the host passes the definition and posts to its own endpoint (submitUrl),
+                // so neither the definition nor a BBF CSRF token is fetched from submit.php.
+                const hosted = this._hosted(options);
+                let form;
+                if (options.definition && typeof options.definition === 'object') {
+                    form = JSON.parse(JSON.stringify(options.definition));
+                } else {
+                    // Load form definition (always via submit.php — it strips
+                    // server-side config and works with .htaccess protection)
+                    const formUrl = `${baseUrl}submit.php?form=${encodeURIComponent(formId)}&action=definition`;
+                    const resp = await fetch(formUrl);
+                    if (!resp.ok) {
+                        // 404 means the form is missing; anything else is a server problem worth showing verbatim
+                        // (e.g. "Missing config.php"), so the installer looks in the right place.
+                        let serverMessage = '';
+                        if (resp.status !== 404) {
+                            try { serverMessage = String((await resp.json()).message || ''); } catch (e) { /* not JSON */ }
+                        }
+                        throw new Error(serverMessage
+                            ? `${serverMessage} (${resp.status})`
+                            : this._t('formNotFound', { id: formId, status: resp.status }, langCode));
                     }
-                    throw new Error(serverMessage
-                        ? `${serverMessage} (${resp.status})`
-                        : this._t('formNotFound', { id: formId, status: resp.status }, langCode));
+                    form = await resp.json();
                 }
-                const form = await resp.json();
                 if (!isCurrent()) return;
 
                 // Fetch CSRF token for same-origin requests
                 let csrfToken = null;
-                if (isSameOrigin) {
+                if (isSameOrigin && !hosted) {
                     csrfToken = await this._refreshCsrf(baseUrl, formId, null);
                     if (!isCurrent()) return;
                 }
 
-                if (form._bbf_client?.analytics?.umami) this._loadClientScript(baseUrl + 'bbf-analytics.js'); if (form._bbf_client?.visit_context?.trigger_params && !window.BBFContext && !window._bbfContextLoading) window._bbfContextLoading = this._loadClientScript(baseUrl + 'bbf-context.js'); if (!await this._prepareFormDefinition(form, isCurrent)) return;
+                if (form._bbf_client?.analytics?.umami) this._loadClientScript(baseUrl + 'bbf-analytics.js'); if (form._bbf_client?.visit_context?.trigger_params && !window.BBFContext && !window._bbfContextLoading) window._bbfContextLoading = this._loadClientScript(baseUrl + 'bbf-context.js'); if (!await this._prepareFormDefinition(form, isCurrent, options.optionsResolver)) return;
+                if (options.values && typeof options.values === 'object') this._applyValues(form.fields || [], options.values);
 
                 container.innerHTML = '';
                 container.classList.remove('bbf-loading');
@@ -235,6 +405,8 @@
 
                 const formEl = this._buildForm(form, formId, baseUrl, options, csrfToken, langCode, isSameOrigin);
                 container.appendChild(formEl);
+                if (options.errors && typeof options.errors === 'object' && Object.keys(options.errors).length) this._showErrors(formEl, options.errors);
+                return formEl;
             } catch (err) {
                 if (!isCurrent()) return;
                 container.innerHTML = '';
@@ -400,7 +572,12 @@
 
         // Get current value of a form field by name
         _getFieldValue: function(formEl, fieldName, visibleOnly = false) {
-            const inputs = Array.from(formEl.querySelectorAll(`[name="${fieldName}"]`))
+            const customWrap = formEl.querySelector(`[data-field="${fieldName}"]`);
+            if (customWrap && customWrap._bbfType && customWrap._bbfType.value) {
+                return !visibleOnly || !this._isHidden(customWrap) ? customWrap._bbfType.value(customWrap) : '';
+            }
+            // A server-rendered checkbox group posts as name[] (bbf_render_html).
+            const inputs = Array.from(formEl.querySelectorAll(`[name="${fieldName}"], [name="${fieldName}[]"]`))
                 .filter(input => !visibleOnly || !this._isHidden(input));
             if (inputs.length > 0 && inputs[0].type === 'radio') {
                 const checked = inputs.find(input => input.checked);
@@ -413,7 +590,7 @@
             // File fields keep upload tokens in memory, not in a named input (conditions, min_filled, min_sum).
             const fileWrap = formEl.querySelector(`[data-field="${fieldName}"]`);
             if (fileWrap && fileWrap._bbfFiles && (!visibleOnly || !this._isHidden(fileWrap))) {
-                return fileWrap._bbfFiles.filter(f => f.state === 'done').map(f => f.token);
+                return fileWrap._bbfFiles.filter(f => f.state === 'done').map(f => f.token || f.name);
             }
             return '';
         },
@@ -610,6 +787,46 @@
             if ((field.max_files || 1) > 1) input.multiple = true;
             input.setAttribute('aria-describedby', (field.description ? fieldId + '-desc ' : '') + fieldId + '-error ' + fieldId + '-files');
             wrap.appendChild(input);
+            // Embedded mode, editing: the stored file ({url, name} from values) with a "<name>__remove" box, as bbf_render_html.
+            const stored = (Array.isArray(field.value) ? field.value : (field.value && typeof field.value === 'object' ? [field.value] : []))
+                .map(file => {
+                    const url = file && typeof file.url === 'string' ? file.url.trim() : '';
+                    // Only http(s) and relative URLs: a stored "javascript:" URL never becomes a link.
+                    if (!url || (/^[a-z][a-z0-9+.-]*:/i.test(url) && !/^https?:/i.test(url))) return null;
+                    const name = file.name ? String(file.name) : decodeURIComponent(url.split(/[?#]/)[0].split('/').pop() || '');
+                    return { url, name, image: /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(name || url.split(/[?#]/)[0]) };
+                }).filter(Boolean);
+            if (stored.length) {
+                const current = document.createElement('div');
+                current.className = 'bbf-file-current';
+                stored.forEach(file => {
+                    const link = document.createElement('a');
+                    link.className = 'bbf-file-link';
+                    link.href = file.url;
+                    if (file.image) {
+                        const img = document.createElement('img');
+                        img.className = 'bbf-file-preview';
+                        img.src = file.url;
+                        img.alt = file.name;
+                        link.appendChild(img);
+                    } else link.textContent = file.name;
+                    current.appendChild(link);
+                });
+                const removeLabel = document.createElement('label');
+                removeLabel.className = 'bbf-option bbf-file-remove-existing';
+                const remove = document.createElement('input');
+                remove.type = 'checkbox';
+                remove.name = field.name + '__remove';
+                remove.id = fieldId + '-remove';
+                remove.value = '1';
+                remove.checked = remove.defaultChecked = !!field._bbfRemove;
+                const removeText = document.createElement('span');
+                removeText.textContent = this._t('fileRemove', { name: stored.length === 1 ? stored[0].name : (field.label || field.name) }, langCode);
+                removeLabel.appendChild(remove);
+                removeLabel.appendChild(removeText);
+                current.appendChild(removeLabel);
+                wrap.appendChild(current);
+            }
             const list = document.createElement('ul');
             list.className = 'bbf-file-list';
             list.id = fieldId + '-files';
@@ -634,6 +851,7 @@
             const t = (key, params) => this._t(key, params, langCode);
             const upload = options.upload || {};
             const sandbox = !!upload.sandbox;
+            const hosted = this._hosted(options);
             formEl.querySelectorAll('.bbf-field-file').forEach(wrap => {
                 const field = wrap._bbfField;
                 const input = wrap.querySelector('.bbf-file-input');
@@ -714,6 +932,12 @@
                     changed();
                 };
                 const send = (entry, csrfRetried = false) => {
+                    // Embedded mode: the file goes with the submit to the host (multipart), never to submit.php.
+                    if (hosted) {
+                        entry.state = 'done'; entry.message = ''; entry.xhr = null;
+                        render(entry); changed();
+                        return;
+                    }
                     entry.state = 'uploading'; entry.message = ''; entry.progress = 0; entry.retryable = false;
                     render(entry); changed();
                     const xhr = new XMLHttpRequest();
@@ -921,7 +1145,10 @@
             else valueRoot.addEventListener('bbf:files-changed', handler);
             const boundInputs = [];
             sources.forEach(srcName => {
-                const inputs = valueRoot.querySelectorAll(`[name="${srcName}"]`);
+                // name[]: a server-rendered checkbox group; a custom (x-) field reports changes from its wrapper.
+                const inputs = Array.from(valueRoot.querySelectorAll(`[name="${srcName}"], [name="${srcName}[]"]`));
+                const customWrap = valueRoot.querySelector(`[data-field="${srcName}"]`);
+                if (customWrap && customWrap._bbfType) inputs.push(customWrap);
                 inputs.forEach(inp => {
                     inp.addEventListener('change', handler);
                     inp.addEventListener('input', handler);
@@ -1271,16 +1498,28 @@
                 if (event.persisted && el._bbfSubmitted) { el._bbfSubmitKey = newSubmitKey(); el._bbfSubmitted = false; }
             });
 
-            // CSRF token
-            if (csrfToken || isSameOrigin) {
+            // CSRF token (embedded mode: the host's own token comes in hiddenFields)
+            const hosted = this._hosted(options);
+            if ((csrfToken || isSameOrigin) && !hosted) {
                 const csrfInput = document.createElement('input');
                 csrfInput.type = 'hidden';
                 csrfInput.name = '_bbf_csrf';
                 csrfInput.value = csrfToken || '';
                 el.appendChild(csrfInput);
             }
+            if (options.hiddenFields && typeof options.hiddenFields === 'object') {
+                Object.keys(options.hiddenFields).forEach(name => {
+                    const value = options.hiddenFields[name];
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = name;
+                    input.value = value === null || value === undefined ? '' : String(value);
+                    el.appendChild(input);
+                });
+            }
 
-            const draftControls = this._buildDraftControls(el, form, formId, baseUrl, csrfToken, langCode, isSameOrigin, dataFields, idPrefix);
+            // Drafts live in submit.php; a host stores its own records.
+            const draftControls = hosted ? null : this._buildDraftControls(el, form, formId, baseUrl, csrfToken, langCode, isSameOrigin, dataFields, idPrefix);
             if (draftControls) {
                 if (dataFields.some(f => f.type === 'file')) {
                     const note = document.createElement('small');
@@ -1413,7 +1652,9 @@
                         }
                     });
                     this._collectRepeatableGroups(form.fields || [], el, body);
-                    this._collectFileFields(el, body);
+                    const hostFiles = hosted ? this._collectHostFiles(el, body) : null;
+                    if (!hosted) this._collectFileFields(el, body);
+                    this._collectCustomFields(el, body);
 
                     // Remove conditionally hidden fields (and group children) from submission
                     el.querySelectorAll('[data-conditional-hidden="true"]').forEach(hiddenWrap => {
@@ -1432,9 +1673,12 @@
                         + (new URLSearchParams(window.location.search).has('sandbox') ? '&sandbox' : '');
                     let resp, result, polls = 0, csrfRefreshed = false;
                     while (true) {
-                        const fetchOpts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
-                        if (isSameOrigin) fetchOpts.credentials = 'same-origin';
-                        resp = await fetch(`${baseUrl}submit.php?form=${encodeURIComponent(formId)}${sandboxParam}`, fetchOpts);
+                        // Embedded mode with file fields: multipart, so the host reads $_POST and $_FILES (bbf_validate).
+                        const fetchOpts = hosted && dataFields.some(f => f.type === 'file')
+                            ? { method: 'POST', body: this._multipartBody(body, hostFiles) }
+                            : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+                        if (isSameOrigin || hosted) fetchOpts.credentials = 'same-origin';
+                        resp = await fetch(hosted ? options.submitUrl : `${baseUrl}submit.php?form=${encodeURIComponent(formId)}${sandboxParam}`, fetchOpts);
                         const contentType = resp.headers.get('content-type') || '';
                         if (contentType.includes('application/json')) {
                             result = await resp.json();
@@ -1913,6 +2157,10 @@
                 return this._buildFileField(field, langCode, idPrefix);
             }
 
+            if (/^x-/.test(type)) {
+                return this._buildCustomField(field, langCode, idPrefix);
+            }
+
             const wrap = document.createElement('div');
             wrap.className = `bbf-field bbf-field-${type}`;
             wrap.setAttribute('data-field', field.name);
@@ -2090,6 +2338,10 @@
                 otherInput.style.display = 'none';
                 otherInput.setAttribute('aria-label', field.other_label || this._t('optionOther', {}, langCode));
                 otherInput.style.marginTop = '6px';
+                if (field._bbfOtherText !== undefined) {
+                    otherInput.value = otherInput.defaultValue = field._bbfOtherText;
+                    if ([].concat(field.value).map(String).includes('__other__')) otherInput.style.display = '';
+                }
                 wrap.appendChild(otherInput);
 
                 otherInput._bbfSyncOther = () => { otherInput.style.display = input.value === '__other__' ? '' : 'none'; };
@@ -2111,6 +2363,9 @@
                 confirmInput.setAttribute('aria-label', confirmLabel);
                 confirmInput.style.marginTop = '6px';
                 if (field.required) confirmInput.required = true;
+                if (field._bbfConfirmValue !== undefined && field._bbfConfirmValue !== null) {
+                    confirmInput.value = confirmInput.defaultValue = String(field._bbfConfirmValue);
+                }
                 wrap.appendChild(confirmInput);
             }
 
@@ -2413,6 +2668,11 @@
                 otherText.style.display = 'none';
                 otherText.setAttribute('aria-label', field.other_label || this._t('optionOther', {}, langCode));
                 otherText.style.marginTop = '4px';
+                if (field.value !== undefined && [].concat(field.value).map(String).includes('__other__')) {
+                    otherInp.checked = otherInp.defaultChecked = true;
+                    otherText.style.display = '';
+                }
+                if (field._bbfOtherText !== undefined) otherText.value = otherText.defaultValue = field._bbfOtherText;
 
                 otherText._bbfSyncOther = () => { otherText.style.display = otherInp.checked ? '' : 'none'; };
                 otherInp.addEventListener('change', otherText._bbfSyncOther);
@@ -2437,6 +2697,51 @@
             fieldset.appendChild(err);
 
             return fieldset;
+        },
+
+        // ─── Build custom (x-) field ─────────────────────────
+
+        _buildCustomField: function(field, langCode, idPrefix) {
+            const handler = this._types[field.type];
+            if (!handler || !handler.render) throw new Error(`BareBonesForms: field type ${field.type} has no render handler (BBF.registerType).`);
+            const fieldId = `${idPrefix || 'bbf'}-${field.name}`;
+            const wrap = document.createElement('div');
+            wrap.className = `bbf-field bbf-field-${field.type}`;
+            if (field.size === 'small') wrap.classList.add('bbf-size-small');
+            else if (field.size === 'medium') wrap.classList.add('bbf-size-medium');
+            if (field.css_class) wrap.className += ' ' + field.css_class;
+            if (field.label_position === 'left') wrap.classList.add('bbf-label-left');
+            wrap.setAttribute('data-field', field.name);
+            if (field.label) {
+                const label = document.createElement('label');
+                label.className = 'bbf-label';
+                label.setAttribute('for', fieldId);
+                label.textContent = field.label;
+                if (field.required) {
+                    const req = document.createElement('span');
+                    req.className = 'bbf-required';
+                    req.textContent = ' *';
+                    label.appendChild(req);
+                }
+                wrap.appendChild(label);
+            }
+            if (field.description) {
+                const desc = document.createElement('small');
+                desc.className = 'bbf-field-desc';
+                desc.id = fieldId + '-desc';
+                desc.textContent = field.description;
+                wrap.appendChild(desc);
+            }
+            const control = handler.render(field, field.value, { id: fieldId, name: field.name, lang: langCode });
+            if (!control || typeof control !== 'object') throw new Error(`BareBonesForms: render() of ${field.type} must return an element.`);
+            wrap.appendChild(control);
+            const errEl = document.createElement('div');
+            errEl.className = 'bbf-field-error';
+            errEl.id = fieldId + '-error';
+            errEl.setAttribute('role', 'alert');
+            wrap.appendChild(errEl);
+            wrap._bbfType = handler;
+            return wrap;
         },
 
         // ─── Build rating field ──────────────────────────────
@@ -2580,8 +2885,20 @@
 
                 let value;
 
+                if (/^x-/.test(type)) {
+                    const handler = this._types[type];
+                    const custom = wrap && handler && handler.value ? handler.value(wrap) : this._getFieldValue(formEl, name);
+                    const empty = custom === undefined || custom === null || custom === '' || (Array.isArray(custom) && custom.length === 0);
+                    if (field.required && empty) errors[name] = t('required', { label: field.label || name });
+                    else if (!empty && handler && handler.validate) {
+                        const message = handler.validate(custom, field);
+                        if (typeof message === 'string' && message) errors[name] = message;
+                    }
+                    return;
+                }
+
                 if (type === 'checkbox') {
-                    const checked = formEl.querySelectorAll(`input[name="${name}"]:checked`);
+                    const checked = formEl.querySelectorAll(`input[name="${name}"]:checked, input[name="${name}[]"]:checked`);
                     value = checked.length > 0 ? Array.from(checked).map(c => c.value) : '';
                 } else if (type === 'radio') {
                     const checked = formEl.querySelector(`input[name="${name}"]:checked`);
@@ -2590,12 +2907,12 @@
                     const hidden = formEl.querySelector(`input[name="${name}"]`);
                     value = hidden ? hidden.value : '';
                 } else if (type === 'file') {
-                    const files = wrap && wrap._bbfFiles ? wrap._bbfFiles.filter(f => f.state === 'done') : [];
+                    const files = this._fileFieldValue(wrap);
                     if (files.length > (field.max_files || 1)) {
                         errors[name] = t('tooManyFiles', { label: field.label || name, max: field.max_files || 1 });
                         return;
                     }
-                    value = files.length ? files.map(f => f.token) : '';
+                    value = files.length ? files : '';
                 } else {
                     const input = formEl.querySelector(`[name="${name}"]`);
                     value = input ? input.value.trim() : '';
