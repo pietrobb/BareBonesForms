@@ -6,6 +6,16 @@
  *   ?psc=81101         → {"city": "Bratislava 1", "country": "SK"}
  *   ?city=brat&limit=5 → [{value, label, psc, country}, ...] (autocomplete)
  */
+// 'standalone' => false (embedded mode): this public endpoint is closed like the others (bbf_standalone_guard).
+if (PHP_SAPI !== 'cli' && is_file(__DIR__ . '/config.php')) {
+    define('BBF_LOADED', true);
+    $bbfConfig = (static fn() => include __DIR__ . '/config.php')();
+    if (is_array($bbfConfig) && ($bbfConfig['standalone'] ?? true) === false) {
+        http_response_code(404);
+        exit;
+    }
+    unset($bbfConfig);
+}
 header('Content-Type: application/json; charset=utf-8');
 
 foreach (['psc', 'city', 'prefix', 'limit'] as $parameter) {

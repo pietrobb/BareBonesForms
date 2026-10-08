@@ -19,7 +19,20 @@ function bbf_auth_load_config(string $path): array {
     if (function_exists('opcache_invalidate')) opcache_invalidate($path, true);
     $config = require $path;
     if (!is_array($config)) bbf_auth_fail(503);
+    bbf_standalone_guard($config);
     return $config;
+}
+
+/**
+ * 'standalone' => false (embedded mode, 2.2.0): the host application uses bbf_form.php directly, so every web
+ * endpoint answers 404 right after reading the configuration, before sessions, storage, alerts or mail. CLI keeps working.
+ */
+function bbf_standalone_guard(mixed $config): void {
+    if (PHP_SAPI === 'cli' || !is_array($config) || ($config['standalone'] ?? true) !== false) return;
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Cache-Control: no-store');
+    exit("Not found.\n");
 }
 
 function bbf_auth_headers(): void {

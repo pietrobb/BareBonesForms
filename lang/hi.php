@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'भुगतान शुरू नहीं किया जा सका। कृपया बाद में फिर से प्रयास करें।',
     'draftDisabled'         => 'इस फ़ॉर्म के लिए प्रगति सहेजना अक्षम है।',
     'uploadDisabled'        => 'इस फ़ॉर्म के लिए फ़ाइल अपलोड अक्षम है।',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'जमा करें',
+    'optionOther'         => 'अन्य…',
+    'emailConfirm'        => '{label} की पुष्टि करें',
+    'fileRemove'          => '{name} हटाएँ',
 ];

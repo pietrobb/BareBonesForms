@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Η πληρωμή δεν μπόρεσε να ξεκινήσει. Παρακαλούμε δοκιμάστε ξανά αργότερα.',
     'draftDisabled'         => 'Η αποθήκευση της προόδου είναι απενεργοποιημένη για αυτή τη φόρμα.',
     'uploadDisabled'        => 'Η μεταφόρτωση αρχείων είναι απενεργοποιημένη για αυτή τη φόρμα.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Υποβολή',
+    'optionOther'         => 'Άλλο…',
+    'emailConfirm'        => 'Επιβεβαίωση: {label}',
+    'fileRemove'          => 'Αφαίρεση {name}',
 ];

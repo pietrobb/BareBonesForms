@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Pembayaran tidak dapat dimulai. Silakan coba lagi nanti.',
     'draftDisabled'         => 'Penyimpanan kemajuan dinonaktifkan untuk formulir ini.',
     'uploadDisabled'        => 'Unggahan file dinonaktifkan untuk formulir ini.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Kirim',
+    'optionOther'         => 'Lainnya…',
+    'emailConfirm'        => 'Konfirmasi {label}',
+    'fileRemove'          => 'Hapus {name}',
 ];

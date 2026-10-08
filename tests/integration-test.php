@@ -221,6 +221,13 @@ function writeConfig(string $storage): void {
         . "    'sqlite'         => ['path' => '" . addslashes($testSubmissionsDir) . "/bbf_test.sqlite'],\n"
         . "    'lang'           => 'en',\n"
         . "    'error_notify'   => '',\n"
+        // options_from on the server (2.2.0); the PHP dev server is single-threaded, so it cannot fetch itself.
+        . "    'options_resolver' => static function (string \$source): ?array {\n"
+        . "        if (!str_starts_with(\$source, '/tests/test-options-endpoint.php')) return null;\n"
+        . "        \$_GET = []; parse_str((string)parse_url(\$source, PHP_URL_QUERY), \$_GET);\n"
+        . "        ob_start(); include '" . addslashes($projectDir) . "/tests/test-options-endpoint.php';\n"
+        . "        return json_decode((string)ob_get_clean(), true);\n"
+        . "    },\n"
         . "];\n";
 
     file_put_contents($configFile, $testConfig);
@@ -1125,7 +1132,15 @@ foreach ($backends as $backend) {
         fail("dynamic-options: options endpoint HTTP {$optResult['code']}", substr($optResult['body'], 0, 200));
     }
 
-    // 6c: Submit with a dynamic option value (server skips option validation for options_from)
+    // 6b2 (2.2.0 R8): a value the source does not offer is refused on the server, not stored
+    $forged = submitForm('test-dynamic-options', ['name' => 'Forged', 'country' => 'XX', 'category' => 'electronics']);
+    if ($forged['code'] === 422 && isset($forged['json']['errors']['country'])) {
+        pass("dynamic-options: forged option value refused (422)");
+    } else {
+        fail("dynamic-options: forged option value not refused HTTP {$forged['code']}", substr($forged['body'], 0, 300));
+    }
+
+    // 6c: Submit with a dynamic option value (the server checks it against the resolved options)
     $dynResult = submitForm('test-dynamic-options', [
         'name'     => 'Dynamic Test',
         'country'  => 'SK',

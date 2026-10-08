@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Betalingen kunne ikke startes. Prøv igjen senere.',
     'draftDisabled'         => 'Lagring av fremdrift er deaktivert for dette skjemaet.',
     'uploadDisabled'        => 'Opplasting av filer er deaktivert for dette skjemaet.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Send',
+    'optionOther'         => 'Annet…',
+    'emailConfirm'        => 'Bekreft {label}',
+    'fileRemove'          => 'Fjern {name}',
 ];

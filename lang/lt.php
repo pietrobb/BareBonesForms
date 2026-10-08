@@ -58,4 +58,9 @@ return [
     'paymentFailed'         => 'Nepavyko pradėti mokėjimo. Bandykite dar kartą vėliau.',
     'draftDisabled'         => 'Šios formos pažangos išsaugojimas išjungtas.',
     'uploadDisabled'        => 'Failų įkėlimas šioje formoje išjungtas.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Siųsti',
+    'optionOther'         => 'Kita…',
+    'emailConfirm'        => 'Patvirtinkite: {label}',
+    'fileRemove'          => 'Pašalinti {name}',
 ];

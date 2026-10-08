@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'A fizetést nem sikerült elindítani. Kérjük, próbálja újra később.',
     'draftDisabled'         => 'Az előrehaladás mentése le van tiltva ennél az űrlapnál.',
     'uploadDisabled'        => 'A fájlfeltöltés le van tiltva ennél az űrlapnál.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Küldés',
+    'optionOther'         => 'Egyéb…',
+    'emailConfirm'        => '{label} megerősítése',
+    'fileRemove'          => '{name} eltávolítása',
 ];

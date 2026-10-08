@@ -27,6 +27,16 @@ return [
     // No Host-derived fallback or redirects; empty disables outgoing diagnostics.
     'diagnostic_base_url' => '', // e.g. https://forms.example.com/bbf (no credentials/query/fragment)
 
+    // ─── Embedded mode (2.2.0) ──────────────────────────────────
+    // false = a host application uses bbf_form.php / bbf_render.php itself (docs/EMBEDDED.md); then every
+    // web endpoint here (submit.php, viewer.php, editor.php, …) answers 404. CLI tools keep working.
+    'standalone' => true,
+
+    // options_from on the server: the server checks a submitted value against the source's options.
+    // A relative source is fetched from diagnostic_base_url; a callable here answers instead:
+    //   'options_resolver' => static fn(string $source, array $field): ?array => [['value' => 'SK', 'label' => 'Slovakia']],
+    // A source that cannot be loaded accepts no value (the submission is refused, not stored unchecked).
+
     // ─── Storage ────────────────────────────────────────────────
     // "file"   = JSON files in /submissions (zero config, works everywhere)
     // "sqlite" = SQLite database (file-based, zero config, SQL capable)

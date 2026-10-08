@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'ไม่สามารถเริ่มการชำระเงินได้ โปรดลองอีกครั้งภายหลัง',
     'draftDisabled'         => 'การบันทึกความคืบหน้าถูกปิดใช้งานสำหรับแบบฟอร์มนี้',
     'uploadDisabled'        => 'การอัปโหลดไฟล์ถูกปิดใช้งานสำหรับแบบฟอร์มนี้',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'ส่ง',
+    'optionOther'         => 'อื่น ๆ…',
+    'emailConfirm'        => 'ยืนยัน {label}',
+    'fileRemove'          => 'ลบ {name}',
 ];

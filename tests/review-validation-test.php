@@ -129,7 +129,8 @@ check('form definition rejects malformed cross-field validation shapes', functio
 $multiFields = [
     'checkbox' => ['type' => 'checkbox', 'options' => ['a', ['value' => 'b', 'label' => 'Bee']]],
     'multiple select' => ['type' => 'select', 'multiple' => true, 'options' => ['a', 'b']],
-    'dynamic checkbox' => ['type' => 'checkbox', 'options_from' => 'unused-local-fixture'],
+    'dynamic checkbox' => bbf_resolve_options([['type' => 'checkbox', 'options_from' => 'local-fixture']],
+        static fn(string $source) => $source === 'local-fixture' ? ['a', ['value' => 'b', 'label' => 'Bee']] : null)[0],
 ];
 foreach ($multiFields as $name => $field) {
     foreach (['a', ['a'], ['a', 'b'], [], '', null] as $i => $value) {
@@ -143,6 +144,47 @@ foreach ($multiFields as $name => $field) {
 check('checkbox checks every option', fn() => rejects($multiFields['checkbox'], ['a', 'wrong'], 'invalidOption'));
 check('multiple select checks every option', fn() => rejects($multiFields['multiple select'], ['a', 'wrong'], 'invalidOption'));
 check('numeric option scalar items', fn() => accepts(['type' => 'checkbox', 'options' => ['0', '1']], [0, 1]));
+// R8 (2.2.0): options_from was not checked on the server at all, so any forged value was stored.
+check('2.2.0 R8: dynamic checkbox checks every resolved option', fn() => rejects($multiFields['dynamic checkbox'], ['a', 'forged'], 'invalidOption'));
+check('2.2.0 R8: unresolved options_from refuses every non-empty value', function () {
+    foreach (['select' => 'SK', 'radio' => 'SK', 'checkbox' => ['SK']] as $type => $value) {
+        rejects(['type' => $type, 'options_from' => '/api/countries.php'], $value, 'invalidOption');
+        accepts(['type' => $type, 'options_from' => '/api/countries.php'], $type === 'checkbox' ? [] : '');
+    }
+});
+check('2.2.0 R8: an unavailable source falls back to static options, like bbf.js', function () {
+    $fields = bbf_resolve_options([['name' => 'value', 'label' => 'Value', 'type' => 'select', 'options_from' => 'x', 'options' => ['static']]],
+        static fn() => null, $cache, $failed);
+    same(['x' => true], $failed);
+    same([], validate($fields, ['value' => 'static']));
+    same(['value' => 'invalidOption:Value'], validate($fields, ['value' => 'forged']));
+});
+check('2.2.0 R8: resolved options replace static ones; a source is asked once; malformed answers count as unavailable', function () {
+    $calls = 0;
+    $resolver = static function (string $source) use (&$calls) { $calls++; return $source === 'good' ? [['value' => 'SK', 'label' => 'Slovakia'], 'CZ'] : [['label' => 'no value']]; };
+    $fields = bbf_resolve_options([
+        ['name' => 'a', 'type' => 'select', 'options_from' => 'good', 'options' => ['static']],
+        ['name' => 'rows', 'type' => 'group', 'repeatable' => true, 'fields' => [['name' => 'b', 'type' => 'radio', 'options_from' => 'good']]],
+        ['name' => 'c', 'type' => 'select', 'options_from' => 'bad'],
+    ], $resolver, $cache, $failed);
+    same(2, $calls);
+    same(['bad' => true], $failed);
+    same([], validate($fields, ['a' => 'SK', 'rows' => [['b' => 'CZ']]]));
+    same(['a' => 'invalidOption:a', 'rows.0.b' => 'invalidOption:b', 'c' => 'invalidOption:c'],
+        validate($fields, ['a' => 'static', 'rows' => [['b' => 'DE']], 'c' => 'anything']));
+});
+check('2.2.0 R8: the standalone resolver uses options_resolver or diagnostic_base_url, never the Host header', function () {
+    same('https://forms.example.com/api/o.php', bbf_options_source_url('/api/o.php', 'https://forms.example.com/bbf'));
+    same('https://forms.example.com/bbf/o.php?x=1', bbf_options_source_url('o.php?x=1', 'https://forms.example.com/bbf/'));
+    same('http://other.example/o.json', bbf_options_source_url('http://other.example/o.json', ''));
+    same(null, bbf_options_source_url('/api/o.php', ''));
+    same(null, bbf_options_source_url('//evil.example/o', 'https://forms.example.com'));
+    $custom = static fn(string $source) => ['ok'];
+    same($custom, bbf_options_resolver_from_config(['options_resolver' => $custom]));
+    same(null, bbf_options_resolver_from_config(['diagnostic_base_url' => ''])('/api/o.php'));
+    $submit = (string)file_get_contents(dirname(__DIR__) . '/submit.php');
+    same(true, strpos($submit, 'bbf_resolve_options($flatFields, bbf_options_resolver_from_config($config))') < strpos($submit, '$errors = validate($flatFields, $input);'));
+});
 check('conditionally hidden option is rejected', function () {
     $field = ['name' => 'plan', 'type' => 'select', 'options' => [
         'personal', ['value' => 'business', 'show_if' => ['field' => 'customer_type', 'value' => 'business']],

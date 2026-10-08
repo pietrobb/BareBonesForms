@@ -62,4 +62,9 @@ return [
     'paymentFailed'         => 'Huch nobmeH Qu\' taghlaHbe\'lu\'. tugh yInIDqa\'.',
     'draftDisabled'         => 'navvamDaq ta\' polmeH Qu\' chaw\'be\'lu\'.',
     'uploadDisabled'        => 'navvamDaq De\'wI\' ghItlhmey lI\'meH Qu\' chaw\'be\'lu\'.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'ngeH',
+    'optionOther'         => 'latlh…',
+    'emailConfirm'        => '{label} yItob',
+    'fileRemove'          => '{name} yIteq',
 ];

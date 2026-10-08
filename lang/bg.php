@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Плащането не можа да бъде стартирано. Моля, опитайте отново по-късно.',
     'draftDisabled'         => 'Запазването на напредъка е изключено за този формуляр.',
     'uploadDisabled'        => 'Качването на файлове е изключено за този формуляр.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Изпрати',
+    'optionOther'         => 'Друго…',
+    'emailConfirm'        => 'Потвърдете {label}',
+    'fileRemove'          => 'Премахни {name}',
 ];

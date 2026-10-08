@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Не удалось начать оплату. Пожалуйста, попробуйте позже.',
     'draftDisabled'         => 'Сохранение прогресса отключено для этой формы.',
     'uploadDisabled'        => 'Загрузка файлов отключена для этой формы.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Отправить',
+    'optionOther'         => 'Другое…',
+    'emailConfirm'        => 'Подтвердите {label}',
+    'fileRemove'          => 'Удалить {name}',
 ];

@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Le paiement n\'a pas pu être lancé. Veuillez réessayer plus tard.',
     'draftDisabled'         => 'L\'enregistrement de la progression est désactivé pour ce formulaire.',
     'uploadDisabled'        => 'Le téléversement de fichiers est désactivé pour ce formulaire.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Envoyer',
+    'optionOther'         => 'Autre…',
+    'emailConfirm'        => 'Confirmez {label}',
+    'fileRemove'          => 'Retirer {name}',
 ];

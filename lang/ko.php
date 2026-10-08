@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => '결제를 시작할 수 없습니다. 나중에 다시 시도해 주세요.',
     'draftDisabled'         => '이 양식에서는 진행 상황 저장이 비활성화되어 있습니다.',
     'uploadDisabled'        => '이 양식에서는 파일 업로드가 비활성화되어 있습니다.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => '제출',
+    'optionOther'         => '기타…',
+    'emailConfirm'        => '{label} 확인',
+    'fileRemove'          => '{name} 삭제',
 ];

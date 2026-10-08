@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => '支払いを開始できませんでした。後でもう一度お試しください。',
     'draftDisabled'         => 'このフォームでは入力内容の保存は無効になっています。',
     'uploadDisabled'        => 'このフォームではファイルのアップロードは無効になっています。',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => '送信',
+    'optionOther'         => 'その他…',
+    'emailConfirm'        => '{label}（確認用）',
+    'fileRemove'          => '{name}を削除',
 ];

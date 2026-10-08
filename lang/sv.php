@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Betalningen kunde inte startas. Försök igen senare.',
     'draftDisabled'         => 'Att spara framsteg är inaktiverat för det här formuläret.',
     'uploadDisabled'        => 'Filuppladdningar är inaktiverade för det här formuläret.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Skicka',
+    'optionOther'         => 'Annat…',
+    'emailConfirm'        => 'Bekräfta {label}',
+    'fileRemove'          => 'Ta bort {name}',
 ];

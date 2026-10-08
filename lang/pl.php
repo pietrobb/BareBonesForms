@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Nie udało się rozpocząć płatności. Spróbuj ponownie później.',
     'draftDisabled'         => 'Zapisywanie postępu jest wyłączone dla tego formularza.',
     'uploadDisabled'        => 'Przesyłanie plików jest wyłączone dla tego formularza.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Wyślij',
+    'optionOther'         => 'Inne…',
+    'emailConfirm'        => 'Potwierdź: {label}',
+    'fileRemove'          => 'Usuń {name}',
 ];

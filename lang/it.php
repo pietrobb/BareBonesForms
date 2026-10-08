@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Non è stato possibile avviare il pagamento. Riprova più tardi.',
     'draftDisabled'         => 'Il salvataggio dei progressi è disabilitato per questo modulo.',
     'uploadDisabled'        => 'Il caricamento di file è disabilitato per questo modulo.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Invia',
+    'optionOther'         => 'Altro…',
+    'emailConfirm'        => 'Conferma {label}',
+    'fileRemove'          => 'Rimuovi {name}',
 ];

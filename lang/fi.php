@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Maksua ei voitu aloittaa. Yritä myöhemmin uudelleen.',
     'draftDisabled'         => 'Edistymisen tallentaminen on poistettu käytöstä tässä lomakkeessa.',
     'uploadDisabled'        => 'Tiedostojen lataaminen on poistettu käytöstä tässä lomakkeessa.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Lähetä',
+    'optionOther'         => 'Muu…',
+    'emailConfirm'        => 'Vahvista {label}',
+    'fileRemove'          => 'Poista {name}',
 ];

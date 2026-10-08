@@ -81,7 +81,7 @@ function export_evidence(string $label): void {
         $meta['fixture_source_sha256'] = [];
         if ($root !== null) {
             foreach (['viewer.php', 'submissions.php', 'bbf_export.php', 'bbf_read.php', 'bbf_storage.php',
-                      'bbf_functions.php', 'bbf_auth.php', 'tests/test-isolation-helper.php', 'tests/review-export-test.php'] as $file) {
+                      'bbf_form.php', 'bbf_functions.php', 'bbf_auth.php', 'tests/test-isolation-helper.php', 'tests/review-export-test.php'] as $file) {
                 $meta['fixture_source_sha256'][$file] = hash_file('sha256', "$root/$file");
             }
             foreach (['php-error', 'server-error', 'server-output'] as $log) {

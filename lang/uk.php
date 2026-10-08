@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Не вдалося розпочати оплату. Будь ласка, спробуйте пізніше.',
     'draftDisabled'         => 'Збереження прогресу вимкнено для цієї форми.',
     'uploadDisabled'        => 'Завантаження файлів вимкнено для цієї форми.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Надіслати',
+    'optionOther'         => 'Інше…',
+    'emailConfirm'        => 'Підтвердьте {label}',
+    'fileRemove'          => 'Видалити {name}',
 ];

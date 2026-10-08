@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Ödeme başlatılamadı. Lütfen daha sonra tekrar deneyin.',
     'draftDisabled'         => 'Bu form için ilerlemeyi kaydetme devre dışı bırakılmıştır.',
     'uploadDisabled'        => 'Bu form için dosya yükleme devre dışı bırakılmıştır.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Gönder',
+    'optionOther'         => 'Diğer…',
+    'emailConfirm'        => '{label} (tekrar)',
+    'fileRemove'          => '{name} kaldır',
 ];

@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Makset ei õnnestunud alustada. Palun proovige hiljem uuesti.',
     'draftDisabled'         => 'Edenemise salvestamine on selle vormi puhul keelatud.',
     'uploadDisabled'        => 'Failide üleslaadimine on selle vormi puhul keelatud.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Saada',
+    'optionOther'         => 'Muu…',
+    'emailConfirm'        => 'Kinnitage: {label}',
+    'fileRemove'          => 'Eemalda {name}',
 ];

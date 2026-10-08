@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Plata nu a putut fi inițiată. Încercați din nou mai târziu.',
     'draftDisabled'         => 'Salvarea progresului este dezactivată pentru acest formular.',
     'uploadDisabled'        => 'Încărcarea fișierelor este dezactivată pentru acest formular.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Trimite',
+    'optionOther'         => 'Altceva…',
+    'emailConfirm'        => 'Confirmați {label}',
+    'fileRemove'          => 'Elimină {name}',
 ];

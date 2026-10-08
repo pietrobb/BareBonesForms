@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'De betaling kon niet worden gestart. Probeer het later opnieuw.',
     'draftDisabled'         => 'Het opslaan van de voortgang is uitgeschakeld voor dit formulier.',
     'uploadDisabled'        => 'Het uploaden van bestanden is uitgeschakeld voor dit formulier.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Verzenden',
+    'optionOther'         => 'Anders…',
+    'emailConfirm'        => 'Bevestig {label}',
+    'fileRemove'          => '{name} verwijderen',
 ];

@@ -6,151 +6,15 @@
  * backend call, a network request, mail() or a child process.
  */
 defined('BBF_LOADED') || exit;
+require_once __DIR__ . '/bbf_form.php';
 require_once __DIR__ . '/bbf_storage.php';
 require_once __DIR__ . '/bbf_diagnostics.php';
 
-/** extension => [canonical MIME, accepted finfo types, needs ZipArchive] */
-const BBF_UPLOAD_TYPES = [
-    'pdf'  => ['application/pdf', ['application/pdf'], false],
-    'jpg'  => ['image/jpeg', ['image/jpeg'], false],
-    'jpeg' => ['image/jpeg', ['image/jpeg'], false],
-    'png'  => ['image/png', ['image/png'], false],
-    'webp' => ['image/webp', ['image/webp'], false],
-    'gif'  => ['image/gif', ['image/gif'], false],
-    'txt'  => ['text/plain', ['text/plain'], false],
-    'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip', 'application/octet-stream'], true],
-    'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip', 'application/octet-stream'], true],
-    'odt'  => ['application/vnd.oasis.opendocument.text', ['application/vnd.oasis.opendocument.text', 'application/zip'], true],
-    'ods'  => ['application/vnd.oasis.opendocument.spreadsheet', ['application/vnd.oasis.opendocument.spreadsheet', 'application/zip'], true],
-    'heic' => ['image/heic', ['image/heic', 'image/heif'], false],
-    'csv'  => ['text/csv', ['text/csv', 'text/plain', 'application/csv'], false],
-    'zip'  => ['application/zip', ['application/zip'], false],
-    'doc'  => ['application/msword', ['application/msword', 'application/CDFV2', 'application/x-ole-storage', 'application/vnd.ms-office'], false],
-    'xls'  => ['application/vnd.ms-excel', ['application/vnd.ms-excel', 'application/CDFV2', 'application/x-ole-storage', 'application/vnd.ms-office'], false],
-];
-const BBF_UPLOAD_DEFAULT_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'txt', 'docx', 'xlsx', 'odt', 'ods'];
-const BBF_UPLOAD_HARD_DENY = ['phtml', 'phar', 'pht', 'shtml', 'cgi', 'pl', 'py', 'sh', 'jsp', 'inc',
-    'html', 'htm', 'xhtml', 'xht', 'svg', 'svgz', 'xml', 'xsl', 'xslt', 'js', 'mjs', 'swf', 'htaccess', 'user.ini',
-    'exe', 'dll', 'bat', 'cmd', 'com', 'scr', 'msi', 'msc', 'jar', 'vbs', 'vbe', 'jse', 'ps1', 'wsf', 'wsh', 'hta',
-    'cpl', 'pif', 'reg', 'scf', 'lnk', 'url', 'app', 'dmg', 'docm', 'xlsm', 'pptm', 'dotm', 'xltm', 'iso', 'img', 'vhd', 'vhdx'];
-
 // ─── Configuration and definitions ───────────────────────────────
-
-function bbf_uploads_config(array $config): array {
-    $u = is_array($config['uploads'] ?? null) ? $config['uploads'] : [];
-    return $u + [
-        'enabled' => false,
-        'dir' => dirname(__DIR__) . '/barebonesforms-private/uploads',
-        'allow_inside_web_root' => false,
-        'max_file_size' => 10 * 1024 * 1024,
-        'max_submission_size' => 25 * 1024 * 1024,
-        'allowed_extensions' => BBF_UPLOAD_DEFAULT_EXTENSIONS,
-        'staging_ttl' => 7200,
-        'max_staging_bytes' => 500 * 1024 * 1024,
-        'max_staging_entries' => 2000,
-        'per_ip_staging_bytes' => 100 * 1024 * 1024,
-        'per_ip_staging_entries' => 40,
-        'max_stored_bytes' => 5 * 1024 * 1024 * 1024,
-        'max_stored_files' => 50000,
-        'min_free_disk' => 200 * 1024 * 1024,
-        'rate_limit' => ['max' => 60, 'window' => 600],
-    ];
-}
 
 function bbf_uploads_hook(string $point): bool {
     $hook = $GLOBALS['_bbf_tx_hook'] ?? null;
     return !is_callable($hook) || $hook('upload:' . $point) !== false;
-}
-
-function bbf_uploads_hard_denied(string $ext, string $name = ''): bool {
-    $ext = strtolower($ext);
-    if (str_starts_with($ext, 'php') || str_starts_with($ext, 'asp') || in_array($ext, BBF_UPLOAD_HARD_DENY, true)) return true;
-    $lower = strtolower($name);
-    return in_array($lower, ['.htaccess', 'htaccess', '.user.ini', 'user.ini'], true) || str_ends_with($lower, '.user.ini');
-}
-
-/** A definition's accept entry ('.pdf' or 'pdf') as a bare lowercase extension. */
-function bbf_uploads_normalize_ext($value): ?string {
-    if (!is_string($value)) return null;
-    $ext = strtolower(ltrim(trim($value), '.'));
-    return preg_match('/\A[a-z0-9]{1,10}\z/', $ext) ? $ext : null;
-}
-
-/** Integer bytes or "<n>KB" / "<n>MB", binary units. */
-function bbf_uploads_parse_size($value): ?int {
-    if (is_int($value)) return $value > 0 ? $value : null;
-    if (!is_string($value) || !preg_match('/\A(\d{1,9})\s*(KB|MB)?\z/i', trim($value), $m)) return null;
-    $bytes = (int)$m[1] * match (strtoupper($m[2] ?? '')) { 'KB' => 1024, 'MB' => 1048576, default => 1 };
-    return $bytes > 0 ? $bytes : null;
-}
-
-function bbf_uploads_ini_bytes($value): int {
-    $value = trim((string)$value);
-    if ($value === '' || !preg_match('/\A(\d+)\s*([KMG]?)/i', $value, $m)) return 0;
-    return (int)$m[1] * match (strtoupper($m[2])) { 'K' => 1024, 'M' => 1048576, 'G' => 1073741824, default => 1 };
-}
-
-/** Definition errors for one file field (validateFieldList). */
-function bbf_uploads_definition_errors(array $field, string $prefix, bool $insideRepeatable): array {
-    $errors = [];
-    if ($insideRepeatable) $errors[] = "$prefix: File fields are not supported inside repeatable groups.";
-    if (array_key_exists('accept', $field)) {
-        if (!is_array($field['accept']) || !array_is_list($field['accept']) || $field['accept'] === []) {
-            $errors[] = "$prefix.accept: Expected a non-empty list of extensions.";
-        } else {
-            foreach ($field['accept'] as $i => $entry) {
-                $ext = bbf_uploads_normalize_ext($entry);
-                if ($ext === null || !isset(BBF_UPLOAD_TYPES[$ext]) || bbf_uploads_hard_denied($ext)) {
-                    $errors[] = "$prefix.accept[$i]: Extension is not in the server allowlist.";
-                }
-            }
-        }
-    }
-    if (array_key_exists('max_size', $field) && bbf_uploads_parse_size($field['max_size']) === null) {
-        $errors[] = "$prefix.max_size: Expected bytes or a size such as \"5MB\".";
-    }
-    if (array_key_exists('max_files', $field) && (!is_int($field['max_files']) || $field['max_files'] < 1 || $field['max_files'] > 20)) {
-        $errors[] = "$prefix.max_files: Expected an integer from 1 through 20.";
-    }
-    return $errors;
-}
-
-/** Extensions the server accepts right now: configured, known, not denied, dependencies present. */
-function bbf_uploads_effective_extensions(array $config): array {
-    $u = bbf_uploads_config($config);
-    $out = [];
-    foreach ((array)$u['allowed_extensions'] as $entry) {
-        $ext = bbf_uploads_normalize_ext($entry);
-        if ($ext === null || !isset(BBF_UPLOAD_TYPES[$ext]) || bbf_uploads_hard_denied($ext)) continue;
-        if (BBF_UPLOAD_TYPES[$ext][2] && !class_exists('ZipArchive')) continue;
-        $out[$ext] = true;
-    }
-    return array_keys($out);
-}
-
-function bbf_uploads_field_accept(array $config, array $field): array {
-    $effective = bbf_uploads_effective_extensions($config);
-    if (!is_array($field['accept'] ?? null)) return $effective;
-    $wanted = array_filter(array_map('bbf_uploads_normalize_ext', $field['accept']));
-    return array_values(array_intersect(array_unique($wanted), $effective));
-}
-
-function bbf_uploads_field_max_size(array $config, array $field): int {
-    $u = bbf_uploads_config($config);
-    $limits = [max(1, (int)$u['max_file_size'])];
-    $fieldMax = bbf_uploads_parse_size($field['max_size'] ?? null);
-    if ($fieldMax !== null) $limits[] = $fieldMax;
-    $uploadMax = bbf_uploads_ini_bytes(ini_get('upload_max_filesize'));
-    if ($uploadMax > 0) $limits[] = $uploadMax;
-    $postMax = bbf_uploads_ini_bytes(ini_get('post_max_size'));
-    if ($postMax > 0) $limits[] = max(1, $postMax - 65536);
-    return min($limits);
-}
-
-function bbf_uploads_field_max_files(array $field): int {
-    return is_int($field['max_files'] ?? null) ? max(1, $field['max_files']) : 1;
 }
 
 /** Client projection of a file field: effective accept list (extensions + MIME types) and size. */
@@ -172,12 +36,6 @@ function bbf_uploads_file_fields(array $flatFields): array {
     return $out;
 }
 
-function bbf_uploads_human_size(int $bytes): string {
-    if ($bytes < 1024) return $bytes . ' B';
-    if ($bytes < 1048576) return round($bytes / 1024) . ' KB';
-    return round($bytes / 1048576, 1) . ' MB';
-}
-
 /** "Name.pdf (180 KB), Other.png (2.1 MB)" for summaries, templates and CSV cells. */
 function bbf_uploads_describe($value): string {
     if (!is_array($value)) return is_scalar($value) ? (string)$value : '';
@@ -197,41 +55,6 @@ function bbf_uploads_is_descriptor_list($value): bool {
 }
 
 // ─── Names ───────────────────────────────────────────────────────
-
-/** Sanitized display name: basename, valid UTF-8, no controls or bidi overrides, <= 200 bytes, extension kept. */
-function bbf_uploads_sanitize_name(string $name): string {
-    $name = (string)preg_replace('~\A.*[/\\\\]~s', '', $name);
-    if (function_exists('mb_scrub')) {
-        $name = mb_scrub($name, 'UTF-8');
-    } elseif (!preg_match('//u', $name)) {
-        $name = (string)preg_replace('/[\x80-\xFF]/', '_', $name);
-    }
-    $name = (string)preg_replace('/[\p{Cc}\p{Cf}]/u', '', $name);
-    if (class_exists('Normalizer')) {
-        $normalized = Normalizer::normalize($name, Normalizer::FORM_C);
-        if (is_string($normalized)) $name = $normalized;
-    }
-    $name = trim($name);
-    if ($name === '' || $name === '.' || $name === '..') $name = 'file';
-    if (strlen($name) <= 200) return $name;
-    $dot = strrpos($name, '.');
-    $ext = $dot !== false && $dot > 0 && strlen($name) - $dot <= 21 ? substr($name, $dot) : '';
-    $stem = $ext === '' ? $name : substr($name, 0, $dot);
-    $budget = 200 - strlen($ext) - 3;
-    if (function_exists('mb_strcut')) {
-        $stem = mb_strcut($stem, 0, $budget, 'UTF-8');
-    } else {
-        $stem = substr($stem, 0, $budget);
-        while ($stem !== '' && !preg_match('//u', $stem)) $stem = substr($stem, 0, -1);
-    }
-    $name = $stem . "\u{2026}" . $ext;
-    return preg_match('//u', $name) ? $name : 'file' . $ext;
-}
-
-function bbf_uploads_name_ext(string $name): string {
-    $dot = strrpos($name, '.');
-    return $dot === false ? '' : strtolower(substr($name, $dot + 1));
-}
 
 // ─── Location, tree, secret ──────────────────────────────────────
 
@@ -896,93 +719,6 @@ function bbf_uploads_rate_limit(array $config, string $ip): bool {
         flock($fp, LOCK_UN);
         fclose($fp);
     }
-}
-
-/** Respondent-facing text: submit.php's msg() (request or config language), otherwise the English pack. */
-function bbf_uploads_t(string $key, array $params = []): string {
-    if (function_exists('msg')) return msg($key, $params);
-    static $en = null;
-    $en ??= require __DIR__ . '/lang/en.php';
-    $text = $en[$key] ?? $key;
-    foreach ($params as $k => $v) $text = str_replace('{' . $k . '}', (string)$v, $text);
-    return $text;
-}
-
-function bbf_uploads_error_message(int $error): string {
-    return bbf_uploads_t(match ($error) {
-        UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'uploadServerLimit',
-        UPLOAD_ERR_PARTIAL => 'uploadInterrupted',
-        UPLOAD_ERR_NO_FILE => 'uploadNoFile',
-        UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'uploadCannotStore',
-        UPLOAD_ERR_EXTENSION => 'uploadRefused',
-        default => 'uploadFailed',
-    });
-}
-
-/** Structural plausibility filter for OOXML and ODF (section 6). Null = plausible, else the reason. */
-function bbf_uploads_office_check(string $path, string $ext): ?string {
-    if (!class_exists('ZipArchive')) return 'This file type needs the ZipArchive extension on the server.';
-    $zip = new ZipArchive();
-    if ($zip->open($path, defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0) !== true) return bbf_uploads_t('uploadInvalidDocument');
-    try {
-        $count = $zip->numFiles;
-        if ($count < 1 || $count > 2000) return bbf_uploads_t('uploadInvalidDocument');
-        $found = [];
-        for ($i = 0; $i < $count; $i++) {
-            $name = (string)$zip->getNameIndex($i);
-            $lower = strtolower($name);
-            if (str_ends_with($lower, 'vbaproject.bin')) return bbf_uploads_t('uploadMacros');
-            if (in_array($ext, ['odt', 'ods'], true) && (str_starts_with($name, 'Basic/') || str_starts_with($name, 'Scripts/'))) {
-                return bbf_uploads_t('uploadMacros');
-            }
-            $found[$name] = true;
-        }
-        $required = match ($ext) {
-            'docx' => ['[Content_Types].xml', 'word/document.xml'],
-            'xlsx' => ['[Content_Types].xml', 'xl/workbook.xml'],
-            default => ['mimetype'],
-        };
-        foreach ($required as $name) if (!isset($found[$name])) return bbf_uploads_t('uploadInvalidDocument');
-        if (in_array($ext, ['odt', 'ods'], true)) {
-            $expected = $ext === 'odt' ? 'application/vnd.oasis.opendocument.text' : 'application/vnd.oasis.opendocument.spreadsheet';
-            if (trim((string)$zip->getFromName('mimetype', 100)) !== $expected) return bbf_uploads_t('uploadInvalidDocument');
-        }
-        return null;
-    } finally {
-        $zip->close();
-    }
-}
-
-/** Step 8 on PHP's temporary file: name, size, extension, content. */
-function bbf_uploads_validate_file(array $config, array $field, string $tmp, string $clientName, int $size): array {
-    $name = bbf_uploads_sanitize_name($clientName);
-    $ext = bbf_uploads_name_ext($name);
-    if ($size <= 0) return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadEmpty')];
-    $max = bbf_uploads_field_max_size($config, $field);
-    if ($size > $max) return ['ok' => false, 'code' => 413, 'message' => bbf_uploads_t('uploadTooLarge', ['max' => bbf_uploads_human_size($max)])];
-    if ($ext === '' || bbf_uploads_hard_denied($ext, $name) || !in_array($ext, bbf_uploads_field_accept($config, $field), true)) {
-        return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadType')];
-    }
-    if (!class_exists('finfo')) {
-        error_log('BareBonesForms: uploads refused, the PHP fileinfo extension is missing.');
-        return ['ok' => false, 'code' => 503, 'message' => bbf_uploads_t('uploadCannotStore')];
-    }
-    $mime = (string)(new finfo(FILEINFO_MIME_TYPE))->file($tmp);
-    // A password-protected OOXML file is an OLE compound file, not a ZIP.
-    if (in_array($ext, ['docx', 'xlsx'], true) && (str_starts_with($mime, 'application/CDFV2')
-        || in_array($mime, ['application/encrypted', 'application/x-ole-storage'], true))) {
-        return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadEncrypted')];
-    }
-    if (!in_array($mime, BBF_UPLOAD_TYPES[$ext][1], true)) {
-        return ['ok' => false, 'code' => 422, 'message' => bbf_uploads_t('uploadMismatch')];
-    }
-    if (BBF_UPLOAD_TYPES[$ext][2]) {
-        $reason = bbf_uploads_office_check($tmp, $ext);
-        if ($reason !== null) return ['ok' => false, 'code' => 422, 'message' => $reason];
-    }
-    $sha = hash_file('sha256', $tmp);
-    if (!is_string($sha)) return ['ok' => false, 'code' => 503, 'message' => bbf_uploads_t('uploadUnreadable')];
-    return ['ok' => true, 'name' => $name, 'ext' => $ext, 'size' => $size, 'type' => BBF_UPLOAD_TYPES[$ext][0], 'sha256' => $sha];
 }
 
 /** Capacity decision for a new reservation: null = admitted, otherwise the refused limit. */

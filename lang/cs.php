@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'Platbu se nepodařilo zahájit. Zkuste to prosím později.',
     'draftDisabled'         => 'Ukládání postupu je pro tento formulář vypnuté.',
     'uploadDisabled'        => 'Nahrávání souborů je pro tento formulář vypnuté.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Odeslat',
+    'optionOther'         => 'Jiné…',
+    'emailConfirm'        => 'Potvrďte {label}',
+    'fileRemove'          => 'Odebrat {name}',
 ];

@@ -63,4 +63,9 @@ return [
     'paymentFailed'         => 'The payment could not be started. Please try again later.',
     'draftDisabled'         => 'Saving progress is disabled for this form.',
     'uploadDisabled'        => 'File uploads are disabled for this form.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Submit',
+    'optionOther'         => 'Other…',
+    'emailConfirm'        => 'Confirm {label}',
+    'fileRemove'          => 'Remove {name}',
 ];

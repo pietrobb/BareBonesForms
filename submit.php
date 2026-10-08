@@ -376,6 +376,7 @@ if (!$isSandbox && in_array($draftAction, ['draft_save', 'draft_load', 'draft_de
 }
 
 // ─── Validate and normalize once for sandbox and production ─────
+$flatFields = bbf_resolve_options($flatFields, bbf_options_resolver_from_config($config));
 $shapeErrors = validateFieldShapes($flatFields, $input);
 $errors = validate($flatFields, $input);
 $normalizedData = $shapeErrors ? [] : collectData($flatFields, $input);
@@ -1078,52 +1079,7 @@ function bbf_submit_replay(array $config, string $formId, array $state, array $h
 // validateFieldList, validateFormDefinition, validate → moved to bbf_functions.php
 
 function collectData(array $fields, array $input): array {
-    $data = [];
-    $input = bbfVisibleInput($fields, $input);
-    foreach ($fields as $field) {
-        $type = $field['type'] ?? 'text';
-        // Skip non-data fields; repeatable groups preserve structured rows.
-        if (in_array($type, ['section', 'page_break'], true)) continue;
-
-        $name = $field['name'];
-        if ($type === 'group') {
-            if (empty($field['repeatable'])) continue;
-            if (!empty($field['show_if']) && !evalCondition($field['show_if'], $input)) continue;
-            $childFields = flattenFields($field['fields'] ?? []);
-            $rows = [];
-            foreach ($input[$name] ?? [] as $row) {
-                $rows[] = collectData($childFields, bbfRepeatableRowInput($childFields, $input, $row));
-            }
-            $data[$name] = $rows;
-            continue;
-        }
-
-        // Skip conditionally hidden fields — evaluate the condition server-side
-        if (!empty($field['show_if']) && !evalCondition($field['show_if'], $input)) {
-            continue;
-        }
-
-        $value = !empty($field['_bbf_system']) ? ($input[$name] ?? '') : bbfNormalizeInputValue($input[$name] ?? '', $type);
-
-        // Resolve "other" option: if value is __other__, use the _other text field
-        if (!empty($field['other']) && $value === '__other__') {
-            $otherValue = trim((string)($input[$name . '_other'] ?? ''));
-            $value = $otherValue !== '' ? $otherValue : 'Other';
-        }
-        // For checkbox arrays with __other__
-        if (is_array($value) && !empty($field['other'])) {
-            $value = array_map(function($v) use ($input, $name) {
-                if ($v === '__other__') {
-                    $ov = trim((string)($input[$name . '_other'] ?? ''));
-                    return $ov !== '' ? $ov : 'Other';
-                }
-                return $v;
-            }, $value);
-        }
-
-        $data[$name] = $value;
-    }
-    return $data;
+    return bbf_collect_data($fields, $input);
 }
 
 function store(array $submission, array $config, array $formFields = [], ?PDO $mysql = null): bool {

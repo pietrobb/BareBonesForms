@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => 'تعذّر بدء عملية الدفع. يرجى المحاولة مرة أخرى لاحقًا.',
     'draftDisabled'         => 'حفظ التقدم معطّل لهذا النموذج.',
     'uploadDisabled'        => 'رفع الملفات معطّل لهذا النموذج.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'إرسال',
+    'optionOther'         => 'أخرى…',
+    'emailConfirm'        => 'تأكيد {label}',
+    'fileRemove'          => 'إزالة {name}',
 ];

@@ -467,6 +467,9 @@ foreach ($formFiles as $file) {
     if (!empty($form['templates'])) {
         $form['fields'] = resolveTemplates($form['fields'], $form['templates']);
     }
+    // Resolved options_from lets the generated data pick a value the server accepts.
+    $optionsCache = [];
+    $form['fields'] = bbf_resolve_options($form['fields'], bbf_options_resolver_from_config($config), $optionsCache);
     $flatFields = flattenFields($form['fields']);
 
     // 4. Generate valid test data (in live mode, email fields → smoke_email)

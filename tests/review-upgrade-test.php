@@ -478,7 +478,7 @@ try {
     // ─── Review 2.1.4: an unverified package's code never runs in a dry run ─
     upgrade_copy("$tmp/deleg", "$tmp/evil");
     $ran = "$tmp/package-code-ran.txt";
-    foreach (['bbf_upgrade.php', 'smoketest.php', 'bbf_auth.php', 'bbf_functions.php'] as $file) {
+    foreach (['bbf_upgrade.php', 'smoketest.php', 'bbf_auth.php', 'bbf_form.php', 'bbf_functions.php'] as $file) {
         $code = file_get_contents("$tmp/evil/$file");
         file_put_contents("$tmp/evil/$file", preg_replace('/\A<\?php/', '<?php file_put_contents(' . var_export($ran, true) . ', basename(__FILE__) . "\n", FILE_APPEND);', $code, 1));
     }

@@ -21,6 +21,7 @@ if (!file_exists(__DIR__ . '/config.php')) {
 }
 
 $config = require __DIR__ . '/config.php';
+require_once __DIR__ . '/bbf_auth.php'; bbf_standalone_guard($config);
 
 // Only accept POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

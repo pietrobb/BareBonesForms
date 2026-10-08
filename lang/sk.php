@@ -62,4 +62,9 @@ return [
     'paymentFailed'         => 'Platbu sa nepodarilo začať. Skúste to, prosím, neskôr.',
     'draftDisabled'         => 'Ukladanie postupu je pre tento formulár vypnuté.',
     'uploadDisabled'        => 'Nahrávanie súborov je pre tento formulár vypnuté.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Odoslať',
+    'optionOther'         => 'Iné…',
+    'emailConfirm'        => 'Potvrďte {label}',
+    'fileRemove'          => 'Odstrániť {name}',
 ];

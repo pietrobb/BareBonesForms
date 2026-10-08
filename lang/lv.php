@@ -58,4 +58,9 @@ return [
     'paymentFailed'         => 'Neizdevās sākt maksājumu. Lūdzu, mēģiniet vēlreiz vēlāk.',
     'draftDisabled'         => 'Progresa saglabāšana šai veidlapai ir atspējota.',
     'uploadDisabled'        => 'Failu augšupielāde šai veidlapai ir atspējota.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Nosūtīt',
+    'optionOther'         => 'Cits…',
+    'emailConfirm'        => 'Apstipriniet: {label}',
+    'fileRemove'          => 'Noņemt {name}',
 ];

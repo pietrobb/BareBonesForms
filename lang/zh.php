@@ -60,4 +60,9 @@ return [
     'paymentFailed'         => '无法启动付款。请稍后再试。',
     'draftDisabled'         => '此表单已禁用进度保存。',
     'uploadDisabled'        => '此表单已禁用文件上传。',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => '提交',
+    'optionOther'         => '其他…',
+    'emailConfirm'        => '确认{label}',
+    'fileRemove'          => '移除 {name}',
 ];

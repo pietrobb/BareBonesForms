@@ -34,7 +34,7 @@ function bbf_test_installation(string $source, bool $sandbox = false): string {
             }
         }
         // Deliberate allowlist: no config.php, operator data/logs, custom actions or symlinks.
-        foreach (['bbf_alerts.php', 'submit.php', 'submissions.php', 'bbf_functions.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_uploads.php', 'bbf_diagnostics.php', 'bbf_delivery.php', 'bbf_drafts.php', 'bbf_outbox.php', 'bbf_export.php', 'bbf_read.php', 'bbf_auth.php', 'bbf_review.php', 'bbf_versions.php', 'bbf_retention.php', 'bbf_backup.php', 'bbf_upgrade.php', 'maintenance.php', 'payment.php', '.htaccess',
+        foreach (['bbf_alerts.php', 'submit.php', 'submissions.php', 'bbf_form.php', 'bbf_functions.php', 'bbf_storage.php', 'bbf_submit_tx.php', 'bbf_uploads.php', 'bbf_diagnostics.php', 'bbf_delivery.php', 'bbf_drafts.php', 'bbf_outbox.php', 'bbf_export.php', 'bbf_read.php', 'bbf_auth.php', 'bbf_review.php', 'bbf_versions.php', 'bbf_retention.php', 'bbf_backup.php', 'bbf_upgrade.php', 'maintenance.php', 'payment.php', '.htaccess',
                   'bbf_context.php', 'actions/test-echo-response.php'] as $file) {
             bbf_test_copy($source . '/' . $file, $root . '/' . $file);
         }

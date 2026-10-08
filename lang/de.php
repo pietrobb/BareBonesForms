@@ -62,4 +62,9 @@ return [
     'paymentFailed'         => 'Die Zahlung konnte nicht gestartet werden. Bitte versuchen Sie es später erneut.',
     'draftDisabled'         => 'Das Speichern des Fortschritts ist für dieses Formular deaktiviert.',
     'uploadDisabled'        => 'Datei-Uploads sind für dieses Formular deaktiviert.',
+    // Labels of server-rendered forms (bbf_render.php, 2.2.0)
+    'submitDefault'       => 'Absenden',
+    'optionOther'         => 'Sonstiges…',
+    'emailConfirm'        => '{label} bestätigen',
+    'fileRemove'          => '{name} entfernen',
 ];
